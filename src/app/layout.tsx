@@ -1,32 +1,31 @@
-import { Inter } from 'next/font/google'
-import { ThemeProvider } from '@mui/material/styles'
-import CssBaseline from '@mui/material/CssBaseline'
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v14-appRouter'
-import { theme } from '@/lib/theme'
-import { AuthProvider } from '@/components/providers/AuthProvider'
-import './globals.css'
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import CssBaseline from '@mui/material/CssBaseline';
+import { AppRouterCacheProvider } from '@mui/material-nextjs/v14-appRouter';
+import ThemeRegistry from '@/theme/ThemeRegistry';
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'] });
 
-export const metadata = {
-  title: 'Projektboard Platform',
-  description: 'Professionelle Kanban-Boards für Teams',
-}
+export const metadata: Metadata = {
+  title: 'Kanban Board System',
+  description: 'Modernes Kanban Board System für Projektmanagement',
+};
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="de">
       <body className={inter.className}>
         <AppRouterCacheProvider>
-          <ThemeProvider theme={theme}>
+          <ThemeRegistry>
             <CssBaseline />
-            <AuthProvider>
-              {children}
-            </AuthProvider>
-          </ThemeProvider>
+            {children}
+          </ThemeRegistry>
         </AppRouterCacheProvider>
       </body>
     </html>
-  )
+  );
 }
-

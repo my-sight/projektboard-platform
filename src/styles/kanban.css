@@ -1,0 +1,533 @@
+/* XNF Werkzeuge Kanban Board - Alle Styles aus deinem HTML */
+:root {
+  --bg: #0f1117;
+  --panel: #141a22;
+  --ink: #e6e8ee;
+  --muted: #9aa3b2;
+  --accent: #4aa3ff;
+  --line: #243042;
+  --chip: #1a2230;
+  --alert: #5a1b1b;
+  --alertBorder: #a33;
+  --ok: #19c37d;
+  --colw: 320px;
+  --rowheadw: 200px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f5f7fb;
+    --panel: #ffffff;
+    --ink: #0b1220;
+    --muted: #566175;
+    --accent: #2458ff;
+    --line: #e6eaf2;
+    --chip: #eef3ff;
+    --alert: #ffe8e8;
+    --alertBorder: #ff6b6b;
+    --ok: #0ea667;
+    --colw: 320px;
+    --rowheadw: 200px;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.kanban-container {
+  margin: 0;
+  font-family: Inter, system-ui, Segoe UI, Roboto, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.kanban-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: linear-gradient(180deg, rgba(0,0,0,.05), transparent), var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.wrap {
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+.kanban-title {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto auto auto auto auto auto auto auto;
+  gap: 12px;
+  align-items: center;
+}
+
+input[type="search"], select {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 8px 10px;
+  border-radius: 10px;
+  min-width: 220px;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.btn.good {
+  background: var(--ok);
+  border-color: transparent;
+  color: #fff;
+}
+
+.btn.warn {
+  background: #d97706;
+  border-color: transparent;
+  color: #fff;
+}
+
+.btn.danger {
+  background: #7f1d1d;
+  border-color: transparent;
+  color: #fff;
+}
+
+.btn.danger:hover {
+  filter: brightness(1.05);
+}
+
+.btn:hover {
+  filter: brightness(1.05);
+  transform: scale(1.01);
+  transition: all .1s ease-in-out;
+}
+
+.board {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable both-edges;
+  display: flex;
+  gap: 12px;
+  padding: 16px;
+  align-items: flex-start;
+}
+
+.board.swim {
+  display: grid;
+  gap: 8px;
+  align-items: start;
+}
+
+.col {
+  flex: 0 0 var(--colw);
+  width: var(--colw);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  min-height: 55vh;
+}
+
+.col h3 {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--panel);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  margin: 10px 12px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+
+.lane {
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px dashed transparent;
+  min-height: 200px;
+}
+
+.lane.is-over {
+  background: rgba(255,255,255,0.06);
+  outline: 2px dashed var(--line);
+  outline-offset: -4px;
+  transition: background .12s ease, outline-color .12s ease;
+}
+
+.card {
+  position: relative;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  box-shadow: 0 3px 8px rgba(0,0,0,.06);
+  cursor: grab;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+
+.card:not(.collapsed) {
+  border-color: var(--accent);
+  box-shadow: 0 0 4px rgba(0,0,0,0.1);
+}
+
+.card:active {
+  cursor: grabbing;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0,0,0,.18);
+}
+
+.card.is-dragging {
+  transform: rotate(2deg) scale(1.03);
+  box-shadow: 0 14px 28px rgba(0,0,0,.30);
+  opacity: 0.96;
+}
+
+.card.due-today {
+  background: var(--alert);
+  border-color: var(--alertBorder);
+}
+
+.card.esk-lk {
+  background: #fff3e0;
+  border-color: #ef6c00;
+}
+
+.card.esk-sk {
+  background: #ffebee;
+  border-color: #c62828;
+}
+
+.headerline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.titlewrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.titleline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+}
+
+.dot.green {
+  background: #14c38e;
+}
+
+.dot.red {
+  background: #ff5a5a;
+}
+
+.dot.is-clickable {
+  cursor: pointer;
+  transition: box-shadow .12s ease;
+}
+
+.dot.is-clickable:hover {
+  box-shadow: 0 0 0 3px rgba(255,255,255,.1);
+}
+
+.title {
+  font-weight: 700;
+  font-size: 14px;
+  padding-right: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.name {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.statuschip {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.titleline .controls {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.iconbtn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.iconbtn:hover {
+  background: rgba(0,0,0,.06);
+}
+
+.sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.body {
+  margin-top: 6px;
+}
+
+.collapsed .body {
+  display: none;
+}
+
+.collapsed .titlewrap {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.collapsed .statuschip,
+.collapsed .title,
+.name {
+  max-width: 100%;
+}
+
+/* Chips */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.chip.ab-a {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #2e7d32;
+}
+
+.chip.ab-b {
+  background: #e3f2fd;
+  color: #1565c0;
+  border: 1px solid #1565c0;
+}
+
+.chip.esk-lk {
+  background: #fff3e0;
+  color: #ef6c00;
+  border: 1px solid #ef6c00;
+}
+
+.chip.esk-sk {
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #c62828;
+}
+
+/* Lane chip on cards */
+.lanechip {
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--chip);
+  padding: 2px 6px;
+  border-radius: 999px;
+  margin-top: 4px;
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Responsible chip */
+.respchip {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  background: var(--chip);
+  color: var(--accent);
+  padding: 2px 4px;
+  border-radius: 4px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Due date */
+.duedate {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.duedate.overdue {
+  color: #d63031;
+  font-weight: bold;
+}
+
+/* Checklist */
+.checklist {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.checklist .chk-item {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.checklist input[type="checkbox"] {
+  margin-right: 4px;
+}
+
+.collapsed .checklist {
+  display: none;
+}
+
+/* Density variations */
+.cards-compact .card {
+  padding: 10px;
+}
+
+.cards-xcompact .card {
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+.cards-xcompact .card .titlewrap .name,
+.cards-xcompact .card .statuschip,
+.cards-xcompact .card .lanechip,
+.cards-xcompact .card .controls,
+.cards-xcompact .card .body,
+.cards-xcompact .card .locchip {
+  display: none;
+}
+
+.cards-xcompact .respchip {
+  display: none;
+}
+
+.cards-xcompact .duedate {
+  display: none;
+}
+
+/* Drag states */
+body.dragging,
+body.dragging * {
+  cursor: grabbing !important;
+}
+
+@keyframes drop-pop {
+  0% { transform: scale(0.98); }
+  60% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
+.card.just-dropped {
+  animation: drop-pop .18s ease-out;
+}
+
+/* View mode buttons */
+#viewModeButtons .btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+#densityButtons .btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Input overrides */
+input.overdue {
+  color: #c62828;
+  border-color: var(--alertBorder);
+}
+
+/* Error bar */
+.errorbar {
+  display: none;
+  background: #7f1d1d;
+  color: #fff;
+  padding: 8px 12px;
+  font-size: 12px;
+}

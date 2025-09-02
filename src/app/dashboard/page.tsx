@@ -10,16 +10,12 @@ import {
   Grid,
   Card,
   CardContent,
-  CardActions,
-  IconButton,
-  Fab
+  CardActions
 } from '@mui/material';
 import OriginalKanbanBoard from '@/components/kanban/OriginalKanbanBoard';
-import { useTheme } from '@/theme/ThemeRegistry';
 
 export default function HomePage() {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
-  const { isDark, toggleTheme } = useTheme();
 
   // Beispiel-Boards
   const boards = [
@@ -52,29 +48,22 @@ export default function HomePage() {
         {/* Header mit Zurück-Button */}
         <Box sx={{ 
           p: 2, 
-          borderBottom: 1,
-          borderColor: 'divider',
-          backgroundColor: 'background.paper',
+          borderBottom: '1px solid var(--line)',
+          backgroundColor: 'var(--panel)',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between'
+          gap: 2
         }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Button 
-              variant="outlined" 
-              onClick={() => setSelectedBoard(null)}
-              sx={{ minWidth: 'auto' }}
-            >
-              ← Zurück
-            </Button>
-            <Typography variant="h6">
-              {boards.find(b => b.id === selectedBoard)?.name}
-            </Typography>
-          </Box>
-          
-          <IconButton onClick={toggleTheme} color="primary">
-            {isDark ? '☀️' : '🌙'}
-          </IconButton>
+          <Button 
+            variant="outlined" 
+            onClick={() => setSelectedBoard(null)}
+            sx={{ minWidth: 'auto' }}
+          >
+            ← Zurück
+          </Button>
+          <Typography variant="h6">
+            {boards.find(b => b.id === selectedBoard)?.name}
+          </Typography>
         </Box>
 
         {/* Board */}
@@ -86,22 +75,13 @@ export default function HomePage() {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4, position: 'relative' }}>
-      {/* Theme Toggle FAB */}
-      <Fab
-        color="primary"
-        sx={{ position: 'fixed', bottom: 24, right: 24, zIndex: 1000 }}
-        onClick={toggleTheme}
-      >
-        {isDark ? '☀️' : '🌙'}
-      </Fab>
-
+    <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Header */}
       <Box sx={{ mb: 4, textAlign: 'center' }}>
         <Typography variant="h3" component="h1" sx={{ mb: 2, fontWeight: 700 }}>
           Kanban Board System
         </Typography>
-        <Typography variant="h6" sx={{ color: 'text.secondary', mb: 4 }}>
+        <Typography variant="h6" sx={{ color: 'var(--muted)', mb: 4 }}>
           Verwalte deine Projekte mit modernen Kanban-Boards
         </Typography>
       </Box>
@@ -115,10 +95,12 @@ export default function HomePage() {
                 height: '100%',
                 display: 'flex',
                 flexDirection: 'column',
+                backgroundColor: 'var(--panel)',
+                border: '1px solid var(--line)',
                 transition: 'all 0.2s ease',
                 '&:hover': {
                   transform: 'translateY(-4px)',
-                  boxShadow: 4
+                  boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
                 }
               }}
             >
@@ -126,15 +108,15 @@ export default function HomePage() {
                 <Typography variant="h6" component="h2" sx={{ mb: 1, fontWeight: 600 }}>
                   {board.name}
                 </Typography>
-                <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
+                <Typography variant="body2" sx={{ color: 'var(--muted)', mb: 2 }}>
                   {board.description}
                 </Typography>
                 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
                     {board.cardCount} Karten
                   </Typography>
-                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
                     {board.lastUpdated}
                   </Typography>
                 </Box>
@@ -145,6 +127,13 @@ export default function HomePage() {
                   variant="contained" 
                   fullWidth
                   onClick={() => setSelectedBoard(board.id)}
+                  sx={{ 
+                    backgroundColor: 'var(--accent)',
+                    '&:hover': {
+                      backgroundColor: 'var(--accent)',
+                      filter: 'brightness(1.1)'
+                    }
+                  }}
                 >
                   Board öffnen
                 </Button>
@@ -160,14 +149,13 @@ export default function HomePage() {
               height: '100%',
               display: 'flex',
               flexDirection: 'column',
-              border: 2,
-              borderStyle: 'dashed',
-              borderColor: 'divider',
+              backgroundColor: 'var(--panel)',
+              border: '2px dashed var(--line)',
               cursor: 'pointer',
               transition: 'all 0.2s ease',
               '&:hover': {
-                borderColor: 'primary.main',
-                backgroundColor: 'action.hover'
+                borderColor: 'var(--accent)',
+                backgroundColor: 'var(--chip)'
               }
             }}
           >
@@ -182,10 +170,10 @@ export default function HomePage() {
               <Typography variant="h1" sx={{ fontSize: '3rem', mb: 2, opacity: 0.3 }}>
                 +
               </Typography>
-              <Typography variant="h6" sx={{ mb: 1, color: 'text.secondary' }}>
+              <Typography variant="h6" sx={{ mb: 1, color: 'var(--muted)' }}>
                 Neues Board erstellen
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
                 Erstelle ein neues Kanban-Board für dein Projekt
               </Typography>
             </CardContent>
@@ -208,7 +196,7 @@ export default function HomePage() {
               <Typography variant="h6" sx={{ mb: 1 }}>
                 Drag & Drop
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
                 Intuitive Bedienung durch Drag & Drop zwischen Spalten und Swimlanes
               </Typography>
             </Box>
@@ -222,7 +210,7 @@ export default function HomePage() {
               <Typography variant="h6" sx={{ mb: 1 }}>
                 Flexible Ansichten
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
                 Spalten, Swimlanes nach Verantwortlichen oder Kategorien
               </Typography>
             </Box>
@@ -236,7 +224,7 @@ export default function HomePage() {
               <Typography variant="h6" sx={{ mb: 1 }}>
                 Ampel-System
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
                 Statusverfolgung mit Ampelfarben und LK/SK Eskalationen
               </Typography>
             </Box>
@@ -250,7 +238,7 @@ export default function HomePage() {
               <Typography variant="h6" sx={{ mb: 1 }}>
                 Checklisten
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
                 Phasenspezifische Checklisten für strukturierte Abarbeitung
               </Typography>
             </Box>
@@ -264,7 +252,7 @@ export default function HomePage() {
               <Typography variant="h6" sx={{ mb: 1 }}>
                 Statushistorie
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
                 Detaillierte Verfolgung von Qualität, Kosten und Terminen
               </Typography>
             </Box>
@@ -278,13 +266,51 @@ export default function HomePage() {
               <Typography variant="h6" sx={{ mb: 1 }}>
                 Responsive Design
               </Typography>
-              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
                 Optimiert für Desktop und Mobile mit Dark/Light Mode
               </Typography>
             </Box>
           </Grid>
         </Grid>
       </Box>
+
+      {/* CSS Variables */}
+      <style jsx global>{`
+        :root {
+          --bg: #0f1117;
+          --panel: #141a22;
+          --ink: #e6e8ee;
+          --muted: #9aa3b2;
+          --accent: #4aa3ff;
+          --line: #243042;
+          --chip: #1a2230;
+          --alert: #5a1b1b;
+          --alertBorder: #a33;
+          --ok: #19c37d;
+          --colw: 320px;
+          --rowheadw: 200px;
+        }
+        
+        @media (prefers-color-scheme: light) {
+          :root {
+            --bg: #f5f7fb;
+            --panel: #ffffff;
+            --ink: #0b1220;
+            --muted: #566175;
+            --accent: #2458ff;
+            --line: #e6eaf2;
+            --chip: #eef3ff;
+            --alert: #ffe8e8;
+            --alertBorder: #ff6b6b;
+            --ok: #0ea667;
+          }
+        }
+        
+        body {
+          background-color: var(--bg);
+          color: var(--ink);
+        }
+      `}</style>
     </Container>
   );
 }
