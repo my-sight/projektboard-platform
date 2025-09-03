@@ -33,6 +33,16 @@ import {
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 
+import { createClient } from '@supabase/supabase-js';
+// import { useAuth } from '../../contexts/AuthContext';
+// import { AuthProvider } from '../../contexts/AuthContext';
+// import { LoginForm } from '../auth/LoginForm';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
 interface OriginalKanbanBoardProps {
   boardId: string;
 }
@@ -69,6 +79,16 @@ const DEFAULT_CHECKLISTS = {
 
 export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProps) {
   // State für deine ursprünglichen Features
+//  const { user, loading, signOut } = useAuth();
+
+  // Loading State
+//  if (loading) {
+//    return (
+//      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+//        <Typography variant="h6">🔄 Wird geladen...</Typography>
+//      </Box>
+//    );
+//  }
   const [viewMode, setViewMode] = useState<'columns' | 'swim' | 'lane'>('columns');
   const [density, setDensity] = useState<'compact' | 'xcompact' | 'large'>('compact');
   const [searchTerm, setSearchTerm] = useState('');
@@ -129,12 +149,212 @@ useEffect(() => {
 }, [cols]);
 
   // Edit Modal Tab State
-  const [editTabValue, setEditTabValue] = useState(0);
+const [editTabValue, setEditTabValue] = useState(0);
 
-  // Lade Testdaten
-  useEffect(() => {
-    loadTestData();
-  }, []);
+// 👇 HIER HINZUFÜGEN (nach Zeile 133):
+// Einstellungen in Supabase speichern - MIT DEBUGGING
+const saveSettings = async () => {
+  try {
+    console.log('🔄 Starte Speichern der Einstellungen...');
+    
+    const settings = {
+      cols,
+      responsibles,
+      lanes,
+      checklistTemplates,
+      viewMode,
+      density,
+      lastUpdated: new Date().toISOString()
+    };
+
+    console.log('📦 Einstellungen zu speichern:', settings);
+
+    // Vereinfachte Version ohne user_id für Tests
+    const { data, error } = await supabase
+      .from('kanban_board_settings')
+      .upsert({
+        board_id: boardId,
+        user_id: null, // Temporär null für Tests
+        settings: settings,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) {
+      console.error('❌ Supabase Fehler:', error);
+      alert(`Fehler: ${error.message}`);
+      return false;
+    }
+
+    console.log('✅ Einstellungen erfolgreich gespeichert:', data);
+    return true;
+  } catch (error) {
+    console.error('❌ Unerwarteter Fehler:', error);
+    alert(`Unerwarteter Fehler: ${error.message}`);
+    return false;
+  }
+};
+
+
+// Einstellungen aus Supabase laden - MIT DEBUGGING
+const loadSettings = async () => {
+  try {
+    console.log('🔄 Lade Einstellungen...');
+    
+    const { data, error } = await supabase
+      .from('kanban_board_settings')
+      .select('settings')
+      .eq('board_id', boardId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        console.log('ℹ️ Keine gespeicherten Einstellungen gefunden');
+        return false;
+      }
+      console.error('❌ Fehler beim Laden:', error);
+      return false;
+    }
+
+    if (data?.settings) {
+      const settings = data.settings;
+      console.log('✅ Einstellungen geladen:', settings);
+      
+      if (settings.cols) setCols(settings.cols);
+      if (settings.responsibles) setResponsibles(settings.responsibles);
+      if (settings.lanes) setLanes(settings.lanes);
+      if (settings.checklistTemplates) setChecklistTemplates(settings.checklistTemplates);
+      if (settings.viewMode) setViewMode(settings.viewMode);
+      if (settings.density) setDensity(settings.density);
+      
+      return true;
+    }
+
+    return false;
+  } catch (error) {
+    console.error('❌ Unerwarteter Fehler beim Laden:', error);
+    return false;
+  }
+};
+// Karten in Supabase speichern - UPSERT VERSION
+const saveCards = async () => {
+  try {
+    console.log('💾 Speichere Karten...');
+    
+    const cardsToSave = rows.map(card => ({
+      board_id: boardId,
+      card_id: idFor(card),
+      card_data: card,
+      updated_at: new Date().toISOString()
+    }));
+
+    console.log('📦 Speichere Karten:', cardsToSave.length);
+
+    if (cardsToSave.length > 0) {
+      const { data, error } = await supabase
+        .from('kanban_cards')
+        .upsert(cardsToSave, {
+          onConflict: 'board_id,card_id',
+          ignoreDuplicates: false
+        });
+
+      if (error) {
+        console.error('❌ Fehler beim Speichern:', error);
+        return false;
+      }
+
+      console.log('✅ Karten erfolgreich gespeichert');
+    }
+
+    return true;
+  } catch (error) {
+    console.error('❌ Unerwarteter Fehler beim Speichern der Karten:', error);
+    return false;
+  }
+};
+
+// Karten aus Supabase laden - MIT DEBUGGING
+const loadCards = async () => {
+  try {
+    console.log('🔄 Lade Karten aus Supabase...');
+    
+    const { data, error } = await supabase
+      .from('kanban_cards')
+      .select('card_data')
+      .eq('board_id', boardId)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+    
+    if (data && data.length > 0) {
+      const loadedCards = data.map(item => item.card_data);
+      console.log('✅ Karten geladen:', loadedCards.length);
+      
+      // Debug: Zeige die Board Stages der geladenen Karten
+      loadedCards.forEach(card => {
+        console.log(`Karte ${card.Nummer}: Board Stage = "${card["Board Stage"]}"`);
+      });
+      
+      setRows(loadedCards);
+      return true;
+    }
+    
+    console.log('ℹ️ Keine Karten in Supabase gefunden');
+    return false;
+  } catch (error) {
+    console.error('❌ Fehler beim Laden der Karten:', error);
+    return false;
+  }
+};
+
+
+// Lade Testdaten
+useEffect(() => {
+  const initializeBoard = async () => {
+    console.log('🔄 Initialisiere Kanban Board...');
+    
+    // Erst Einstellungen laden
+    const settingsLoaded = await loadSettings();
+    
+    // Dann Karten laden
+    const cardsLoaded = await loadCards();
+    
+    // Wenn keine Karten vorhanden, lade Testdaten
+    if (!cardsLoaded) {
+      console.log('📝 Lade Testdaten...');
+      loadTestData();
+    }
+    
+    console.log('✅ Board initialisiert!');
+  };
+  
+  initializeBoard();
+}, [boardId]);
+
+
+// Automatisches Speichern bei Änderungen
+useEffect(() => {
+  if (rows.length === 0) return; // Nicht speichern wenn noch keine Daten geladen
+  
+  const timeoutId = setTimeout(() => {
+    console.log('💾 Auto-Speichere Karten...');
+    saveCards();
+  }, 2000); // Speichere nach 2 Sekunden Inaktivität
+
+  return () => clearTimeout(timeoutId);
+}, [rows]);
+
+// Automatisches Speichern der Einstellungen
+useEffect(() => {
+  const timeoutId = setTimeout(() => {
+    console.log('⚙️ Auto-Speichere Einstellungen...');
+    saveSettings();
+  }, 1000);
+
+  return () => clearTimeout(timeoutId);
+}, [cols, responsibles, lanes, checklistTemplates, viewMode, density]);
+
 
   const loadTestData = () => {
     const testCards = [
@@ -226,74 +446,94 @@ useEffect(() => {
   };
 
   // Drag & Drop Handler
-  const onDragEnd = (result: DropResult) => {
-    const { destination, source, draggableId } = result;
-    
-    if (!destination) return;
-    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+ // Drag & Drop Handler - MIT DEBUGGING
+const onDragEnd = (result: DropResult) => {
+  const { destination, source, draggableId } = result;
+  
+  if (!destination) return;
+  if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
-    const card = rows.find(r => idFor(r) === draggableId);
-    if (!card) return;
+  const card = rows.find(r => idFor(r) === draggableId);
+  if (!card) return;
 
-    // Parse destination for swimlanes
-    let newStage = destination.droppableId;
-    let newResp = null;
-    let newLane = null;
+  console.log('🔄 Drag & Drop:', {
+    cardId: draggableId,
+    from: source.droppableId,
+    to: destination.droppableId,
+    oldStage: card["Board Stage"],
+  });
 
-    if (destination.droppableId.includes('||')) {
-      const parts = destination.droppableId.split('||');
-      newStage = parts[0];
-      if (viewMode === 'swim') {
-        newResp = parts[1] === '—' ? '' : parts[1];
-      } else if (viewMode === 'lane') {
-        newLane = parts[1];
-      }
+  // Parse destination for swimlanes
+  let newStage = destination.droppableId;
+  let newResp = null;
+  let newLane = null;
+
+  if (destination.droppableId.includes('||')) {
+    const parts = destination.droppableId.split('||');
+    newStage = parts[0];
+    if (viewMode === 'swim') {
+      newResp = parts[1] === ' ' ? '' : parts[1];
+    } else if (viewMode === 'lane') {
+      newLane = parts[1];
     }
+  }
 
-    const oldStage = inferStage(card);
-    
-    // Checklist completion check
-    if (oldStage !== newStage) {
-      const tasksOld = checklists[oldStage] || [];
-      if (tasksOld.length) {
-        const statusesOld = (card.ChecklistDone && card.ChecklistDone[oldStage]) || [];
-        const incomplete = tasksOld.some((_, i) => !statusesOld[i]);
-        
-        if (incomplete) {
-          const confirmed = window.confirm(
-            `Für die Phase "${oldStage}" sind nicht alle Punkte der Checkliste abgeschlossen. Trotzdem verschieben?`
-          );
-          if (!confirmed) return;
-        }
-      }
-    }
-
-    // Update card
-    card["Board Stage"] = newStage;
-    if (newResp !== null) card["Verantwortlich"] = newResp;
-    if (newLane !== null) card["Swimlane"] = newLane;
-    
-    // Set green if done stage
-    const doneStages = cols.filter(c => c.done || /fertig/i.test(c.name)).map(c => c.name);
-    if (doneStages.includes(newStage)) {
-      card["Ampel"] = "grün";
-    }
-
-      // Initialize checklist for new stage - NEUE LOGIK
-    if (oldStage !== newStage && checklistTemplates[newStage]) {
-      const templateItems = checklistTemplates[newStage];
-      if (!card.ChecklistDone) card.ChecklistDone = {};
+  const oldStage = inferStage(card);
+  
+  // Checklist completion check
+  if (oldStage !== newStage) {
+    const tasksOld = checklists[oldStage] || [];
+    if (tasksOld.length) {
+      const statusesOld = (card.ChecklistDone && card.ChecklistDone[oldStage]) || [];
+      const incomplete = tasksOld.some((_, i) => !statusesOld[i]);
       
-      // Erstelle Checkliste basierend auf Template
-      const newChecklistDone = {};
-      templateItems.forEach(item => {
-        newChecklistDone[item] = false;
-      });
-      card.ChecklistDone[newStage] = newChecklistDone;
+      if (incomplete) {
+        const confirmed = window.confirm(
+          `Für die Phase "${oldStage}" sind nicht alle Punkte der Checkliste abgeschlossen. Trotzdem verschieben?`
+        );
+        if (!confirmed) return;
+      }
     }
+  }
 
-    setRows([...rows]);
-  };
+  // Update card - WICHTIG: Hier wird die Position gespeichert
+  card["Board Stage"] = newStage;
+  if (newResp !== null) card["Verantwortlich"] = newResp;
+  if (newLane !== null) card["Swimlane"] = newLane;
+  
+  console.log('✅ Karte aktualisiert:', {
+    cardId: draggableId,
+    newStage: card["Board Stage"],
+    newResp: card["Verantwortlich"],
+    newLane: card["Swimlane"]
+  });
+  
+  // Set green if done stage
+  const doneStages = cols.filter(c => c.done || /fertig/i.test(c.name)).map(c => c.name);
+  if (doneStages.includes(newStage)) {
+    card["Ampel"] = "grün";
+  }
+
+  // Initialize checklist for new stage
+  if (oldStage !== newStage && checklistTemplates[newStage]) {
+    const templateItems = checklistTemplates[newStage];
+    if (!card.ChecklistDone) card.ChecklistDone = {};
+    
+    const newChecklistDone = {};
+    templateItems.forEach(item => {
+      newChecklistDone[item] = false;
+    });
+    card.ChecklistDone[newStage] = newChecklistDone;
+  }
+
+  // Wichtig: State aktualisieren um Re-Render zu triggern
+  setRows([...rows]);
+  
+  // Sofort speichern nach Drag & Drop
+  console.log('💾 Speichere nach Drag & Drop...');
+  setTimeout(() => saveCards(), 500);
+};
+
 
   // Toggle escalation
   const toggleEscalation = (card: any, type: 'LK' | 'SK') => {
@@ -932,13 +1172,17 @@ const renderCard = (card: any, index: number) => {
     ))).sort();
 
     return (
-      <DragDropContext onDragEnd={onDragEnd}>
-        <Box sx={{ 
-          display: 'grid',
-          gridTemplateColumns: `var(--rowheadw) ${stages.map(() => 'var(--colw)').join(' ')}`,
-          gap: '8px',
-          p: 2,
-          alignItems: 'start'
+        <DragDropContext onDragEnd={onDragEnd}>
+    <Box sx={{ 
+      display: 'grid',
+      gridTemplateColumns: `var(--rowheadw) ${stages.map(() => 'var(--colw)').join(' ')}`,
+      gap: '8px',
+      p: 2,
+      alignItems: 'start',
+      overflow: 'auto',
+      minHeight: '100%',
+      width: 'fit-content',
+      minWidth: '100%'
         }}>
           {/* Corner */}
           <Box sx={{ 
@@ -1719,9 +1963,10 @@ const renderNewCardModal = () => {
     </Dialog>
   );
 };
+  
 
-
-  return (
+  // Main Render
+return (
     <Box sx={{ 
       height: 'calc(100vh - 120px)',
       display: 'flex',
@@ -1760,8 +2005,6 @@ const renderNewCardModal = () => {
     ⚙️
   </IconButton>
 </Box>
-
-        
         {/* Toolbar */}
         <Box sx={{ 
           display: 'grid',
@@ -1829,15 +2072,7 @@ const renderNewCardModal = () => {
             title="Layout: groß"
           >
             ⬜
-          </Button>
-
-          {/* Weitere Buttons */}
-          <Button variant="outlined" size="small">
-            CSV importieren
-          </Button>
-          <Button variant="outlined" size="small">
-            Export CSV
-          </Button>
+          </Button>         
           <Button variant="contained" size="small" onClick={() => setNewCardOpen(true)}>
             Neue Karte
           </Button>
@@ -1862,7 +2097,7 @@ const renderNewCardModal = () => {
           </Button>
 
       {/* Board Content */}
-      <Box sx={{ flex: 1, overflow: 'hidden' }}>
+      <Box sx={{ flex: 1, overflow: 'auto' }}>
         {viewMode === 'columns' && renderColumns()}
         {viewMode === 'swim' && renderSwimlanes()}
         {viewMode === 'lane' && renderSwimlanesByLane()}
@@ -2126,13 +2361,16 @@ const renderNewCardModal = () => {
     <Button onClick={() => setSettingsOpen(false)}>
       Abbrechen
     </Button>
-    <Button 
-      variant="contained" 
-      onClick={() => {
-        setSettingsOpen(false);
-        // Hier könntest du die Einstellungen speichern
-        console.log('Einstellungen gespeichert');
-      }}
+<Button 
+  variant="contained" 
+  onClick={async () => {
+    const success = await saveSettings();
+    if (success) {
+      setSettingsOpen(false);
+      alert('✅ Einstellungen wurden in Supabase gespeichert!');
+    }
+  }}
+
       sx={{ 
         backgroundColor: '#14c38e',
         '&:hover': { backgroundColor: '#0ea770' }
