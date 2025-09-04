@@ -17,14 +17,21 @@ export const LoginForm = () => {
     setError('');
     setLoading(true);
 
-    const { error } = tab === 0 
-      ? await signIn(email, password)
-      : await signUp(email, password);
+    try {
+      const { error } = tab === 0 
+        ? await signIn(email, password)
+        : await signUp(email, password);
 
-    if (error) {
-      setError(error.message);
-    } else if (tab === 1) {
-      setError('Registrierung erfolgreich! Bitte E-Mail bestätigen.');
+      if (error) {
+        setError(error.message);
+      } else if (tab === 1) {
+        setError('✅ Registrierung erfolgreich! Bitte E-Mail bestätigen.');
+      } else {
+        // Login erfolgreich - Redirect zur Hauptseite
+        window.location.href = '/';
+      }
+    } catch (err) {
+      setError('❌ Unerwarteter Fehler aufgetreten');
     }
 
     setLoading(false);
@@ -32,9 +39,9 @@ export const LoginForm = () => {
 
   return (
     <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-      <Paper sx={{ width: 400, p: 3 }}>
-        <Typography variant="h4" sx={{ mb: 3, textAlign: 'center' }}>
-          🔐 Kanban Board
+      <Paper sx={{ width: 400, p: 3, borderRadius: 3, boxShadow: '0 8px 32px rgba(0,0,0,0.1)' }}>
+        <Typography variant="h4" sx={{ mb: 3, textAlign: 'center', color: '#1976d2' }}>
+          🎯 Kanban Board
         </Typography>
         
         <Tabs value={tab} onChange={(_, newValue) => setTab(newValue)} centered sx={{ mb: 3 }}>
@@ -43,7 +50,14 @@ export const LoginForm = () => {
         </Tabs>
 
         <Box component="form" onSubmit={handleSubmit}>
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          {error && (
+            <Alert 
+              severity={error.startsWith('✅') ? 'success' : 'error'} 
+              sx={{ mb: 2 }}
+            >
+              {error}
+            </Alert>
+          )}
           
           <TextField
             fullWidth
@@ -70,7 +84,11 @@ export const LoginForm = () => {
             fullWidth
             variant="contained"
             disabled={loading}
-            sx={{ backgroundColor: '#14c38e', '&:hover': { backgroundColor: '#0ea770' } }}
+            sx={{ 
+              backgroundColor: '#14c38e', 
+              '&:hover': { backgroundColor: '#0ea770' },
+              py: 1.5
+            }}
           >
             {loading ? '⏳ Wird verarbeitet...' : (tab === 0 ? '🔓 Anmelden' : '🆕 Registrieren')}
           </Button>
