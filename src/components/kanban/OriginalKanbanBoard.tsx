@@ -78,17 +78,8 @@ const DEFAULT_CHECKLISTS = {
 };
 
 export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProps) {
-  // State für deine ursprünglichen Features
-//  const { user, loading, signOut } = useAuth();
+  // State für Benutzer
 
-  // Loading State
-//  if (loading) {
-//    return (
-//      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-//        <Typography variant="h6">🔄 Wird geladen...</Typography>
-//      </Box>
-//    );
-//  }
   const [viewMode, setViewMode] = useState<'columns' | 'swim' | 'lane'>('columns');
   const [density, setDensity] = useState<'compact' | 'xcompact' | 'large'>('compact');
   const [searchTerm, setSearchTerm] = useState('');
@@ -96,9 +87,10 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
   
   const [rows, setRows] = useState<any[]>([]);
   const [cols, setCols] = useState(DEFAULT_COLS);
-  const [responsibles, setResponsibles] = useState<string[]>(['Max M.', 'Anna K.', 'Tom S.']);
   const [lanes, setLanes] = useState<string[]>(['Projekt A', 'Projekt B', 'Projekt C']);
-  const [checklists, setChecklists] = useState(DEFAULT_CHECKLISTS);
+  
+
+  const [users, setUsers] = useState<any[]>([]);
   
   // Dialog States
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -106,7 +98,7 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
   const [newCardOpen, setNewCardOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Checklisten Templates State - SPALTENSPEZIFISCH
-const [checklistTemplates, setChecklistTemplates] = useState(() => {
+  const [checklistTemplates, setChecklistTemplates] = useState(() => {
   const templates = {};
   cols.forEach(col => {
     templates[col.name] = [
@@ -116,7 +108,88 @@ const [checklistTemplates, setChecklistTemplates] = useState(() => {
     ];
   });
   return templates;
-});
+  });
+
+// Benutzer aus Supabase laden
+const loadUsers = async () => {
+  try {
+    console.log('🔍 Lade Benutzer aus Supabase...');
+    
+    // Versuche zuerst die auth.users Tabelle (falls verfügbar)
+    try {
+      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
+      
+      if (authUsers && authUsers.users) {
+        console.log('✅ Auth-Benutzer gefunden:', authUsers.users.length);
+        const userList = authUsers.users.map(user => ({
+          id: user.id,
+          email: user.email,
+          name: user.user_metadata?.name || user.email?.split('@')[0] || 'Unbekannt'
+        }));
+        setUsers(userList);
+        return true;
+      }
+    } catch (authError) {
+      console.log('⚠️ Auth-Admin nicht verfügbar (403), versuche Custom-Tabelle...');
+    }
+    
+    // Fallback: Versuche eine custom users Tabelle
+    const { data: customUsers, error: customError } = await supabase
+      .from('users')
+      .select('id, email, name, display_name')
+      .order('name');
+    
+    if (customUsers && customUsers.length > 0) {
+      console.log('✅ Custom-Benutzer gefunden:', customUsers.length);
+      const userList = customUsers.map(user => ({
+        id: user.id,
+        email: user.email,
+        name: user.name || user.display_name || user.email?.split('@')[0] || 'Unbekannt'
+      }));
+      setUsers(userList);
+      return true;
+    }
+    
+    console.log('⚠️ Keine Benutzer gefunden, verwende Fallback');
+    return false;
+    
+  } catch (error) {
+    console.error('❌ Fehler beim Laden der Benutzer:', error);
+    return false;
+  }
+};
+
+    const createFallbackUsers = () => {
+    console.log('🔄 Erstelle Fallback-Benutzer...');
+    const fallbackUsers = [
+    { id: 'fallback-1', email: 'max.mustermann@firma.de', name: 'Max Mustermann' },
+    { id: 'fallback-2', email: 'anna.klein@firma.de', name: 'Anna Klein' },
+    { id: 'fallback-3', email: 'tom.schmidt@firma.de', name: 'Tom Schmidt' }
+  ];
+  setUsers(fallbackUsers);
+};
+// ✅ HIER die Debug-Funktion einfügen:
+  const debugSupabase = async () => {
+    try {
+      console.log('🔍 Debug: Prüfe Supabase Tabellen...');
+      
+      const { data: cards, error: cardsError } = await supabase
+        .from('kanban_cards')
+        .select('*')
+        .eq('board_id', boardId)
+        .limit(5);
+      
+      if (cardsError) {
+        console.error('❌ kanban_cards Tabelle Fehler:', cardsError);
+      } else {
+        console.log('✅ kanban_cards Tabelle OK, gefunden:', cards?.length || 0, 'Karten');
+      }
+      
+    } catch (error) {
+      console.error('❌ Debug Fehler:', error);
+    }
+  };
+
 
 // Auto-Update Checklisten Templates wenn Spalten sich ändern
 useEffect(() => {
@@ -159,7 +232,6 @@ const saveSettings = async () => {
     
     const settings = {
       cols,
-      responsibles,
       lanes,
       checklistTemplates,
       viewMode,
@@ -222,7 +294,6 @@ const loadSettings = async () => {
       console.log('✅ Einstellungen geladen:', settings);
       
       if (settings.cols) setCols(settings.cols);
-      if (settings.responsibles) setResponsibles(settings.responsibles);
       if (settings.lanes) setLanes(settings.lanes);
       if (settings.checklistTemplates) setChecklistTemplates(settings.checklistTemplates);
       if (settings.viewMode) setViewMode(settings.viewMode);
@@ -311,25 +382,43 @@ const loadCards = async () => {
 
 // Lade Testdaten
 useEffect(() => {
-  const initializeBoard = async () => {
-    console.log('🔄 Initialisiere Kanban Board...');
-    
-    // Erst Einstellungen laden
-    const settingsLoaded = await loadSettings();
-    
-    // Dann Karten laden
-    const cardsLoaded = await loadCards();
-    
-    // Wenn keine Karten vorhanden, lade Testdaten
-    if (!cardsLoaded) {
-      console.log('📝 Lade Testdaten...');
-      loadTestData();
-    }
-    
-    console.log('✅ Board initialisiert!');
-  };
+const initializeBoard = async () => {
+  console.log('🚀 Initialisiere Kanban Board für boardId:', boardId);
   
-  initializeBoard();
+  // Debug hinzufügen
+  await debugSupabase();
+  
+  // Benutzer laden (mit Fallback)
+  console.log('👥 Starte Benutzer-Loading...');
+  const usersLoaded = await loadUsers();
+  if (!usersLoaded) {
+    console.log('🔄 Erstelle Fallback-Benutzer...');
+    createFallbackUsers();
+  }
+  console.log('✅ Benutzer-Loading abgeschlossen');
+  
+  // Einstellungen laden
+  console.log('⚙️ Starte Einstellungen-Loading...');
+  const settingsLoaded = await loadSettings();
+  console.log('✅ Einstellungen-Loading abgeschlossen:', settingsLoaded);
+  
+  // Karten laden
+  console.log('🃏 Starte Karten-Loading...');
+  const cardsLoaded = await loadCards();
+  console.log('✅ Karten-Loading abgeschlossen:', cardsLoaded);
+  
+  // Testdaten falls keine Karten
+  if (!cardsLoaded) {
+    console.log('📝 Lade Testdaten...');
+    loadTestData();
+  }
+  
+  console.log('🎉 Board komplett initialisiert!');
+};
+  
+  if (boardId) {
+    initializeBoard();
+  }
 }, [boardId]);
 
 
@@ -353,7 +442,7 @@ useEffect(() => {
   }, 1000);
 
   return () => clearTimeout(timeoutId);
-}, [cols, responsibles, lanes, checklistTemplates, viewMode, density]);
+}, [cols, lanes, checklistTemplates, viewMode, density]);
 
 
   const loadTestData = () => {
@@ -363,7 +452,7 @@ useEffect(() => {
         "Teil": "Gehäuse Vorderseite",
         "Board Stage": "Werkzeug beim Werkzeugmacher",
         "Status Kurz": "Werkzeug in Bearbeitung",
-        "Verantwortlich": "Max M.",
+        "Verantwortlich": "Max Mustermann",
         "Due Date": "2024-02-15",
         "Ampel": "grün",
         "Swimlane": "Projekt A",
@@ -378,15 +467,20 @@ useEffect(() => {
           }
         ],
         "ChecklistDone": {
-          "Werkzeug beim Werkzeugmacher": [true, true, false]
-        }
+        "Werkzeug beim Werkzeugmacher": {
+        "Werkzeug-Zeichnung prüfen": true,
+        "Material bestellt": true, 
+        "Bearbeitung gestartet": false
+      }
+    }   
+
       },
       {
         "Nummer": "A-24-002", 
         "Teil": "Gehäuse Rückseite",
         "Board Stage": "Werkzeugtransport",
         "Status Kurz": "Transport läuft",
-        "Verantwortlich": "Anna K.",
+        "Verantwortlich": "Anna Klein",
         "Due Date": "2024-01-20",
         "Ampel": "rot",
         "Eskalation": "LK",
@@ -407,13 +501,18 @@ useEffect(() => {
         "Teil": "Deckel",
         "Board Stage": "Musterung",
         "Status Kurz": "Muster werden geprüft",
-        "Verantwortlich": "Tom S.",
+        "Verantwortlich": "Tom Schmidt",
         "Due Date": "2024-02-01",
         "Ampel": "gelb",
         "Swimlane": "Projekt B",
         "UID": "uid3",
+
         "ChecklistDone": {
-          "Musterung": [true, false, false]
+        "Werkzeug beim Werkzeugmacher": {
+        "Werkzeug-Zeichnung prüfen": true,
+        "Material bestellt": false, 
+        "Bearbeitung gestartet": false
+      }
         }
       }
     ];
@@ -482,10 +581,10 @@ const onDragEnd = (result: DropResult) => {
   
   // Checklist completion check
   if (oldStage !== newStage) {
-    const tasksOld = checklists[oldStage] || [];
+    const tasksOld = checklistTemplates[oldStage] || [];
     if (tasksOld.length) {
-      const statusesOld = (card.ChecklistDone && card.ChecklistDone[oldStage]) || [];
-      const incomplete = tasksOld.some((_, i) => !statusesOld[i]);
+      const stageChecklist = (card.ChecklistDone && card.ChecklistDone[oldStage]) || {};
+      const incomplete = tasksOld.some(task => !stageChecklist[task]);
       
       if (incomplete) {
         const confirmed = window.confirm(
@@ -1399,8 +1498,8 @@ const renderEditModal = () => {
   if (!selectedCard) return null;
 
   const stage = inferStage(selectedCard);
-  const tasks = checklists[stage] || [];
-  const statuses = (selectedCard.ChecklistDone && selectedCard.ChecklistDone[stage]) || [];
+  const tasks = checklistTemplates[stage] || [];
+  const stageChecklist = (selectedCard.ChecklistDone && selectedCard.ChecklistDone[stage]) || {};
 
   return (
     <Dialog 
@@ -1476,8 +1575,13 @@ const renderEditModal = () => {
                   setRows([...rows]);
                 }}
               >
-                {responsibles.map(resp => (
-                  <MenuItem key={resp} value={resp}>{resp}</MenuItem>
+                <MenuItem value="">
+                  <em>Nicht zugewiesen</em>
+                </MenuItem>
+                {users.map(user => (
+                  <MenuItem key={user.id} value={user.name}>
+                    {user.name} ({user.email})
+                  </MenuItem>
                 ))}
               </Select>
 
@@ -1656,14 +1760,17 @@ const renderEditModal = () => {
                       <FormControlLabel
                         control={
                           <Checkbox
-                            checked={!!statuses[i]}
+                            checked={!!stageChecklist[task]}
                             onChange={(e) => {
-                              if (!selectedCard.ChecklistDone) selectedCard.ChecklistDone = {};
-                              if (!selectedCard.ChecklistDone[stage]) {
-                                selectedCard.ChecklistDone[stage] = tasks.map(() => false);
-                              }
-                              selectedCard.ChecklistDone[stage][i] = e.target.checked;
-                              setRows([...rows]);
+                            if (!selectedCard.ChecklistDone) {
+                            selectedCard.ChecklistDone = {};
+                           }
+                            if (!selectedCard.ChecklistDone[stage]) {
+                            selectedCard.ChecklistDone[stage] = {};
+                            }
+  
+                            selectedCard.ChecklistDone[stage][task] = e.target.checked;
+                            setRows([...rows]);
                             }}
                           />
                         }
@@ -1899,12 +2006,15 @@ const renderNewCardModal = () => {
               value={newCard.Verantwortlich}
               onChange={(e) => setNewCard({...newCard, Verantwortlich: e.target.value})}
             >
-              <MenuItem value="">Nicht zugewiesen</MenuItem>
-              {responsibles.map(resp => (
-                <MenuItem key={resp} value={resp}>
-                  {resp}
+              <MenuItem value="">
+                <em>Nicht zugewiesen</em>
+              </MenuItem>
+              {users.map(user => (
+                <MenuItem key={user.id} value={user.name}>
+                  {user.name} ({user.email})
                 </MenuItem>
               ))}
+
             </Select>
           </FormControl>
           
@@ -2169,52 +2279,48 @@ return (
         </Box>
       </Box>
 
-      {/* Verantwortliche */}
+      {/* Verfügbare Benutzer (nur Anzeige) */}
       <Box>
         <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
-          👥 Verantwortliche
+          Verfügbare Benutzer ({users.length})
         </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {responsibles.map((person, index) => (
-            <Box key={index} sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 1,
-              p: 1,
-              border: '1px solid var(--line)',
-              borderRadius: '8px'
-            }}>
-              <TextField
-                size="small"
-                value={person}
-                onChange={(e) => {
-                  const newResponsibles = [...responsibles];
-                  newResponsibles[index] = e.target.value;
-                  setResponsibles(newResponsibles);
-                }}
-                sx={{ flex: 1 }}
-              />
-              <IconButton 
-                size="small"
-                onClick={() => {
-                  const newResponsibles = responsibles.filter((_, i) => i !== index);
-                  setResponsibles(newResponsibles);
-                }}
-                sx={{ color: '#d32f2f' }}
-              >
-                🗑️
-              </IconButton>
-            </Box>
-          ))}
-          <Button 
-            variant="outlined" 
-            size="small"
-            onClick={() => setResponsibles([...responsibles, `Person ${responsibles.length + 1}`])}
-            sx={{ alignSelf: 'flex-start' }}
-          >
-            + Person hinzufügen
-          </Button>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: '200px', overflow: 'auto' }}>
+          {users.length === 0 ? (
+            <Typography sx={{ color: 'text.secondary', fontStyle: 'italic', p: 2 }}>
+              Keine Benutzer gefunden. Benutzer werden automatisch aus der Datenbank geladen.
+            </Typography>
+          ) : (
+            users.map((user, index) => (
+              <Box key={user.id} sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 2,
+                p: 2,
+                border: '1px solid var(--line)',
+                borderRadius: '8px',
+                backgroundColor: 'var(--panel)'
+              }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {user.name}
+                  </Typography>
+                  <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
+                    {user.email}
+                  </Typography>
+                </Box>
+                <Chip 
+                  label="Aktiv" 
+                  size="small" 
+                  color="success"
+                  sx={{ fontSize: '10px' }}
+                />
+              </Box>
+            ))
+          )}
         </Box>
+        <Typography variant="caption" sx={{ color: 'var(--muted)', mt: 1, display: 'block' }}>
+          💡 Benutzer werden automatisch aus der Authentifizierung geladen und können als Verantwortliche zugewiesen werden.
+        </Typography>
       </Box>
 
       {/* Swimlanes */}
