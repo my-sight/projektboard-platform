@@ -1,21 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    appDir: true,
-  },
-  typescript: {
-    ignoreBuildErrors: false,
-  },
-  eslint: {
-    ignoreDuringBuilds: false,
-  },
+  // App Router ist seit 13 stabil – kein experimental.appDir mehr nötig
+  reactStrictMode: true,
   swcMinify: true,
-  compiler: {
-    emotion: true,
-  },
   images: {
-    domains: [],
-    formats: ['image/webp', 'image/avif'],
+    domains: [], // trage hier Domains ein, wenn du externe Bilder nutzt
+    formats: ['image/avif', 'image/webp'],
+  },
+  typescript: { ignoreBuildErrors: false },
+  eslint: { ignoreDuringBuilds: false },
+  compiler: {
+    emotion: true, // für MUI + emotion
   },
   webpack: (config, { isServer }) => {
     if (!isServer) {
