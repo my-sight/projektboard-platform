@@ -46,7 +46,11 @@ export default function UserManagement() {
   const [newTeamDescription, setNewTeamDescription] = useState('');
   const [message, setMessage] = useState('');
 
-  useEffect(() => {
+  
+  const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+useEffect(() => {
     loadData();
   }, []);
 
@@ -166,7 +170,53 @@ const loadData = async () => {
     }
   };
 
-  if (loading) {
+const createUser = async () => {
+  if (!newUserEmail.trim() || !newUserPassword.trim()) return;
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email: newUserEmail.trim(),
+      password: newUserPassword.trim()
+    });
+    if (error) throw error;
+
+    if (data.user?.id) {
+      await supabase.from('profiles').insert({
+        id: data.user.id,
+        email: newUserEmail.trim(),
+        role: 'user',
+        is_active: true
+      });
+    }
+
+    setCreateUserDialogOpen(false);
+    setNewUserEmail('');
+    setNewUserPassword('');
+    setMessage('✅ Benutzer erfolgreich erstellt!');
+    loadData();
+    setTimeout(() => setMessage(''), 3000);
+  } catch (err: any) {
+    console.error('Fehler beim Benutzer anlegen:', err);
+    setMessage(`❌ Fehler beim Erstellen: ${err.message ?? err}`);
+  }
+};
+
+
+
+  const deleteTeam = async (teamId: string) => {
+    if (!window.confirm('Team wirklich löschen?')) return;
+    try {
+      await supabase.from('team_members').delete().eq('team_id', teamId);
+      const { error } = await supabase.from('teams').delete().eq('id', teamId);
+      if (error) throw error;
+      setTeams((prev: any[]) => prev.filter((t: any) => t.id !== teamId));
+      setMessage('✅ Team erfolgreich gelöscht!');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (err) {
+      console.error('Fehler beim Löschen:', err);
+      setMessage('❌ Fehler beim Löschen des Teams');
+    }
+  };
+if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
         <Typography variant="h6">🔄 Wird geladen...</Typography>
@@ -183,6 +233,9 @@ const loadData = async () => {
         </Typography>
         <Button variant="contained" onClick={() => setCreateTeamDialogOpen(true)}>
           ➕ Neues Team
+        </Button>
+        <Button variant="outlined" onClick={() => setCreateUserDialogOpen(true)} sx={{ ml: 2 }}>
+        👤 Neuer Benutzer
         </Button>
       </Box>
 
@@ -333,12 +386,30 @@ const loadData = async () => {
                   <Typography variant="caption" color="text.secondary">
                     {new Date(team.created_at).toLocaleDateString('de-DE')}
                   </Typography>
-                </Box>
+                
+        <Button variant="outlined" color="error" onClick={() => deleteTeam(team.id)}>Team löschen</Button>
+      </Box>
               </CardContent>
             </Card>
           </Grid>
         ))}
       </Grid>
+
+ {/* Create User Dialog */}
+      <Dialog open={createUserDialogOpen} onClose={() => setCreateUserDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>👤 Neuen Benutzer anlegen</DialogTitle>
+        <DialogContent>
+          <TextField label="E-Mail" type="email" value={newUserEmail}
+            onChange={(e) => setNewUserEmail(e.target.value)} fullWidth margin="normal" required />
+          <TextField label="Passwort" type="password" value={newUserPassword}
+            onChange={(e) => setNewUserPassword(e.target.value)} fullWidth margin="normal" required />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateUserDialogOpen(false)}>Abbrechen</Button>
+          <Button variant="contained" onClick={createUser}>Erstellen</Button>
+        </DialogActions>
+      </Dialog>
+
 
       {/* Create Team Dialog */}
       <Dialog open={createTeamDialogOpen} onClose={() => setCreateTeamDialogOpen(false)} maxWidth="sm" fullWidth>
@@ -361,5 +432,7 @@ const loadData = async () => {
         </DialogActions>
       </Dialog>
     </Container>
-  );
+ 
+);
 }
+

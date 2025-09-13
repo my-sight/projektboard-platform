@@ -1,0 +1,204 @@
+*** Begin Patch
+*** Update File: src/components/kanban/OriginalKanbanBoard.tsx
+@@
+-  const [users, setUsers] = useState<any[]>([]);
++  const [users, setUsers] = useState<any[]>([]);
++
++  // --- helper: re-index order inside each Board Stage (column) ---
++  function reindexByStage(cards: any[]) {
++    const byStage: Record<string, number> = {};
++    return cards.map((c) => {
++      const stage = c["Board Stage"];
++      byStage[stage] = (byStage[stage] ?? 0) + 1;
++      return { ...c, order: byStage[stage] };
++    });
++  }
+ 
+*** End Patch
+*** Begin Patch
+*** Update File: src/components/kanban/OriginalKanbanBoard.tsx
+@@
+-const onDragEnd = (result: DropResult) => {
+-  const { destination, source, draggableId } = result as any; // bestehende Logik
+-  console.log('Drag End', result);
+-  // (Aktuell wird nur die Stage geändert; Reihenfolge geht verloren)
+-  if (!destination) return;
+-  // ... existierender Code ...
+-  setRows(rows);
+-  saveCards();
+-};
++const onDragEnd = (result: DropResult) => {
++  const { source, destination, draggableId } = result as any;
++  if (!destination) return;
++
++  // 1) aktuelle Liste kopieren und Karte finden
++  const current = [...rows];
++  const fromIndex = current.findIndex((c: any) =>
++    String(c.id ?? c["Nummer"] ?? c["ID"] ?? c["Karten-ID"] ?? "") === String(draggableId)
++  );
++  if (fromIndex === -1) return;
++
++  const moved = { ...current[fromIndex] };
++
++  // 2) aus alter Position entfernen
++  current.splice(fromIndex, 1);
++
++  // 3) Ziel-Stage aus Droppable ableiten
++  const targetStageName = destination.droppableId;
++  moved["Board Stage"] = targetStageName;
++
++  // 4) Zielindex innerhalb der Ziel-Stage
++  const stageCards = current.filter((c: any) => c["Board Stage"] === targetStageName);
++  const insertIndexInStage = Math.min(destination.index, stageCards.length);
++
++  // 5) globalen Einfügeindex bestimmen
++  let seenInStage = 0;
++  let globalInsertIndex = current.length; // fallback: ans Ende
++  for (let i = 0; i < current.length; i++) {
++    if (current[i]["Board Stage"] === targetStageName) {
++      if (seenInStage === insertIndexInStage) { globalInsertIndex = i; break; }
++      seenInStage++;
++    }
++    if (i === current.length - 1 && seenInStage === insertIndexInStage) globalInsertIndex = i + 1;
++  }
++
++  // 6) einfügen und reindizieren
++  current.splice(globalInsertIndex, 0, moved);
++  const reindexed = reindexByStage(current);
++
++  // 7) State + Persistenz
++  setRows(reindexed);
++  saveCards();
++};
+ 
+*** End Patch
+*** Begin Patch
+*** Update File: src/components/kanban/OriginalKanbanBoard.tsx
+@@
+-  // nach dem Laden (loaded) wird aktuell nach updated_at sortiert
+-  // setRows(loaded);
++  // nach dem Laden: zuerst nach Stage (DEFAULT_COLS), dann nach order sortieren
++  // Beispiel: wenn 'loaded' die Karten enthält, sortieren bevor wir sie setzen:
++  // (Füge diesen Block in deine Ladefunktion direkt vor setRows(loaded) ein.)
++  // loaded.sort((a: any, b: any) => {
++  //   const ao = a.order ?? 1;
++  //   const bo = b.order ?? 1;
++  //   if (a["Board Stage"] === b["Board Stage"]) return ao - bo;
++  //   const pos = (name: string) => DEFAULT_COLS.findIndex((c) => c.name === name);
++  //   return pos(a["Board Stage"]) - pos(b["Board Stage"]);
++  // });
++  // setRows(loaded);
+ 
+*** End Patch
+*** Begin Patch
+*** Update File: src/components/admin/UserManagement.tsx
+@@
+   const [createTeamDialogOpen, setCreateTeamDialogOpen] = useState(false);
+   const [newTeamName, setNewTeamName] = useState('');
+   const [newTeamDescription, setNewTeamDescription] = useState('');
+   const [message, setMessage] = useState('');
++  // --- Neuen Benutzer (Admin) anlegen ---
++  const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
++  const [newUserEmail, setNewUserEmail] = useState('');
++  const [newUserPassword, setNewUserPassword] = useState('');
+@@
+   const createTeam = async () => {
+@@
+   };
++
++  // --- Team löschen ---
++  const deleteTeam = async (teamId: string) => {
++    if (!window.confirm('Team wirklich löschen?')) return;
++    try {
++      await supabase.from('team_members').delete().eq('team_id', teamId);
++      const { error } = await supabase.from('teams').delete().eq('id', teamId);
++      if (error) throw error;
++      setTeams((prev: any[]) => prev.filter((t: any) => t.id !== teamId));
++      setMessage('✅ Team erfolgreich gelöscht!');
++      setTimeout(() => setMessage(''), 3000);
++    } catch (err) {
++      console.error('Fehler beim Löschen:', err);
++      setMessage('❌ Fehler beim Löschen des Teams');
++    }
++  };
++
++  // --- Benutzer anlegen (Admin) ---
++  const createUser = async () => {
++    if (!newUserEmail.trim() || !newUserPassword.trim()) return;
++    try {
++      const { data, error } = await supabase.auth.signUp({
++        email: newUserEmail.trim(),
++        password: newUserPassword.trim(),
++      });
++      if (error) throw error;
++
++      if (data.user?.id) {
++        await supabase.from('profiles').insert({
++          id: data.user.id,
++          email: newUserEmail.trim(),
++          role: 'user',
++          is_active: true,
++        });
++      }
++
++      setCreateUserDialogOpen(false);
++      setNewUserEmail('');
++      setNewUserPassword('');
++      setMessage('✅ Benutzer erfolgreich erstellt!');
++      loadData();
++      setTimeout(() => setMessage(''), 3000);
++    } catch (err) {
++      console.error('Fehler beim Benutzer anlegen:', err);
++      setMessage('❌ Fehler beim Erstellen des Benutzers');
++    }
++  };
+*** End Patch
+*** Begin Patch
+*** Update File: src/components/admin/UserManagement.tsx
+@@
+-          ➕ Neues Team
++          ➕ Neues Team
++          
++          <Button variant="outlined" onClick={() => setCreateUserDialogOpen(true)} sx={{ ml: 2 }}>
++            👤 Neuer Benutzer
++          </Button>
+@@
+-      {/* Teams-Tabelle / Cards ... hier irgendwo in der Team-Row/Card Actions */}
++      {/* Teams-Tabelle / Cards ... hier irgendwo in der Team-Row/Card Actions */}
++      {/* Beispiel in der Teamliste einen Löschen-Button hinzufügen: */}
++      {/* <Button variant="outlined" color="error" onClick={() => deleteTeam(team.id)}>Team löschen</Button> */}
+*** End Patch
+*** Begin Patch
+*** Update File: src/components/admin/UserManagement.tsx
+@@
+   {/* vorhandener Team-Dialog ... */}
++
++  {/* Dialog: Neuen Benutzer anlegen */}
++  <Dialog open={createUserDialogOpen} onClose={() => setCreateUserDialogOpen(false)} maxWidth="xs" fullWidth>
++    <DialogTitle>👤 Neuen Benutzer anlegen</DialogTitle>
++    <DialogContent>
++      <TextField
++        label="E-Mail"
++        type="email"
++        value={newUserEmail}
++        onChange={(e) => setNewUserEmail(e.target.value)}
++        fullWidth
++        margin="normal"
++        required
++      />
++      <TextField
++        label="Passwort"
++        type="password"
++        value={newUserPassword}
++        onChange={(e) => setNewUserPassword(e.target.value)}
++        fullWidth
++        margin="normal"
++        required
++      />
++    </DialogContent>
++    <DialogActions>
++      <Button onClick={() => setCreateUserDialogOpen(false)}>Abbrechen</Button>
++      <Button variant="contained" onClick={createUser}>Erstellen</Button>
++    </DialogActions>
++  </Dialog>
+*** End Patch

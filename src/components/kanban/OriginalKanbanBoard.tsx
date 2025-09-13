@@ -92,12 +92,25 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
 
   const [users, setUsers] = useState<any[]>([]);
   
-  // Dialog States
+  
+
+  // --- helper: re-index order inside each Board Stage (column) ---
+  function reindexByStage(cards: any[]) {
+  const byStage: Record<string, number> = {};
+  return cards.map((c: any) => {
+    const stage = c["Board Stage"];
+    byStage[stage] = (byStage[stage] ?? 0) + 1;
+    return { ...c, order: byStage[stage] };
+  });
+}
+
+// Dialog States
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [newCardOpen, setNewCardOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  // Checklisten Templates State - SPALTENSPEZIFISCH
+ 
+ // Checklisten Templates State - SPALTENSPEZIFISCH
   const [checklistTemplates, setChecklistTemplates] = useState(() => {
   const templates = {};
   cols.forEach(col => {
@@ -308,6 +321,8 @@ const loadSettings = async () => {
     return false;
   }
 };
+
+
 // Karten in Supabase speichern - UPSERT VERSION
 const saveCards = async () => {
   try {
@@ -317,13 +332,15 @@ const saveCards = async () => {
       board_id: boardId,
       card_id: idFor(card),
       card_data: card,
+      order: card.order ?? null,              // Reihenfolge persistieren
+      stage: card["Board Stage"] ?? null,     // optional, hilft bei Abfragen
       updated_at: new Date().toISOString()
     }));
 
     console.log('📦 Speichere Karten:', cardsToSave.length);
 
     if (cardsToSave.length > 0) {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('kanban_cards')
         .upsert(cardsToSave, {
           onConflict: 'board_id,card_id',
@@ -345,6 +362,7 @@ const saveCards = async () => {
   }
 };
 
+
 // Karten aus Supabase laden - MIT DEBUGGING
 const loadCards = async () => {
   try {
@@ -360,13 +378,17 @@ const loadCards = async () => {
     
     if (data && data.length > 0) {
       const loadedCards = data.map(item => item.card_data);
-      console.log('✅ Karten geladen:', loadedCards.length);
-      
-      // Debug: Zeige die Board Stages der geladenen Karten
-      loadedCards.forEach(card => {
-        console.log(`Karte ${card.Nummer}: Board Stage = "${card["Board Stage"]}"`);
+
+      loadedCards.sort((a: any, b: any) => {
+        const pos = (name: string) => DEFAULT_COLS.findIndex((c: any) => c.name === name);
+        if (a["Board Stage"] !== b["Board Stage"]) {
+          return pos(a["Board Stage"]) - pos(b["Board Stage"]);
+        }
+        const ao = a.order ?? 1;
+        const bo = b.order ?? 1;
+        return ao - bo;
       });
-      
+
       setRows(loadedCards);
       return true;
     }
@@ -544,93 +566,56 @@ useEffect(() => {
     return '';
   };
 
-  // Drag & Drop Handler
- // Drag & Drop Handler - MIT DEBUGGING
+ // Drag & Drop Handler
 const onDragEnd = (result: DropResult) => {
-  const { destination, source, draggableId } = result;
-  
+  const { destination, draggableId } = result as any;
   if (!destination) return;
-  if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
-  const card = rows.find(r => idFor(r) === draggableId);
-  if (!card) return;
+  // droppableId: "Stage" oder "Stage||Resp/Lane"
+  let targetStageName = destination.droppableId;
+  let newResp: string | null = null;
+  let newLane: string | null = null;
+  if (targetStageName.includes('||')) {
+    const parts = targetStageName.split('||');
+    targetStageName = parts[0];
+    if (viewMode === 'swim') newResp = parts[1] || null;
+    if (viewMode === 'lane') newLane = parts[1] || null;
+  }
 
-  console.log('🔄 Drag & Drop:', {
-    cardId: draggableId,
-    from: source.droppableId,
-    to: destination.droppableId,
-    oldStage: card["Board Stage"],
-  });
+  const current = [...rows];
+  const fromIndex = current.findIndex((c: any) => String(idFor(c)) === String(draggableId));
+  if (fromIndex === -1) return;
 
-  // Parse destination for swimlanes
-  let newStage = destination.droppableId;
-  let newResp = null;
-  let newLane = null;
+  const moved = { ...current[fromIndex] };
+  current.splice(fromIndex, 1);
 
-  if (destination.droppableId.includes('||')) {
-    const parts = destination.droppableId.split('||');
-    newStage = parts[0];
-    if (viewMode === 'swim') {
-      newResp = parts[1] === ' ' ? '' : parts[1];
-    } else if (viewMode === 'lane') {
-      newLane = parts[1];
+  moved["Board Stage"] = targetStageName;
+  if (newResp !== null)  moved["Verantwortlich"] = newResp;
+  if (newLane !== null)  moved["Swimlane"] = newLane;
+
+  const inSameGroup = (c: any) =>
+    (String(inferStage(c)) === String(targetStageName)) &&
+    (newResp === null || (String(c["Verantwortlich"] || "").trim() || "—") === newResp) &&
+    (newLane === null || (c["Swimlane"] || (lanes[0] || "Allgemein")) === newLane);
+
+  const groupCards = current.filter(inSameGroup);
+  const insertIndexInGroup = Math.min(destination.index, groupCards.length);
+
+  let seen = 0;
+  let globalInsertIndex = current.length;
+  for (let i = 0; i < current.length; i++) {
+    if (inSameGroup(current[i])) {
+      if (seen === insertIndexInGroup) { globalInsertIndex = i; break; }
+      seen++;
     }
+    if (i === current.length - 1 && seen === insertIndexInGroup) globalInsertIndex = i + 1;
   }
 
-  const oldStage = inferStage(card);
-  
-  // Checklist completion check
-  if (oldStage !== newStage) {
-    const tasksOld = checklistTemplates[oldStage] || [];
-    if (tasksOld.length) {
-      const stageChecklist = (card.ChecklistDone && card.ChecklistDone[oldStage]) || {};
-      const incomplete = tasksOld.some(task => !stageChecklist[task]);
-      
-      if (incomplete) {
-        const confirmed = window.confirm(
-          `Für die Phase "${oldStage}" sind nicht alle Punkte der Checkliste abgeschlossen. Trotzdem verschieben?`
-        );
-        if (!confirmed) return;
-      }
-    }
-  }
+  current.splice(globalInsertIndex, 0, moved);
+  const reindexed = reindexByStage(current);
 
-  // Update card - WICHTIG: Hier wird die Position gespeichert
-  card["Board Stage"] = newStage;
-  if (newResp !== null) card["Verantwortlich"] = newResp;
-  if (newLane !== null) card["Swimlane"] = newLane;
-  
-  console.log('✅ Karte aktualisiert:', {
-    cardId: draggableId,
-    newStage: card["Board Stage"],
-    newResp: card["Verantwortlich"],
-    newLane: card["Swimlane"]
-  });
-  
-  // Set green if done stage
-  const doneStages = cols.filter(c => c.done || /fertig/i.test(c.name)).map(c => c.name);
-  if (doneStages.includes(newStage)) {
-    card["Ampel"] = "grün";
-  }
-
-  // Initialize checklist for new stage
-  if (oldStage !== newStage && checklistTemplates[newStage]) {
-    const templateItems = checklistTemplates[newStage];
-    if (!card.ChecklistDone) card.ChecklistDone = {};
-    
-    const newChecklistDone = {};
-    templateItems.forEach(item => {
-      newChecklistDone[item] = false;
-    });
-    card.ChecklistDone[newStage] = newChecklistDone;
-  }
-
-  // Wichtig: State aktualisieren um Re-Render zu triggern
-  setRows([...rows]);
-  
-  // Sofort speichern nach Drag & Drop
-  console.log('💾 Speichere nach Drag & Drop...');
-  setTimeout(() => saveCards(), 500);
+  setRows(reindexed);
+  saveCards();
 };
 
 
