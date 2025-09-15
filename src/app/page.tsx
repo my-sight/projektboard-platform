@@ -197,6 +197,7 @@ const createBoard = async () => {
       }
     }}
   >
+   
     👥 Admin
   </Button>
   <Typography variant="body2">
@@ -249,7 +250,6 @@ const createBoard = async () => {
     🚪 Abmelden
   </Button>
 </Box>
-
       {/* Message */}
       {message && (
         <Alert severity={message.startsWith('✅') ? 'success' : 'error'} sx={{ mb: 3 }}>

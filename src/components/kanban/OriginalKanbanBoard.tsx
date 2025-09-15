@@ -84,15 +84,13 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
   const [density, setDensity] = useState<'compact' | 'xcompact' | 'large'>('compact');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortMode, setSortMode] = useState<'' | 'due' | 'number'>('');
-  
   const [rows, setRows] = useState<any[]>([]);
   const [cols, setCols] = useState(DEFAULT_COLS);
   const [lanes, setLanes] = useState<string[]>(['Projekt A', 'Projekt B', 'Projekt C']);
-  
-
   const [users, setUsers] = useState<any[]>([]);
-  
-  
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archivedCards, setArchivedCards] = useState<any[]>([]);
+
 
   // --- helper: re-index order inside each Board Stage (column) ---
   function reindexByStage(cards: any[]) {
@@ -123,16 +121,15 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
   return templates;
   });
 
-// Benutzer aus Supabase laden
+// ✅ KORRIGIERTE BENUTZER-LADUNG - BASIEREND AUF DEINER PROFILES STRUKTUR
 const loadUsers = async () => {
   try {
-    console.log('🔍 Lade Benutzer aus Supabase...');
+    console.log('👥 Lade Benutzer aus Supabase profiles...');
     
-    // Versuche zuerst die auth.users Tabelle (falls verfügbar)
+    // Strategie 1: Auth-Users (meist nicht verfügbar)
     try {
       const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      
-      if (authUsers && authUsers.users) {
+      if (authUsers && authUsers.users && authUsers.users.length > 0) {
         console.log('✅ Auth-Benutzer gefunden:', authUsers.users.length);
         const userList = authUsers.users.map(user => ({
           id: user.id,
@@ -143,34 +140,162 @@ const loadUsers = async () => {
         return true;
       }
     } catch (authError) {
-      console.log('⚠️ Auth-Admin nicht verfügbar (403), versuche Custom-Tabelle...');
+      console.log('⚠️ Auth-Admin nicht verfügbar');
     }
     
-    // Fallback: Versuche eine custom users Tabelle
-    const { data: customUsers, error: customError } = await supabase
-      .from('users')
-      .select('id, email, name, display_name')
-      .order('name');
+    // Strategie 2: Profiles Tabelle - MIT KORREKTEN SPALTENNAMEN
+    console.log('🔍 Lade aus profiles Tabelle...');
+    const { data: profileUsers, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, avatar_url, bio, company, role, is_active')
+      .eq('is_active', true) // Nur aktive Benutzer
+      .order('full_name');
     
-    if (customUsers && customUsers.length > 0) {
-      console.log('✅ Custom-Benutzer gefunden:', customUsers.length);
-      const userList = customUsers.map(user => ({
+    console.log('📊 Profiles Ergebnis:', {
+      error: profileError,
+      dataLength: profileUsers?.length,
+      data: profileUsers
+    });
+    
+    if (profileError) {
+      console.error('❌ Profiles Fehler:', profileError);
+    } else if (profileUsers && profileUsers.length > 0) {
+      console.log('✅ Profile-Benutzer gefunden:', profileUsers.length);
+      
+      const userList = profileUsers.map(user => ({
         id: user.id,
         email: user.email,
-        name: user.name || user.display_name || user.email?.split('@')[0] || 'Unbekannt'
-      }));
+        name: user.full_name || user.email?.split('@')[0] || 'Unbekannt',
+        company: user.company || '',
+        role: user.role || 'user',
+        avatar: user.avatar_url || '',
+        bio: user.bio || ''
+      })).filter(user => user.id && user.email); // Nur gültige Benutzer
+      
+      console.log('✅ Verarbeitete Benutzer:', userList);
       setUsers(userList);
       return true;
     }
     
-    console.log('⚠️ Keine Benutzer gefunden, verwende Fallback');
+    // Strategie 3: Alle Benutzer (auch inaktive) falls keine aktiven gefunden
+    console.log('🔍 Versuche alle Benutzer (auch inaktive)...');
+    const { data: allUsers, error: allError } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, avatar_url, bio, company, role, is_active')
+      .order('full_name');
+    
+    if (allUsers && allUsers.length > 0) {
+      console.log('✅ Alle Profile-Benutzer gefunden:', allUsers.length);
+      
+      const userList = allUsers.map(user => ({
+        id: user.id,
+        email: user.email,
+        name: user.full_name || user.email?.split('@')[0] || 'Unbekannt',
+        company: user.company || '',
+        role: user.role || 'user',
+        avatar: user.avatar_url || '',
+        bio: user.bio || '',
+        isActive: user.is_active
+      })).filter(user => user.id && user.email);
+      
+      console.log('✅ Alle verarbeiteten Benutzer:', userList);
+      setUsers(userList);
+      return true;
+    }
+    
+    console.log('⚠️ Keine Benutzer in profiles gefunden, verwende Fallback');
+    createFallbackUsers();
     return false;
     
   } catch (error) {
     console.error('❌ Fehler beim Laden der Benutzer:', error);
+    createFallbackUsers();
     return false;
   }
 };
+
+// ✅ ERWEITERTE FALLBACK-BENUTZER (basierend auf deiner Struktur)
+const createFallbackUsers = () => {
+  console.log('🔄 Erstelle Fallback-Benutzer...');
+  const fallbackUsers = [
+    { 
+      id: 'fallback-1', 
+      email: 'test@test.de', 
+      name: 'Test User',
+      company: 'Test Company',
+      role: 'user',
+      isActive: true
+    },
+    { 
+      id: 'fallback-2', 
+      email: 'michael@mysight.net', 
+      name: 'Michael',
+      company: 'MySight',
+      role: 'admin',
+      isActive: true
+    },
+    { 
+      id: 'fallback-3', 
+      email: 'max.mustermann@firma.de', 
+      name: 'Max Mustermann',
+      company: 'Firma GmbH',
+      role: 'user',
+      isActive: true
+    },
+    { 
+      id: 'fallback-4', 
+      email: 'anna.klein@firma.de', 
+      name: 'Anna Klein',
+      company: 'Firma GmbH',
+      role: 'user',
+      isActive: true
+    }
+  ];
+  setUsers(fallbackUsers);
+  console.log('✅ Fallback-Benutzer erstellt:', fallbackUsers.length);
+};
+
+
+// ✅ WICHTIG: KORRIGIERTE INITIALISIERUNG - BENUTZER ZUERST LADEN!
+useEffect(() => {
+  const initializeBoard = async () => {
+    console.log('🚀 Initialisiere Kanban Board für boardId:', boardId);
+    
+    // 1. ZUERST Benutzer laden (WICHTIG!)
+    console.log('👥 Lade Benutzer...');
+    await loadUsers();
+    
+    // 2. Dann Einstellungen laden
+    console.log('⚙️ Lade Einstellungen...');
+    const settingsLoaded = await loadSettings();
+    console.log('⚙️ Einstellungen geladen:', settingsLoaded);
+    
+    // 3. Dann Karten laden
+    console.log('📋 Lade Karten...');
+    const cardsLoaded = await loadCards();
+    console.log('📋 Karten geladen:', cardsLoaded);
+    
+    if (!cardsLoaded) {
+      console.log('📝 Board ist leer - bereit für neue Karten');
+    }
+    
+    console.log('✅ Board komplett initialisiert!');
+  };
+  
+  if (boardId) {
+    initializeBoard();
+  }
+}, [boardId]);
+
+// ✅ ZUSÄTZLICH: Button zum manuellen Laden der Benutzer (für Debugging)
+const handleLoadUsers = async () => {
+  console.log('🔄 Manuelles Laden der Benutzer...');
+  const success = await loadUsers();
+  if (success) {
+    alert(`✅ ${users.length} Benutzer erfolgreich geladen!`);
+  } else {
+    alert('⚠️ Fallback-Benutzer wurden erstellt. Prüfe die Datenbank-Konfiguration.');
+  }
 
     const createFallbackUsers = () => {
     console.log('🔄 Erstelle Fallback-Benutzer...');
@@ -181,6 +306,7 @@ const loadUsers = async () => {
   ];
   setUsers(fallbackUsers);
 };
+
 // ✅ HIER die Debug-Funktion einfügen:
   const debugSupabase = async () => {
     try {
@@ -202,7 +328,7 @@ const loadUsers = async () => {
       console.error('❌ Debug Fehler:', error);
     }
   };
-
+}
 
 // Auto-Update Checklisten Templates wenn Spalten sich ändern
 useEffect(() => {
@@ -323,125 +449,276 @@ const loadSettings = async () => {
 };
 
 
-// Karten in Supabase speichern - UPSERT VERSION
+// EINFACHE LÖSUNG: DELETE + INSERT (funktioniert immer)
 const saveCards = async () => {
   try {
-    console.log('💾 Speichere Karten...');
+    console.log('💾 Speichere Karten (DELETE + INSERT)...');
+    console.log('🔥 DEBUG: rows.length =', rows.length);
+    console.log('🔥 DEBUG: boardId =', boardId);
     
-    const cardsToSave = rows.map(card => ({
-      board_id: boardId,
-      card_id: idFor(card),
-      card_data: card,
-      order: card.order ?? null,              // Reihenfolge persistieren
-      stage: card["Board Stage"] ?? null,     // optional, hilft bei Abfragen
-      updated_at: new Date().toISOString()
-    }));
-
-    console.log('📦 Speichere Karten:', cardsToSave.length);
-
-    if (cardsToSave.length > 0) {
-      const { error } = await supabase
-        .from('kanban_cards')
-        .upsert(cardsToSave, {
-          onConflict: 'board_id,card_id',
-          ignoreDuplicates: false
-        });
-
-      if (error) {
-        console.error('❌ Fehler beim Speichern:', error);
-        return false;
+    // SCHRITT 1: Alle alten Karten für dieses Board löschen
+    console.log('🗑️ Lösche alte Karten...');
+    const { error: deleteError } = await supabase
+      .from('kanban_cards')
+      .delete()
+      .eq('board_id', boardId);
+    
+    if (deleteError) {
+      console.error('❌ Fehler beim Löschen:', deleteError);
+      alert(`Löschen fehlgeschlagen: ${deleteError.message}`);
+      return false;
+    }
+    
+    console.log('✅ Alte Karten gelöscht');
+    
+    // Falls keine Karten vorhanden, fertig
+    if (rows.length === 0) {
+      console.log('ℹ️ Keine neuen Karten zu speichern');
+      return true;
+    }
+    
+    // SCHRITT 2: Neue Karten vorbereiten
+    const cardsWithPositions = [];
+    const stagePositions = {};
+    
+    rows.forEach((card, globalIndex) => {
+      const stage = card["Board Stage"] || DEFAULT_COLS[0].name;
+      
+      if (!stagePositions[stage]) {
+        stagePositions[stage] = 0;
       }
+      
+      const position = stagePositions[stage];
+      stagePositions[stage]++;
+      
+      card.position = position;
+      
+      const cardToSave = {
+        board_id: boardId,
+        card_id: idFor(card),
+        card_data: card,
+        stage: stage,
+        position: position,
+        updated_at: new Date().toISOString()
+      };
+      
+      console.log(`🔥 DEBUG: Karte ${globalIndex}:`, {
+        nummer: card.Nummer,
+        stage: stage,
+        position: position
+      });
+      
+      cardsWithPositions.push(cardToSave);
+    });
 
-      console.log('✅ Karten erfolgreich gespeichert');
+    console.log('💾 Füge neue Karten ein:', cardsWithPositions.length);
+
+    // SCHRITT 3: Neue Karten einfügen
+    const { error: insertError } = await supabase
+      .from('kanban_cards')
+      .insert(cardsWithPositions);
+
+    if (insertError) {
+      console.error('❌ Fehler beim Einfügen:', insertError);
+      alert(`Einfügen fehlgeschlagen: ${insertError.message}`);
+      return false;
     }
 
+    console.log('✅ Karten erfolgreich gespeichert');
     return true;
   } catch (error) {
-    console.error('❌ Unerwarteter Fehler beim Speichern der Karten:', error);
+    console.error('❌ Unerwarteter Fehler:', error);
+    alert(`Unerwarteter Fehler: ${error.message}`);
     return false;
   }
 };
 
-
-// Karten aus Supabase laden - MIT DEBUGGING
-const loadCards = async () => {
+// 2. ARCHIV LADEN FUNKTION:
+const loadArchivedCards = async () => {
   try {
-    console.log('🔄 Lade Karten aus Supabase...');
+    console.log('🗃️ Lade archivierte Karten...');
     
     const { data, error } = await supabase
       .from('kanban_cards')
       .select('card_data')
-      .eq('board_id', boardId)
-      .order('updated_at', { ascending: false });
-
+      .eq('board_id', boardId);
+    
     if (error) throw error;
     
     if (data && data.length > 0) {
-      const loadedCards = data.map(item => item.card_data);
+      const archived = data
+        .map(item => item.card_data)
+        .filter(card => card["Archived"] === "1");
+      
+      console.log('🗃️ Archivierte Karten gefunden:', archived.length);
+      setArchivedCards(archived);
+      return archived;
+    }
+    
+    setArchivedCards([]);
+    return [];
+  } catch (error) {
+    console.error('❌ Fehler beim Laden des Archivs:', error);
+    setArchivedCards([]);
+    return [];
+  }
+};
 
-      loadedCards.sort((a: any, b: any) => {
-        const pos = (name: string) => DEFAULT_COLS.findIndex((c: any) => c.name === name);
-        if (a["Board Stage"] !== b["Board Stage"]) {
-          return pos(a["Board Stage"]) - pos(b["Board Stage"]);
+// 3. KARTE AUS ARCHIV WIEDERHERSTELLEN:
+const restoreCard = async (card: any) => {
+  if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" wiederherstellen?`)) {
+    return;
+  }
+  
+  try {
+    // Entferne Archived Flag
+    card["Archived"] = "";
+    
+    // Füge zur aktuellen rows hinzu
+    const updatedRows = [...rows, card];
+    setRows(updatedRows);
+    
+    // Entferne aus archivierten Karten
+    const updatedArchived = archivedCards.filter(c => idFor(c) !== idFor(card));
+    setArchivedCards(updatedArchived);
+    
+    // Speichere Änderungen
+    await saveCards();
+    
+    console.log('✅ Karte wiederhergestellt:', card.Nummer);
+  } catch (error) {
+    console.error('❌ Fehler beim Wiederherstellen:', error);
+  }
+};
+
+// 4. KARTE ENDGÜLTIG LÖSCHEN:
+const deleteCardPermanently = async (card: any) => {
+  if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" ENDGÜLTIG löschen?`)) {
+    return;
+  }
+  
+  if (!window.confirm('Diese Aktion kann nicht rückgängig gemacht werden. Wirklich löschen?')) {
+    return;
+  }
+  
+  try {
+    // Entferne aus Supabase
+    const { error } = await supabase
+      .from('kanban_cards')
+      .delete()
+      .eq('board_id', boardId)
+      .eq('card_id', idFor(card));
+    
+    if (error) throw error;
+    
+    // Entferne aus lokaler Liste
+    const updatedArchived = archivedCards.filter(c => idFor(c) !== idFor(card));
+    setArchivedCards(updatedArchived);
+    
+    console.log('🗑️ Karte endgültig gelöscht:', card.Nummer);
+  } catch (error) {
+    console.error('❌ Fehler beim endgültigen Löschen:', error);
+  }
+};
+
+
+
+
+// ANGEPASSTE loadCards (funktioniert mit stage/position oder ohne)
+const loadCards = async () => {
+  try {
+    console.log('🔄 Lade Karten aus Supabase...');
+    console.log('🔥 DEBUG: boardId =', boardId);
+    
+    // Versuche mit stage/position zu laden
+    let { data, error } = await supabase
+      .from('kanban_cards')
+      .select('card_data, stage, position')
+      .eq('board_id', boardId)
+      .order('stage', { ascending: true })
+      .order('position', { ascending: true });
+    
+    // Falls stage/position nicht existieren, lade nur card_data
+    if (error && error.message.includes('column')) {
+      console.log('⚠️ stage/position Spalten nicht gefunden, lade nur card_data');
+      const result = await supabase
+        .from('kanban_cards')
+        .select('card_data')
+        .eq('board_id', boardId)
+        .order('updated_at', { ascending: false });
+      
+      data = result.data;
+      error = result.error;
+    }
+    
+    console.log('🔥 DEBUG: Supabase Antwort:', { dataLength: data?.length, error });
+    
+    if (error) {
+      console.error('🔥 DEBUG: Supabase Fehler:', error);
+      throw error;
+    }
+    
+    if (data && data.length > 0) {
+      const loadedCards = data.map(item => {
+        const card = item.card_data;
+        // Setze Position falls vorhanden
+        if (item.position !== undefined) {
+          card.position = item.position;
         }
-        const ao = a.order ?? 1;
-        const bo = b.order ?? 1;
-        return ao - bo;
+        return card;
       });
-
+      
+      console.log('✅ Karten geladen:', loadedCards.length);
+      loadedCards.forEach(card => {
+        console.log(`📋 ${card.Nummer}: ${card["Board Stage"]} (Pos: ${card.position || 'N/A'})`);
+      });
+      
       setRows(loadedCards);
       return true;
     }
     
-    console.log('ℹ️ Keine Karten in Supabase gefunden');
+    console.log('ℹ️ Keine Karten gefunden - leeres Board');
+    setRows([]);
     return false;
   } catch (error) {
-    console.error('❌ Fehler beim Laden der Karten:', error);
+    console.error('❌ Fehler beim Laden:', error);
+    setRows([]);
     return false;
   }
 };
 
 
-// Lade Testdaten
+
+
+
+
+// KORRIGIERTE INITIALISIERUNG - OHNE AUTOMATISCHE TESTDATEN:
 useEffect(() => {
-const initializeBoard = async () => {
-  console.log('🚀 Initialisiere Kanban Board für boardId:', boardId);
-  
-  // Debug hinzufügen
-  await debugSupabase();
-  
-  // Benutzer laden (mit Fallback)
-  console.log('👥 Starte Benutzer-Loading...');
-  const usersLoaded = await loadUsers();
-  if (!usersLoaded) {
-    console.log('🔄 Erstelle Fallback-Benutzer...');
-    createFallbackUsers();
-  }
-  console.log('✅ Benutzer-Loading abgeschlossen');
-  
-  // Einstellungen laden
-  console.log('⚙️ Starte Einstellungen-Loading...');
-  const settingsLoaded = await loadSettings();
-  console.log('✅ Einstellungen-Loading abgeschlossen:', settingsLoaded);
-  
-  // Karten laden
-  console.log('🃏 Starte Karten-Loading...');
-  const cardsLoaded = await loadCards();
-  console.log('✅ Karten-Loading abgeschlossen:', cardsLoaded);
-  
-  // Testdaten falls keine Karten
-  if (!cardsLoaded) {
-    console.log('📝 Lade Testdaten...');
-    loadTestData();
-  }
-  
-  console.log('🎉 Board komplett initialisiert!');
-};
+  const initializeBoard = async () => {
+    console.log('🚀 Initialisiere Kanban Board für boardId:', boardId);
+    
+    // Erst Einstellungen laden
+    const settingsLoaded = await loadSettings();
+    console.log('⚙️ Einstellungen geladen:', settingsLoaded);
+    
+    // Dann Karten laden
+    const cardsLoaded = await loadCards();
+    console.log('📋 Karten geladen:', cardsLoaded);
+    
+    // ✅ KEINE AUTOMATISCHEN TESTDATEN MEHR!
+    // Wenn keine Karten vorhanden, bleibt das Board leer
+    if (!cardsLoaded) {
+      console.log('📝 Board ist leer - bereit für neue Karten');
+    }
+    
+    console.log('✅ Board komplett initialisiert!');
+  };
   
   if (boardId) {
     initializeBoard();
   }
 }, [boardId]);
+
 
 
 // Automatisches Speichern bei Änderungen
@@ -567,56 +844,103 @@ useEffect(() => {
   };
 
  // Drag & Drop Handler
+// KORRIGIERTE onDragEnd FUNKTION:
 const onDragEnd = (result: DropResult) => {
-  const { destination, draggableId } = result as any;
+  const { destination, source, draggableId } = result;
+  
   if (!destination) return;
+  if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
-  // droppableId: "Stage" oder "Stage||Resp/Lane"
-  let targetStageName = destination.droppableId;
-  let newResp: string | null = null;
-  let newLane: string | null = null;
-  if (targetStageName.includes('||')) {
-    const parts = targetStageName.split('||');
-    targetStageName = parts[0];
-    if (viewMode === 'swim') newResp = parts[1] || null;
-    if (viewMode === 'lane') newLane = parts[1] || null;
-  }
+  const card = rows.find(r => idFor(r) === draggableId);
+  if (!card) return;
 
-  const current = [...rows];
-  const fromIndex = current.findIndex((c: any) => String(idFor(c)) === String(draggableId));
-  if (fromIndex === -1) return;
+  console.log('🎯 Drag & Drop:', {
+    cardId: draggableId,
+    from: source.droppableId,
+    to: destination.droppableId,
+    fromIndex: source.index,
+    toIndex: destination.index
+  });
 
-  const moved = { ...current[fromIndex] };
-  current.splice(fromIndex, 1);
+  // ✅ Parse destination für swimlanes - HIER WAR DER FEHLER!
+  let newStage = destination.droppableId;
+  let newResp = null;
+  let newLane = null;
 
-  moved["Board Stage"] = targetStageName;
-  if (newResp !== null)  moved["Verantwortlich"] = newResp;
-  if (newLane !== null)  moved["Swimlane"] = newLane;
-
-  const inSameGroup = (c: any) =>
-    (String(inferStage(c)) === String(targetStageName)) &&
-    (newResp === null || (String(c["Verantwortlich"] || "").trim() || "—") === newResp) &&
-    (newLane === null || (c["Swimlane"] || (lanes[0] || "Allgemein")) === newLane);
-
-  const groupCards = current.filter(inSameGroup);
-  const insertIndexInGroup = Math.min(destination.index, groupCards.length);
-
-  let seen = 0;
-  let globalInsertIndex = current.length;
-  for (let i = 0; i < current.length; i++) {
-    if (inSameGroup(current[i])) {
-      if (seen === insertIndexInGroup) { globalInsertIndex = i; break; }
-      seen++;
+  if (destination.droppableId.includes('||')) {
+    const parts = destination.droppableId.split('||');
+    newStage = parts[0];
+    // Nur wenn viewMode definiert ist
+    if (typeof viewMode !== 'undefined' && viewMode === 'swim') {
+      newResp = parts[1] === ' ' ? '' : parts[1];
+    } else if (typeof viewMode !== 'undefined' && viewMode === 'lane') {
+      newLane = parts[1];
     }
-    if (i === current.length - 1 && seen === insertIndexInGroup) globalInsertIndex = i + 1;
   }
 
-  current.splice(globalInsertIndex, 0, moved);
-  const reindexed = reindexByStage(current);
+  const oldStage = inferStage(card);
+  
+  // Erstelle eine Kopie des Arrays für die Manipulation
+  const newRows = [...rows];
+  
+  // Finde die Karte im Array
+  const cardIndex = newRows.findIndex(r => idFor(r) === draggableId);
+  if (cardIndex === -1) return;
+  
+  // Entferne die Karte aus dem Array
+  const [movedCard] = newRows.splice(cardIndex, 1);
+  
+  // ✅ Update die Karte mit neuen Werten - JETZT IST newStage DEFINIERT!
+  movedCard["Board Stage"] = newStage;
+  if (newResp !== null) movedCard["Verantwortlich"] = newResp;
+  if (newLane !== null) movedCard["Swimlane"] = newLane;
+  
+  // Finde alle Karten in der Ziel-Stage
+  const targetStageCards = newRows.filter(r => inferStage(r) === newStage);
+  
+  // Berechne die neue Position
+  const insertIndex = Math.min(destination.index, targetStageCards.length);
+  
+  // Finde die globale Position zum Einfügen
+  let globalInsertIndex = 0;
+  let stageCardCount = 0;
+  
+  for (let i = 0; i < newRows.length; i++) {
+    if (inferStage(newRows[i]) === newStage) {
+      if (stageCardCount === insertIndex) {
+        globalInsertIndex = i;
+        break;
+      }
+      stageCardCount++;
+    }
+    if (i === newRows.length - 1) {
+      globalInsertIndex = newRows.length;
+    }
+  }
+  
+  // Füge die Karte an der neuen Position ein
+  newRows.splice(globalInsertIndex, 0, movedCard);
+  
+  // Setze grün wenn fertig
+  const doneStages = cols.filter(c => c.done || /fertig/i.test(c.name)).map(c => c.name);
+  if (doneStages.includes(newStage)) {
+    movedCard["Ampel"] = "grün";
+  }
 
-  setRows(reindexed);
-  saveCards();
+  console.log('✅ Karte verschoben:', {
+    cardId: draggableId,
+    newStage: movedCard["Board Stage"],
+    newPosition: insertIndex
+  });
+  
+  // State aktualisieren
+  setRows(newRows);
+  
+  // Sofort speichern nach Drag & Drop
+  console.log('💾 Speichere nach Drag & Drop...');
+  setTimeout(() => saveCards(), 500);
 };
+
 
 
   // Toggle escalation
@@ -1858,10 +2182,14 @@ const renderEditModal = () => {
         <Button 
           variant="outlined"
           onClick={() => {
-            if (window.confirm(`Soll die Karte "${selectedCard["Nummer"]} – ${selectedCard["Teil"]}" wirklich archiviert werden?`)) {
+            if (window.confirm(`Soll die Karte "${selectedCard["Nummer"]} ${selectedCard["Teil"]}" wirklich archiviert werden?`)) {
               selectedCard["Archived"] = "1";
+              selectedCard["ArchivedDate"] = new Date().toLocaleDateString('de-DE'); // ← NEU
               setRows([...rows]);
               setEditModalOpen(false);
+              
+              // Speichere sofort
+              setTimeout(() => saveCards(), 500);
             }
           }}
         >
@@ -1892,6 +2220,97 @@ const renderEditModal = () => {
     </Dialog>
   );
 };
+
+// ARCHIV-MODAL FUNKTION (nach renderEditModal):
+const renderArchiveModal = () => {
+  return (
+    <Dialog 
+      open={archiveOpen} 
+      onClose={() => setArchiveOpen(false)}
+      maxWidth="lg"
+      fullWidth
+    >
+      <DialogTitle sx={{ 
+        borderBottom: '1px solid var(--line)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <span>🗃️</span>
+          Archiv
+        </Box>
+        <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
+          {archivedCards.length} archivierte Karten
+        </Typography>
+      </DialogTitle>
+      
+      <DialogContent sx={{ p: 0 }}>
+        {archivedCards.length === 0 ? (
+          <Box sx={{ p: 4, textAlign: 'center' }}>
+            <Typography variant="h6" sx={{ color: 'var(--muted)', mb: 1 }}>
+              📭 Archiv ist leer
+            </Typography>
+            <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
+              Archivierte Karten werden hier angezeigt
+            </Typography>
+          </Box>
+        ) : (
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Nummer</TableCell>
+                <TableCell>Teil</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Verantwortlich</TableCell>
+                <TableCell>Archiviert am</TableCell>
+                <TableCell align="right">Aktionen</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {archivedCards.map((card, index) => (
+                <TableRow key={index}>
+                  <TableCell>{card.Nummer}</TableCell>
+                  <TableCell>{card.Teil}</TableCell>
+                  <TableCell>{card["Status Kurz"]}</TableCell>
+                  <TableCell>{card.Verantwortlich}</TableCell>
+                  <TableCell>
+                    {card.ArchivedDate || 'Unbekannt'}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Button 
+                      size="small" 
+                      variant="outlined"
+                      onClick={() => restoreCard(card)}
+                      sx={{ mr: 1 }}
+                    >
+                      ↩️ Wiederherstellen
+                    </Button>
+                    <Button 
+                      size="small" 
+                      variant="outlined" 
+                      color="error"
+                      onClick={() => deleteCardPermanently(card)}
+                    >
+                      🗑️ Endgültig löschen
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </DialogContent>
+      
+      <DialogActions>
+        <Button onClick={() => setArchiveOpen(false)}>
+          Schließen
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
 
 // Neue Karte Dialog
 const renderNewCardModal = () => {
@@ -1985,23 +2404,65 @@ const renderNewCardModal = () => {
           </FormControl>
           
           {/* Verantwortlich */}
-          <FormControl fullWidth>
-            <InputLabel>Verantwortlich</InputLabel>
-            <Select
-              value={newCard.Verantwortlich}
-              onChange={(e) => setNewCard({...newCard, Verantwortlich: e.target.value})}
-            >
-              <MenuItem value="">
-                <em>Nicht zugewiesen</em>
-              </MenuItem>
-              {users.map(user => (
-                <MenuItem key={user.id} value={user.name}>
-                  {user.name} ({user.email})
-                </MenuItem>
-              ))}
-
-            </Select>
-          </FormControl>
+          <FormControl fullWidth required>
+  <InputLabel>Verantwortlich *</InputLabel>
+  <Select
+    value={newCard.Verantwortlich}
+    onChange={(e) => setNewCard({...newCard, Verantwortlich: e.target.value})}
+    displayEmpty
+  >
+    <MenuItem value="">
+      <em>Bitte Benutzer auswählen...</em>
+    </MenuItem>
+    {users.length === 0 ? (
+      <MenuItem disabled>
+        <em>Keine Benutzer verfügbar</em>
+      </MenuItem>
+    ) : (
+      users.map(user => (
+        <MenuItem key={user.id} value={user.name}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+            {/* Status-Indikator */}
+            <Box sx={{
+              width: 8,
+              height: 8,
+              borderRadius: '50%',
+              backgroundColor: user.isActive === false ? '#ff9800' : '#14c38e',
+              flexShrink: 0
+            }} />
+            
+            <Box sx={{ flex: 1 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {user.name}
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                {user.email}
+                {user.company && ` • ${user.company}`}
+                {user.role && ` • ${user.role}`}
+              </Typography>
+            </Box>
+            
+            {/* Inaktiv-Badge */}
+            {user.isActive === false && (
+              <Chip 
+                label="Inaktiv" 
+                size="small" 
+                color="warning"
+                sx={{ fontSize: '10px', height: 16 }}
+              />
+            )}
+          </Box>
+        </MenuItem>
+      ))
+    )}
+  </Select>
+  <Typography variant="caption" sx={{ color: 'text.secondary', mt: 0.5 }}>
+    {users.length === 0 
+      ? "Keine Benutzer gefunden. Benutzer werden aus der profiles-Tabelle geladen."
+      : `${users.length} Benutzer verfügbar (${users.filter(u => u.isActive !== false).length} aktiv)`
+    }
+  </Typography>
+</FormControl>
           
           {/* Swimlane */}
           <FormControl fullWidth>
@@ -2058,7 +2519,8 @@ const renderNewCardModal = () => {
     </Dialog>
   );
 };
-  
+
+
 
   // Main Render
 return (
@@ -2100,6 +2562,20 @@ return (
     ⚙️
   </IconButton>
 </Box>
+
+          <Button 
+  variant="outlined" 
+  onClick={async () => {
+    await loadArchivedCards();
+    setArchiveOpen(true);
+  }}
+  sx={{ mr: 1 }}
+  startIcon={<span>🗃️</span>}
+>
+  Archiv ({archivedCards.length > 0 ? archivedCards.length : '?'})
+</Button>
+
+
         {/* Toolbar */}
         <Box sx={{ 
           display: 'grid',
@@ -2525,6 +3001,7 @@ return (
               {/* Dialoge */}
         {renderEditModal()}
         {renderNewCardModal()}
+        {renderArchiveModal()}
       </Box>
     );
 };
