@@ -531,3 +531,67 @@ input.overdue {
   padding: 8px 12px;
   font-size: 12px;
 }
+// ✅ ERWEITERTE CSS-STYLES (füge das zu deinen Styles hinzu)
+<style jsx global>{`
+  :root {
+    --bg: #0f1117;
+    --panel: #141a22;
+    --ink: #e6e8ee;
+    --muted: #9aa3b2;
+    --accent: #4aa3ff;
+    --line: #243042;
+    --chip: #1a2230;
+    --alert: #5a1b1b;
+    --alertBorder: #a33;
+    --ok: #19c37d;
+    --colw: 320px;
+    --rowheadw: 200px;
+  }
+  
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f5f7fb;
+      --panel: #ffffff;
+      --ink: #0b1220;
+      --muted: #566175;
+      --accent: #2458ff;
+      --line: #e6eaf2;
+      --chip: #eef3ff;
+      --alert: #ffe8e8;
+      --alertBorder: #ff6b6b;
+      --ok: #0ea667;
+    }
+  }
+  
+  .card.esk-lk {
+    background: #fff3e0 !important;
+    border-color: #ef6c00 !important;
+  }
+  
+  .card.esk-sk {
+    background: #ffebee !important;
+    border-color: #c62828 !important;
+  }
+  
+  .card.due-today {
+    background: var(--alert) !important;
+    border-color: var(--alertBorder) !important;
+  }
+  
+  /* ✅ NEUE TR-STYLES */
+  .tr-superseded {
+    text-decoration: line-through;
+    opacity: 0.6;
+    color: var(--muted);
+  }
+  
+  .tr-current {
+    font-weight: 600;
+    color: #2196f3;
+  }
+  
+  .tr-original {
+    font-weight: 600;
+    color: var(--ink);
+  }
+`}</style>

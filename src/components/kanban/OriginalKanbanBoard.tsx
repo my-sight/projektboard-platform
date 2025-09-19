@@ -30,9 +30,12 @@ import {
   ListItem,
   ListItemText,
   Divider,
+  Badge, 
+  Grid, 
+  Card,
 } from '@mui/material';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-
+import { Assessment, Close } from '@mui/icons-material';
 import { createClient } from '@supabase/supabase-js';
 // import { useAuth } from '../../contexts/AuthContext';
 // import { AuthProvider } from '../../contexts/AuthContext';
@@ -107,7 +110,8 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [newCardOpen, setNewCardOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
- 
+  const [kpiPopupOpen, setKpiPopupOpen] = useState(false); 
+
  // Checklisten Templates State - SPALTENSPEZIFISCH
   const [checklistTemplates, setChecklistTemplates] = useState(() => {
   const templates = {};
@@ -447,6 +451,7 @@ const loadSettings = async () => {
     return false;
   }
 };
+
 
 
 // EINFACHE LÖSUNG: DELETE + INSERT (funktioniert immer)
@@ -837,6 +842,311 @@ useEffect(() => {
     return '#14c38e';
   };
 
+// KPI-POPUP KOMPONENTE
+const TRKPIPopup = ({ open, onClose, cards }: { open: boolean, onClose: () => void, cards: any[] }) => {
+  const [kpis, setKpis] = useState<any>(null);
+
+  // KPI-Berechnung für das aktuelle Board
+  const calculateBoardKPIs = (cards: any[]) => {
+    const now = new Date();
+    const kpis = {
+      totalCards: cards.length,
+      cardsWithTR: 0,
+      trOverdue: 0,
+      trToday: 0,
+      trThisWeek: 0,
+      trNextWeek: 0,
+      totalChanges: 0,
+      overdueList: [] as any[],
+      todayList: [] as any[],
+      weekList: [] as any[],
+      recentChanges: [] as any[]
+    };
+
+    cards.forEach(card => {
+      // Nur aktive Karten (nicht archiviert)
+      if (card["Archived"] === "1") return;
+
+      // TR-Datum bestimmen (TR_Neu hat Vorrang)
+      const trDate = card["TR_Neu"] || card["TR_Datum"];
+      if (trDate) {
+        kpis.cardsWithTR++;
+        const tr = new Date(trDate);
+        const diffDays = Math.floor((tr.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+        const cardInfo = {
+          nummer: card["Nummer"],
+          teil: card["Teil"],
+          trDatum: tr,
+          stage: card["Board Stage"],
+          verantwortlich: card["Verantwortlich"]
+        };
+
+        if (diffDays < 0) {
+          // Überfällig
+          kpis.trOverdue++;
+          kpis.overdueList.push({
+            ...cardInfo,
+            daysOverdue: Math.abs(diffDays)
+          });
+        } else if (diffDays === 0) {
+          // Heute
+          kpis.trToday++;
+          kpis.todayList.push(cardInfo);
+        } else if (diffDays <= 7) {
+          // Diese Woche
+          kpis.trThisWeek++;
+          kpis.weekList.push({
+            ...cardInfo,
+            daysUntil: diffDays
+          });
+        } else if (diffDays <= 14) {
+          // Nächste Woche
+          kpis.trNextWeek++;
+        }
+      }
+
+      // TR-Änderungen zählen
+      const history = card["TR_History"] || [];
+      kpis.totalChanges += history.length;
+
+      // Letzte Änderungen (letzte 7 Tage)
+      if (history.length > 0) {
+        history.forEach((change: any) => {
+          if (change.timestamp) {
+            const changeDate = new Date(change.timestamp);
+            const daysAgo = Math.floor((now.getTime() - changeDate.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysAgo <= 7) {
+              kpis.recentChanges.push({
+                nummer: card["Nummer"],
+                teil: card["Teil"],
+                changedBy: change.changedBy,
+                newDate: change.date,
+                daysAgo: daysAgo
+              });
+            }
+          }
+        });
+      }
+    });
+
+    // Listen sortieren
+    kpis.overdueList.sort((a: any, b: any) => b.daysOverdue - a.daysOverdue);
+    kpis.weekList.sort((a: any, b: any) => a.daysUntil - b.daysUntil);
+    kpis.recentChanges.sort((a: any, b: any) => a.daysAgo - b.daysAgo);
+
+    return kpis;
+  };
+
+  useEffect(() => {
+    if (open && cards) {
+      const calculatedKPIs = calculateBoardKPIs(cards);
+      setKpis(calculatedKPIs);
+    }
+  }, [open, cards]);
+
+  return (
+    <Dialog 
+      open={open} 
+      onClose={onClose}
+      maxWidth="md"
+      fullWidth
+      PaperProps={{
+        sx: { borderRadius: 2, maxHeight: '80vh' }
+      }}
+    >
+      <DialogTitle sx={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: 1,
+        backgroundColor: 'primary.main',
+        color: 'white'
+      }}>
+        <Assessment />
+        TR-Termine KPIs - Aktuelles Board
+        <Box sx={{ flexGrow: 1 }} />
+        <IconButton onClick={onClose} sx={{ color: 'white' }}>
+          <Close />
+        </IconButton>
+      </DialogTitle>
+
+      <DialogContent sx={{ p: 0 }}>
+        {kpis && (
+          <Box sx={{ p: 3 }}>
+            {/* Haupt-KPIs */}
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              <Grid item xs={6} sm={3}>
+                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'primary.light', color: 'white' }}>
+                  <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
+                    {kpis.totalCards}
+                  </Typography>
+                  <Typography variant="caption">Gesamt Karten</Typography>
+                </Card>
+              </Grid>
+
+              <Grid item xs={6} sm={3}>
+                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'error.main', color: 'white' }}>
+                  <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
+                    {kpis.trOverdue}
+                  </Typography>
+                  <Typography variant="caption">Überfällig</Typography>
+                </Card>
+              </Grid>
+
+              <Grid item xs={6} sm={3}>
+                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'warning.main', color: 'white' }}>
+                  <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
+                    {kpis.trToday}
+                  </Typography>
+                  <Typography variant="caption">Heute fällig</Typography>
+                </Card>
+              </Grid>
+
+              <Grid item xs={6} sm={3}>
+                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'info.main', color: 'white' }}>
+                  <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
+                    {kpis.trThisWeek}
+                  </Typography>
+                  <Typography variant="caption">Diese Woche</Typography>
+                </Card>
+              </Grid>
+            </Grid>
+
+            {/* Detaillierte Listen */}
+            <Box sx={{ maxHeight: '300px', overflow: 'auto' }}>
+              {/* Überfällige TRs */}
+              {kpis.trOverdue > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="h6" sx={{ mb: 1, color: 'error.main' }}>
+                    🚨 Überfällige TRs ({kpis.trOverdue})
+                  </Typography>
+                  <List dense>
+                    {kpis.overdueList.map((card: any, idx: number) => (
+                      <ListItem key={idx} sx={{ 
+                        backgroundColor: 'error.light', 
+                        borderRadius: 1, 
+                        mb: 1,
+                        color: 'error.contrastText'
+                      }}>
+                        <ListItemText
+                          primary={`${card.nummer} - ${card.teil}`}
+                          secondary={
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 0.5 }}>
+                              <Chip 
+                                label={`${card.daysOverdue} Tage überfällig`}
+                                size="small"
+                                color="error"
+                                variant="outlined"
+                              />
+                              <Typography variant="caption">
+                                TR: {card.trDatum.toLocaleDateString('de-DE')}
+                              </Typography>
+                              <Typography variant="caption">
+                                {card.stage}
+                              </Typography>
+                              {card.verantwortlich && (
+                                <Typography variant="caption">
+                                  ({card.verantwortlich})
+                                </Typography>
+                              )}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              )}
+
+              {/* Heute fällige TRs */}
+              {kpis.trToday > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="h6" sx={{ mb: 1, color: 'warning.main' }}>
+                    ⏰ Heute fällig ({kpis.trToday})
+                  </Typography>
+                  <List dense>
+                    {kpis.todayList.map((card: any, idx: number) => (
+                      <ListItem key={idx} sx={{ 
+                        backgroundColor: 'warning.light', 
+                        borderRadius: 1, 
+                        mb: 1 
+                      }}>
+                        <ListItemText
+                          primary={`${card.nummer} - ${card.teil}`}
+                          secondary={`${card.stage} • ${card.verantwortlich || 'Nicht zugewiesen'}`}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              )}
+
+              {/* Diese Woche fällige TRs */}
+              {kpis.trThisWeek > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="h6" sx={{ mb: 1, color: 'info.main' }}>
+                    📅 Diese Woche fällig ({kpis.trThisWeek})
+                  </Typography>
+                  <List dense>
+                    {kpis.weekList.map((card: any, idx: number) => (
+                      <ListItem key={idx} sx={{ 
+                        backgroundColor: 'info.light', 
+                        borderRadius: 1, 
+                        mb: 1 
+                      }}>
+                        <ListItemText
+                          primary={`${card.nummer} - ${card.teil}`}
+                          secondary={
+                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                              <Chip 
+                                label={`in ${card.daysUntil} Tagen`}
+                                size="small"
+                                color="info"
+                              />
+                              <Typography variant="caption">
+                                {card.trDatum.toLocaleDateString('de-DE')}
+                              </Typography>
+                              <Typography variant="caption">
+                                {card.stage}
+                              </Typography>
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              )}
+
+              {/* Keine kritischen TRs */}
+              {kpis.trOverdue === 0 && kpis.trToday === 0 && kpis.trThisWeek === 0 && (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="h6" color="success.main">
+                    ✅ Alle TRs sind im grünen Bereich!
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Keine überfälligen oder kritischen TRs gefunden.
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Box>
+        )}
+      </DialogContent>
+
+      <DialogActions sx={{ p: 2, backgroundColor: 'grey.50' }}>
+        <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
+          Aktualisiert: {new Date().toLocaleString('de-DE')}
+        </Typography>
+        <Button onClick={onClose} variant="contained">
+          Schließen
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};
+
+  
   const getEscalationClass = (escalation: string) => {
     if (escalation === 'LK') return 'esk-lk';
     if (escalation === 'SK') return 'esk-sk';
@@ -1014,14 +1324,15 @@ const onDragEnd = (result: DropResult) => {
   };
 
 // Render einzelne Karte - EINHEITLICHE LOGIK
-const renderCard = (card: any, index: number) => {
+  const renderCard = (card: any, index: number) => {
   const cardId = idFor(card);
   const stage = inferStage(card);
   
   // Bestimme Eskalationsstatus
-  const eskalation = String(card["Eskalation"] || "").toUpperCase();
-  const hasLKEscalation = eskalation === "LK";
-  const hasSKEscalation = eskalation === "SK";
+  const escalation = String(card.Eskalation || "").trim().toUpperCase();
+  const hasLKEscalation = escalation === "LK";
+  const hasSKEscalation = escalation === "SK";
+  console.log(`🔍 Karte ${card.Nummer}: Eskalation="${escalation}", LK=${hasLKEscalation}, SK=${hasSKEscalation}`);
   
   // Hauptstatus
   let statusKurz = "";
@@ -1064,16 +1375,20 @@ const renderCard = (card: any, index: number) => {
 
   const ampelColor = (hasLKEscalation || hasSKEscalation) ? '#ff5a5a' : '#14c38e';
 
-  // Hilfsfunktion zum Aktualisieren einer Karte
-  const updateCard = (updates: any) => {
-    const updatedCard = { ...card, ...updates };
-    const cardIndex = rows.findIndex((c: any) => idFor(c) === cardId);
-    if (cardIndex >= 0) {
-      const newRows = [...rows];
-      newRows[cardIndex] = updatedCard;
-      setRows(newRows);
-    }
-  };
+const updateCard = (updates: any) => {
+  const cardIndex = rows.findIndex((c: any) => idFor(c) === cardId);
+  if (cardIndex >= 0) {
+    const newRows = [...rows];
+    newRows[cardIndex] = { ...newRows[cardIndex], ...updates };
+    setRows(newRows);
+    
+    // WICHTIG: Sofort speichern nach Eskalations-Änderung
+    setTimeout(() => {
+      console.log('💾 Speichere Eskalations-Änderung...');
+      saveCards();
+    }, 200);
+  }
+};
 
   return (
     <Draggable key={cardId} draggableId={cardId} index={index}>
@@ -1205,7 +1520,8 @@ const renderCard = (card: any, index: number) => {
                     ↕
                   </IconButton>
 
-                  {/* LK Button */}
+
+                  {/* LK Button - KORRIGIERT */}
                   <IconButton 
                     size="small" 
                     sx={{ 
@@ -1220,17 +1536,26 @@ const renderCard = (card: any, index: number) => {
                     title="Leitungskreis"
                     onClick={(e) => {
                       e.stopPropagation();
+                      
+                      console.log('🔴 LK Button geklickt für Karte:', card.Nummer);
+                      console.log('🔴 Aktuelle Eskalation:', card.Eskalation);
+                      
                       const newEskalation = hasLKEscalation ? "" : "LK";
+                      const newAmpel = newEskalation ? "rot" : "grün";
+                      
+                      console.log('🔴 Neue Eskalation:', newEskalation);
+                      console.log('🔴 Neue Ampel:', newAmpel);
+                      
                       updateCard({ 
                         Eskalation: newEskalation,
-                        Ampel: newEskalation ? "rot" : "grün"
+                        Ampel: newAmpel
                       });
                     }}
                   >
                     LK
                   </IconButton>
 
-                  {/* SK Button */}
+                  {/* SK Button - KORRIGIERT */}
                   <IconButton 
                     size="small" 
                     sx={{ 
@@ -1245,10 +1570,19 @@ const renderCard = (card: any, index: number) => {
                     title="Strategiekreis"
                     onClick={(e) => {
                       e.stopPropagation();
+                      
+                      console.log('🔵 SK Button geklickt für Karte:', card.Nummer);
+                      console.log('🔵 Aktuelle Eskalation:', card.Eskalation);
+                      
                       const newEskalation = hasSKEscalation ? "" : "SK";
+                      const newAmpel = newEskalation ? "rot" : "grün";
+                      
+                      console.log('🔵 Neue Eskalation:', newEskalation);
+                      console.log('🔵 Neue Ampel:', newAmpel);
+                      
                       updateCard({ 
                         Eskalation: newEskalation,
-                        Ampel: newEskalation ? "rot" : "grün"
+                        Ampel: newAmpel
                       });
                     }}
                   >
@@ -1368,6 +1702,60 @@ const renderCard = (card: any, index: number) => {
                   </Typography>
                 )}
               </Box>
+
+{/* TR-DATEN ANZEIGE - KOMPAKTE CHIPS NEBENEINANDER */}
+{(card["TR_Datum"] || card["TR_Neu"]) && (
+  <Box sx={{ 
+    mt: 1, 
+    pt: 1, 
+    borderTop: '1px solid var(--line)',
+    display: 'flex',
+    justifyContent: 'center',
+    gap: 0.5
+  }}>
+    {/* TR Original Chip */}
+    {card["TR_Datum"] && (
+      <Chip 
+        label={`TR: ${new Date(card["TR_Datum"]).toLocaleDateString('de-DE')}`}
+        size="small"
+        sx={{ 
+          fontSize: '10px',
+          height: '18px',
+          backgroundColor: '#e8f5e8',
+          color: '#2e7d32',
+          border: '1px solid #c8e6c9',
+          '& .MuiChip-label': { 
+            px: 0.8,
+            py: 0
+          }
+        }}
+      />
+    )}
+    
+    {/* TR Neu Chip */}
+    {card["TR_Neu"] && (
+      <Chip 
+        label={`TR neu: ${new Date(card["TR_Neu"]).toLocaleDateString('de-DE')}`}
+        size="small"
+        sx={{ 
+          fontSize: '10px',
+          height: '18px',
+          backgroundColor: '#e3f2fd',
+          color: '#1976d2',
+          border: '1px solid #bbdefb',
+          '& .MuiChip-label': { 
+            px: 0.8,
+            py: 0
+          }
+        }}
+      />
+    )}
+  </Box>
+)}
+
+
+
+
 
               {/* GROSS: Team-Mitglieder */}
               {currentSize === 'large' && card["Team"] && Array.isArray(card["Team"]) && card["Team"].length > 0 && (
@@ -1935,9 +2323,159 @@ const renderEditModal = () => {
                     reader.readAsDataURL(file);
                   }
                 }}
+               
               />
-            </Box>
+              </Box>
+{/* TR-Daten Sektion - NACH DEN GRUNDDATEN */}
+<Box sx={{ mt: 3 }}>
+  <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
+    TR-Termine
+  </Typography>
+  
+  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    {/* Original TR-Datum (nur einmal setzbar) */}
+    <Box>
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        TR-Datum (Original)
+      </Typography>
+      {selectedCard["TR_Datum"] ? (
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1,
+          p: 1,
+          backgroundColor: 'action.hover',
+          borderRadius: 1
+        }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {new Date(selectedCard["TR_Datum"]).toLocaleDateString('de-DE')}
+          </Typography>
+          <Chip 
+            label="Gesperrt" 
+            size="small" 
+            color="default"
+            sx={{ fontSize: '10px' }}
+          />
+        </Box>
+      ) : (
+        <TextField
+          size="small"
+          type="date"
+          value={selectedCard["TR_Datum"] || ""}
+          onChange={(e) => {
+            if (e.target.value && !selectedCard["TR_Datum"]) {
+              selectedCard["TR_Datum"] = e.target.value;
+              setRows([...rows]);
+            }
+          }}
+          helperText="Kann nach Eingabe nicht mehr geändert werden"
+          InputLabelProps={{ shrink: true }}
+        />
+      )}
+    </Box>
+    
+    {/* TR Neu (änderbar) */}
+    <Box>
+      <Typography variant="subtitle2" sx={{ mb: 1 }}>
+        TR neu
+      </Typography>
+      <TextField
+        size="small"
+        type="date"
+        value={selectedCard["TR_Neu"] || ""}
+        onChange={(e) => {
+          handleTRNeuChange(selectedCard, e.target.value);
+        }}
+        helperText="Neuer TR-Termin (überschreibt vorherigen)"
+        InputLabelProps={{ shrink: true }}
+      />
+    </Box>
+    
 
+{/* TR-DATEN ANZEIGE IM POPUP - OHNE DUPLIKATE (VERBESSERT) */}
+{(selectedCard["TR_Datum"] || selectedCard["TR_Neu"] || (selectedCard["TR_History"] && selectedCard["TR_History"].length > 0)) && (
+  <Box sx={{ 
+    mt: 2, 
+    pt: 2, 
+    borderTop: '1px solid var(--line)'
+  }}>
+    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+      TR-Termine
+    </Typography>
+    
+    {/* Ursprüngliches TR-Datum */}
+    {selectedCard["TR_Datum"] && (
+      <Typography variant="body2" sx={{ 
+        fontWeight: 600,
+        color: '#4caf50',
+        display: 'block',
+        mb: 0.5
+      }}>
+        TR ursprünglich: {new Date(selectedCard["TR_Datum"]).toLocaleDateString('de-DE')}
+      </Typography>
+    )}
+    
+    {/* TR-Historie - NUR EINDEUTIGE EINTRÄGE, OHNE AKTUELLES */}
+    {(() => {
+      // Filtere Historie: Entferne Duplikate und das aktuelle TR_Neu
+      const history = selectedCard["TR_History"] || [];
+      const currentTRNeu = selectedCard["TR_Neu"];
+      
+      // Erstelle Set für eindeutige Daten (ohne aktuelles)
+      const uniqueDates = new Set();
+      const uniqueEntries = [];
+      
+      history.forEach((entry: any) => {
+        const entryDate = entry.date;
+        // Überspringe wenn es das aktuelle TR_Neu ist oder bereits existiert
+        if (entryDate !== currentTRNeu && !uniqueDates.has(entryDate)) {
+          uniqueDates.add(entryDate);
+          uniqueEntries.push(entry);
+        }
+      });
+      
+      return uniqueEntries.length > 0 && (
+        <Box sx={{ mb: 1 }}>
+          {uniqueEntries.map((trEntry: any, idx: number) => (
+            <Typography 
+              key={`${trEntry.date}-${idx}`}
+              variant="body2" 
+              sx={{ 
+                color: 'var(--muted)',
+                display: 'block',
+                textDecoration: 'line-through',
+                opacity: 0.7,
+                mb: 0.5
+              }}
+            >
+              TR geändert: {new Date(trEntry.date).toLocaleDateString('de-DE')}
+              {trEntry.changedBy && (
+                <span style={{ fontSize: '12px', marginLeft: '8px' }}>
+                  (von {trEntry.changedBy})
+                </span>
+              )}
+            </Typography>
+          ))}
+        </Box>
+      );
+    })()}
+    
+    {/* Aktuelles TR_Neu (falls vorhanden) */}
+    {selectedCard["TR_Neu"] && (
+      <Typography variant="body2" sx={{ 
+        fontWeight: 600,
+        color: '#2196f3',
+        display: 'block'
+      }}>
+        TR aktuell: {new Date(selectedCard["TR_Neu"]).toLocaleDateString('de-DE')}
+      </Typography>
+    )}
+  </Box>
+)}
+
+
+  </Box>
+</Box>
             {selectedCard["Bild"] && (
               <Box sx={{ mb: 2 }}>
                 <img 
@@ -1947,8 +2485,9 @@ const renderEditModal = () => {
                 />
               </Box>
             )}
-          </Box>
+          </Box>         
         )}
+
 
         {/* Tab 1: Status & Checkliste */}
         {editTabValue === 1 && (
@@ -2323,8 +2862,14 @@ const renderNewCardModal = () => {
     "Due Date": "",
     "Ampel": "grün",
     "Swimlane": lanes[0] || "Allgemein",
-    "UID": `uid_${Date.now()}`
+    "UID": `uid_${Date.now()}`,
+      // ✅ NEUE TR-FELDER
+  "TR_Datum": "", // Erstes TR-Datum (unveränderlich nach Eingabe)
+  "TR_Neu": "", // Aktuelles TR-Datum
+  "TR_History": [] // Historie aller TR-Neu Einträge
   });
+
+
 
   const handleSave = () => {
     if (!newCard.Nummer.trim() || !newCard.Teil.trim()) {
@@ -2520,6 +3065,59 @@ const renderNewCardModal = () => {
   );
 };
 
+// ✅ KORRIGIERTE TR-NEU ÄNDERUNGS-HANDLER (ersetze die bisherige Funktion)
+const handleTRNeuChange = (card: any, newDate: string) => {
+  console.log(`📅 TR-Neu Änderung für ${card.Nummer}:`, {
+    alt: card["TR_Neu"],
+    neu: newDate
+  });
+  
+  if (!newDate) {
+    // Leeres Datum - TR_Neu löschen, aber Historie behalten
+    card["TR_Neu"] = "";
+    setRows([...rows]);
+    return;
+  }
+  
+  // Aktueller Benutzer
+  const currentUser = users.find(u => u.name === card["Verantwortlich"])?.name || 'System';
+  
+  // Historie initialisieren falls nicht vorhanden
+  if (!Array.isArray(card["TR_History"])) {
+    card["TR_History"] = [];
+  }
+  
+  // Wenn bereits ein TR_Neu existiert, zur Historie hinzufügen
+  if (card["TR_Neu"] && card["TR_Neu"] !== newDate) {
+    console.log(`📅 Füge altes TR_Neu zur Historie hinzu: ${card["TR_Neu"]}`);
+    
+    card["TR_History"].push({
+      date: card["TR_Neu"],
+      changedBy: currentUser,
+      timestamp: new Date().toISOString(),
+      superseded: true
+    });
+  }
+  
+  // Neues TR_Neu setzen
+  card["TR_Neu"] = newDate;
+  
+  // Aktuelles TR_Neu auch zur Historie hinzufügen (als letzter Eintrag)
+  card["TR_History"].push({
+    date: newDate,
+    changedBy: currentUser,
+    timestamp: new Date().toISOString(),
+    superseded: false
+  });
+  
+  console.log(`📅 TR neu gesetzt für ${card.Nummer}:`, {
+    neuesDatum: newDate,
+    historieAnzahl: card["TR_History"].length
+  });
+  
+  setRows([...rows]);
+};
+
 
 
   // Main Render
@@ -2666,7 +3264,31 @@ return (
           >
             ⚙️ Einstellungen
           </Button>
-
+          
+          {/* KPI-BUTTON MIT BADGE */}
+          <Badge 
+            badgeContent={rows.filter(card => {
+              const trDate = card["TR_Neu"] || card["TR_Datum"];
+              if (!trDate) return false;
+              const tr = new Date(trDate);
+              return tr < new Date() && card["Archived"] !== "1";
+            }).length} 
+            color="error"
+            sx={{ ml: 1 }}
+          >
+            <IconButton
+              onClick={() => setKpiPopupOpen(true)}
+              sx={{ 
+                color: 'primary.main',
+                backgroundColor: 'primary.light',
+                '&:hover': { backgroundColor: 'primary.main', color: 'white' },
+                border: '1px solid var(--line)'
+              }}
+              title="TR-KPIs anzeigen"
+            >
+              <Assessment />
+            </IconButton>
+          </Badge>
       {/* Board Content */}
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         {viewMode === 'columns' && renderColumns()}
@@ -3002,6 +3624,13 @@ return (
         {renderEditModal()}
         {renderNewCardModal()}
         {renderArchiveModal()}
+
+      {/* SCHRITT 4: TRKPIPopup hinzufügen */}
+      <TRKPIPopup 
+        open={kpiPopupOpen} 
+        onClose={() => setKpiPopupOpen(false)} 
+        cards={rows} 
+      />  
       </Box>
     );
 };
