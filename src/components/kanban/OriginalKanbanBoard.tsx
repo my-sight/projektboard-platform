@@ -842,138 +842,188 @@ useEffect(() => {
     return '#14c38e';
   };
 
-// KPI-POPUP KOMPONENTE
-const TRKPIPopup = ({ open, onClose, cards }: { open: boolean, onClose: () => void, cards: any[] }) => {
-  const [kpis, setKpis] = useState<any>(null);
-
-  // KPI-Berechnung für das aktuelle Board
-  const calculateBoardKPIs = (cards: any[]) => {
-    const now = new Date();
-    const kpis = {
-      totalCards: cards.length,
-      cardsWithTR: 0,
-      trOverdue: 0,
-      trToday: 0,
-      trThisWeek: 0,
-      trNextWeek: 0,
-      totalChanges: 0,
-      overdueList: [] as any[],
-      todayList: [] as any[],
-      weekList: [] as any[],
-      recentChanges: [] as any[]
-    };
-
-    cards.forEach(card => {
-      // Nur aktive Karten (nicht archiviert)
-      if (card["Archived"] === "1") return;
-
-      // TR-Datum bestimmen (TR_Neu hat Vorrang)
-      const trDate = card["TR_Neu"] || card["TR_Datum"];
-      if (trDate) {
-        kpis.cardsWithTR++;
-        const tr = new Date(trDate);
-        const diffDays = Math.floor((tr.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-        const cardInfo = {
-          nummer: card["Nummer"],
-          teil: card["Teil"],
-          trDatum: tr,
-          stage: card["Board Stage"],
-          verantwortlich: card["Verantwortlich"]
-        };
-
-        if (diffDays < 0) {
-          // Überfällig
-          kpis.trOverdue++;
-          kpis.overdueList.push({
-            ...cardInfo,
-            daysOverdue: Math.abs(diffDays)
-          });
-        } else if (diffDays === 0) {
-          // Heute
-          kpis.trToday++;
-          kpis.todayList.push(cardInfo);
-        } else if (diffDays <= 7) {
-          // Diese Woche
-          kpis.trThisWeek++;
-          kpis.weekList.push({
-            ...cardInfo,
-            daysUntil: diffDays
-          });
-        } else if (diffDays <= 14) {
-          // Nächste Woche
-          kpis.trNextWeek++;
-        }
-      }
-
-      // TR-Änderungen zählen
-      const history = card["TR_History"] || [];
-      kpis.totalChanges += history.length;
-
-      // Letzte Änderungen (letzte 7 Tage)
-      if (history.length > 0) {
-        history.forEach((change: any) => {
-          if (change.timestamp) {
-            const changeDate = new Date(change.timestamp);
-            const daysAgo = Math.floor((now.getTime() - changeDate.getTime()) / (1000 * 60 * 60 * 24));
-            if (daysAgo <= 7) {
-              kpis.recentChanges.push({
-                nummer: card["Nummer"],
-                teil: card["Teil"],
-                changedBy: change.changedBy,
-                newDate: change.date,
-                daysAgo: daysAgo
-              });
-            }
-          }
-        });
-      }
-    });
-
-    // Listen sortieren
-    kpis.overdueList.sort((a: any, b: any) => b.daysOverdue - a.daysOverdue);
-    kpis.weekList.sort((a: any, b: any) => a.daysUntil - b.daysUntil);
-    kpis.recentChanges.sort((a: any, b: any) => a.daysAgo - b.daysAgo);
-
-    return kpis;
+const calculateKPIs = () => {
+  const activeCards = rows.filter(r => !r["Archived"]);
+  
+  // === GRUNDLEGENDE ZAHLEN ===
+  const totalCards = activeCards.length;
+  const ampelGreen = activeCards.filter(r => String(r["Ampel"] || "").toLowerCase().includes("grün") || String(r["Ampel"] || "").toLowerCase().includes("green")).length;
+  const ampelYellow = activeCards.filter(r => String(r["Ampel"] || "").toLowerCase().includes("gelb") || String(r["Ampel"] || "").toLowerCase().includes("yellow")).length;
+  const ampelRed = activeCards.filter(r => String(r["Ampel"] || "").toLowerCase().includes("rot") || String(r["Ampel"] || "").toLowerCase().includes("red")).length;
+  
+  // === SPALTEN-VERTEILUNG ===
+  const columnDistribution = {};
+  cols.forEach(col => {
+    columnDistribution[col.name] = activeCards.filter(r => inferStage(r) === col.name).length;
+  });
+  
+  // === ESKALATIONEN ===
+  const lkEscalations = activeCards.filter(r => String(r["Eskalation"] || "").toUpperCase() === "LK");
+  const skEscalations = activeCards.filter(r => String(r["Eskalation"] || "").toUpperCase() === "SK");
+  
+  // === TR-TERMINE ===
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const trOverdue = activeCards.filter(r => {
+    const trDate = r["TR_Neu"] || r["TR_Datum"];
+    if (!trDate) return false;
+    const date = new Date(trDate);
+    date.setHours(0, 0, 0, 0);
+    return date < today;
+  });
+  
+  const trToday = activeCards.filter(r => {
+    const trDate = r["TR_Neu"] || r["TR_Datum"];
+    if (!trDate) return false;
+    const date = new Date(trDate);
+    date.setHours(0, 0, 0, 0);
+    return date.getTime() === today.getTime();
+  });
+  
+  const trThisWeek = activeCards.filter(r => {
+    const trDate = r["TR_Neu"] || r["TR_Datum"];
+    if (!trDate) return false;
+    const date = new Date(trDate);
+    const weekEnd = new Date(today);
+    weekEnd.setDate(today.getDate() + 7);
+    return date >= today && date <= weekEnd;
+  });
+  
+  // === DUE DATES ===
+  const dueDatesOverdue = activeCards.filter(r => {
+    const dueDate = r["Due Date"];
+    if (!dueDate) return false;
+    const date = new Date(dueDate);
+    date.setHours(0, 0, 0, 0);
+    return date < today;
+  });
+  
+  const dueDatesUpcoming = activeCards.filter(r => {
+    const dueDate = r["Due Date"];
+    if (!dueDate) return false;
+    const date = new Date(dueDate);
+    const weekEnd = new Date(today);
+    weekEnd.setDate(today.getDate() + 7);
+    return date >= today && date <= weekEnd;
+  });
+  
+  // === PERFORMANCE METRIKEN ===
+  // Team Workload
+  const teamWorkload = {};
+  activeCards.forEach(card => {
+    const person = String(card["Verantwortlich"] || "Unbekannt").trim();
+    teamWorkload[person] = (teamWorkload[person] || 0) + 1;
+  });
+  
+  const avgCardsPerPerson = Object.keys(teamWorkload).length > 0 
+    ? Math.round(totalCards / Object.keys(teamWorkload).length * 10) / 10 
+    : 0;
+  
+  // Checklisten-Fortschritt
+  const cardsWithChecklists = activeCards.filter(card => {
+    const stage = inferStage(card);
+    const checklist = card.ChecklistDone && card.ChecklistDone[stage];
+    return checklist && Object.keys(checklist).length > 0;
+  }).length;
+  
+  const checklistProgress = totalCards > 0 ? Math.round((cardsWithChecklists / totalCards) * 100) : 0;
+  
+  // TR-Abdeckung
+  const cardsWithTR = activeCards.filter(r => r["TR_Neu"] || r["TR_Datum"]).length;
+  const trCoverage = totalCards > 0 ? Math.round((cardsWithTR / totalCards) * 100) : 0;
+  
+  // Due Dates gesetzt
+  const dueDatesSet = activeCards.filter(r => r["Due Date"]).length;
+  
+  return {
+    // Grundzahlen
+    totalCards,
+    ampelGreen,
+    ampelYellow,
+    ampelRed,
+    
+    // Spalten
+    columnDistribution,
+    
+    // Eskalationen
+    lkEscalations,
+    skEscalations,
+    
+    // TR-Termine
+    trOverdue,
+    trToday,
+    trThisWeek,
+    cardsWithTR,
+    trCoverage,
+    
+    // Due Dates
+    dueDatesOverdue,
+    dueDatesUpcoming,
+    dueDatesSet,
+    
+    // Performance
+    teamWorkload,
+    avgCardsPerPerson,
+    cardsWithChecklists,
+    checklistProgress
   };
+};
 
-  useEffect(() => {
-    if (open && cards) {
-      const calculatedKPIs = calculateBoardKPIs(cards);
-      setKpis(calculatedKPIs);
-    }
-  }, [open, cards]);
 
+// KPI-POPUP KOMPONENTE
+// 2. ERWEITERTE TRKPIPOPUP KOMPONENTE (ersetze deine bestehende)
+const TRKPIPopup = ({ open, onClose, cards }) => {
+  const [activeTab, setActiveTab] = useState(0);
+  const kpis = calculateKPIs();
+  
   return (
     <Dialog 
       open={open} 
-      onClose={onClose}
-      maxWidth="md"
+      onClose={onClose} 
+      maxWidth="lg" 
       fullWidth
       PaperProps={{
-        sx: { borderRadius: 2, maxHeight: '80vh' }
+        sx: { 
+          minHeight: '80vh',
+          maxHeight: '90vh'
+        }
       }}
     >
       <DialogTitle sx={{ 
         display: 'flex', 
-        alignItems: 'center', 
-        gap: 1,
+        justifyContent: 'space-between', 
+        alignItems: 'center',
         backgroundColor: 'primary.main',
         color: 'white'
       }}>
-        <Assessment />
-        TR-Termine KPIs - Aktuelles Board
-        <Box sx={{ flexGrow: 1 }} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Assessment />
+          <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+            Projekt-KPIs & Analytics
+          </Typography>
+        </Box>
         <IconButton onClick={onClose} sx={{ color: 'white' }}>
           <Close />
         </IconButton>
       </DialogTitle>
 
       <DialogContent sx={{ p: 0 }}>
-        {kpis && (
+        {/* Tab Navigation */}
+        <Tabs 
+          value={activeTab} 
+          onChange={(e, newValue) => setActiveTab(newValue)}
+          sx={{ borderBottom: 1, borderColor: 'divider', backgroundColor: 'grey.50' }}
+        >
+          <Tab label="Ãœbersicht" />
+          <Tab label="Termine & Risiken" />
+          <Tab label="Performance" />
+        </Tabs>
+
+        {/* TAB 0: ÃœBERSICHT */}
+        {activeTab === 0 && (
           <Box sx={{ p: 3 }}>
-            {/* Haupt-KPIs */}
+            {/* Haupt-KPIs Grid */}
             <Grid container spacing={2} sx={{ mb: 3 }}>
               <Grid item xs={6} sm={3}>
                 <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'primary.light', color: 'white' }}>
@@ -985,151 +1035,319 @@ const TRKPIPopup = ({ open, onClose, cards }: { open: boolean, onClose: () => vo
               </Grid>
 
               <Grid item xs={6} sm={3}>
-                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'error.main', color: 'white' }}>
+                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'success.main', color: 'white' }}>
                   <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
-                    {kpis.trOverdue}
+                    {kpis.ampelGreen}
                   </Typography>
-                  <Typography variant="caption">Überfällig</Typography>
+                  <Typography variant="caption">GrÃ¼n</Typography>
                 </Card>
               </Grid>
 
               <Grid item xs={6} sm={3}>
                 <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'warning.main', color: 'white' }}>
                   <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
-                    {kpis.trToday}
+                    {kpis.ampelYellow}
                   </Typography>
-                  <Typography variant="caption">Heute fällig</Typography>
+                  <Typography variant="caption">Gelb</Typography>
                 </Card>
               </Grid>
 
               <Grid item xs={6} sm={3}>
-                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'info.main', color: 'white' }}>
+                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'error.main', color: 'white' }}>
                   <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
-                    {kpis.trThisWeek}
+                    {kpis.ampelRed}
                   </Typography>
-                  <Typography variant="caption">Diese Woche</Typography>
+                  <Typography variant="caption">Rot</Typography>
                 </Card>
               </Grid>
             </Grid>
 
-            {/* Detaillierte Listen */}
-            <Box sx={{ maxHeight: '300px', overflow: 'auto' }}>
-              {/* Überfällige TRs */}
-              {kpis.trOverdue > 0 && (
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="h6" sx={{ mb: 1, color: 'error.main' }}>
-                    🚨 Überfällige TRs ({kpis.trOverdue})
-                  </Typography>
-                  <List dense>
-                    {kpis.overdueList.map((card: any, idx: number) => (
-                      <ListItem key={idx} sx={{ 
-                        backgroundColor: 'error.light', 
-                        borderRadius: 1, 
-                        mb: 1,
-                        color: 'error.contrastText'
-                      }}>
-                        <ListItemText
-                          primary={`${card.nummer} - ${card.teil}`}
-                          secondary={
-                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 0.5 }}>
-                              <Chip 
-                                label={`${card.daysOverdue} Tage überfällig`}
-                                size="small"
-                                color="error"
-                                variant="outlined"
-                              />
-                              <Typography variant="caption">
-                                TR: {card.trDatum.toLocaleDateString('de-DE')}
-                              </Typography>
-                              <Typography variant="caption">
-                                {card.stage}
-                              </Typography>
-                              {card.verantwortlich && (
-                                <Typography variant="caption">
-                                  ({card.verantwortlich})
-                                </Typography>
-                              )}
-                            </Box>
-                          }
+            <Grid container spacing={3}>
+              {/* Spalten-Verteilung */}
+              <Grid item xs={12} md={6}>
+                <Card sx={{ p: 2, height: '100%' }}>
+                  <Typography variant="h6" sx={{ mb: 2 }}>Spalten-Verteilung</Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {Object.entries(kpis.columnDistribution).map(([column, count]) => (
+                      <Box key={column} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2">{column}:</Typography>
+                        <Chip 
+                          label={count} 
+                          color={count > 0 ? "primary" : "default"} 
+                          size="small"
                         />
-                      </ListItem>
+                      </Box>
                     ))}
-                  </List>
-                </Box>
-              )}
+                  </Box>
+                </Card>
+              </Grid>
 
-              {/* Heute fällige TRs */}
-              {kpis.trToday > 0 && (
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="h6" sx={{ mb: 1, color: 'warning.main' }}>
-                    ⏰ Heute fällig ({kpis.trToday})
+              {/* Eskalationen */}
+              <Grid item xs={12} md={6}>
+                <Card sx={{ p: 2, height: '100%' }}>
+                  <Typography variant="h6" sx={{ mb: 2 }}>Eskalationen</Typography>
+                  
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'error.main', fontWeight: 'bold' }}>
+                      LK-Eskalationen ({kpis.lkEscalations.length})
+                    </Typography>
+                    {kpis.lkEscalations.length > 0 ? (
+                      <Box sx={{ mt: 1, maxHeight: '100px', overflow: 'auto' }}>
+                        {kpis.lkEscalations.map((card, idx) => (
+                          <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'error.main' }}>
+                           {card["Nummer"]} - {card["Teil"]}
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">Keine LK-Eskalationen</Typography>
+                    )}
+                  </Box>
+
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ color: 'warning.main', fontWeight: 'bold' }}>
+                      SK-Eskalationen ({kpis.skEscalations.length})
+                    </Typography>
+                    {kpis.skEscalations.length > 0 ? (
+                      <Box sx={{ mt: 1, maxHeight: '100px', overflow: 'auto' }}>
+                        {kpis.skEscalations.map((card, idx) => (
+                          <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'warning.main' }}>
+                            {card["Nummer"]} - {card["Teil"]}
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">Keine SK-Eskalationen</Typography>
+                    )}
+                  </Box>
+                </Card>
+              </Grid>
+            </Grid>
+          </Box>
+        )}
+
+        {/* TAB 1: TERMINE & RISIKEN */}
+        {activeTab === 1 && (
+          <Box sx={{ p: 3 }}>
+            <Grid container spacing={3}>
+              {/* TR-Termine */}
+              <Grid item xs={12} md={6}>
+                <Card sx={{ p: 2, height: '100%' }}>
+                  <Typography variant="h6" sx={{ mb: 2 }}>TR-Termine</Typography>
+                  
+                  {/* Überfällige TR */}
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'error.main', fontWeight: 'bold' }}>
+                      Überfällig ({kpis.trOverdue.length})
+                    </Typography>
+                    {kpis.trOverdue.length > 0 ? (
+                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
+                        {kpis.trOverdue.map((card, idx) => {
+                          const trDate = card["TR_Neu"] || card["TR_Datum"];
+                          return (
+                            <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'error.main' }}>
+                              {card["Nummer"]} - TR: {new Date(trDate).toLocaleDateString('de-DE')}
+                            </Typography>
+                          );
+                        })}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="success.main">Keine Überfälligen TR-Termine</Typography>
+                    )}
+                  </Box>
+
+                  {/* Heutefällige TR */}
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'warning.main', fontWeight: 'bold' }}>
+                      Heutefällig ({kpis.trToday.length})
+                    </Typography>
+                    {kpis.trToday.length > 0 ? (
+                      <Box sx={{ mt: 1 }}>
+                        {kpis.trToday.map((card, idx) => (
+                          <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'warning.main' }}>
+                            {card["Nummer"]} - {card["Teil"]}
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">Keine TR-Termine heute</Typography>
+                    )}
+                  </Box>
+
+                  {/* Diese Wochefällige TR */}
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ color: 'info.main', fontWeight: 'bold' }}>
+                      Diese Woche ({kpis.trThisWeek.length})
+                    </Typography>
+                    {kpis.trThisWeek.length > 0 ? (
+                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
+                        {kpis.trThisWeek.map((card, idx) => {
+                          const trDate = card["TR_Neu"] || card["TR_Datum"];
+                          return (
+                            <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'info.main' }}>
+                              {card["Nummer"]} - TR: {new Date(trDate).toLocaleDateString('de-DE')}
+                            </Typography>
+                          );
+                        })}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">Keine TR-Termine diese Woche</Typography>
+                    )}
+                  </Box>
+                </Card>
+              </Grid>
+
+              {/* Due Dates */}
+              <Grid item xs={12} md={6}>
+                <Card sx={{ p: 2, height: '100%' }}>
+                  <Typography variant="h6" sx={{ mb: 2 }}>Due Dates</Typography>
+                  
+                  {/* Überfällige Due Dates */}
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'error.main', fontWeight: 'bold' }}>
+                      Überfällig ({kpis.dueDatesOverdue.length})
+                    </Typography>
+                    {kpis.dueDatesOverdue.length > 0 ? (
+                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
+                        {kpis.dueDatesOverdue.map((card, idx) => (
+                          <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'error.main' }}>
+                            {card["Nummer"]} - Due: {new Date(card["Due Date"]).toLocaleDateString('de-DE')}
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="success.main">Keine Überfälligen Due Dates</Typography>
+                    )}
+                  </Box>
+
+                  {/* Kommende Due Dates */}
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ color: 'warning.main', fontWeight: 'bold' }}>
+                      Kommende Woche ({kpis.dueDatesUpcoming.length})
+                    </Typography>
+                    {kpis.dueDatesUpcoming.length > 0 ? (
+                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
+                        {kpis.dueDatesUpcoming.map((card, idx) => (
+                          <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'warning.main' }}>
+                             {card["Nummer"]} - Due: {new Date(card["Due Date"]).toLocaleDateString('de-DE')}
+                          </Typography>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">Keine Due Dates diese Woche</Typography>
+                    )}
+                  </Box>
+                </Card>
+              </Grid>
+            </Grid>
+          </Box>
+        )}
+
+        {/* TAB 2: PERFORMANCE */}
+        {activeTab === 2 && (
+          <Box sx={{ p: 3 }}>
+            <Grid container spacing={3}>
+              {/* Team Workload */}
+              <Grid item xs={12} md={6}>
+                <Card sx={{ p: 2, height: '100%' }}>
+                  <Typography variant="h6" sx={{ mb: 2 }}>Team Workload</Typography>
+                  <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                    Durchschnitt: {kpis.avgCardsPerPerson} Karten/Person
                   </Typography>
-                  <List dense>
-                    {kpis.todayList.map((card: any, idx: number) => (
-                      <ListItem key={idx} sx={{ 
-                        backgroundColor: 'warning.light', 
-                        borderRadius: 1, 
-                        mb: 1 
-                      }}>
-                        <ListItemText
-                          primary={`${card.nummer} - ${card.teil}`}
-                          secondary={`${card.stage} • ${card.verantwortlich || 'Nicht zugewiesen'}`}
+                  
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {Object.entries(kpis.teamWorkload)
+                      .sort(([,a], [,b]) => b - a)
+                      .map(([person, count]) => (
+                      <Box key={person} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2">{person}:</Typography>
+                        <Chip 
+                          label={count} 
+                          color={count > kpis.avgCardsPerPerson * 1.5 ? "error" : count > kpis.avgCardsPerPerson ? "warning" : "success"} 
+                          size="small"
                         />
-                      </ListItem>
+                      </Box>
                     ))}
-                  </List>
-                </Box>
-              )}
+                  </Box>
+                </Card>
+              </Grid>
 
-              {/* Diese Woche fällige TRs */}
-              {kpis.trThisWeek > 0 && (
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="h6" sx={{ mb: 1, color: 'info.main' }}>
-                    📅 Diese Woche fällig ({kpis.trThisWeek})
-                  </Typography>
-                  <List dense>
-                    {kpis.weekList.map((card: any, idx: number) => (
-                      <ListItem key={idx} sx={{ 
-                        backgroundColor: 'info.light', 
-                        borderRadius: 1, 
-                        mb: 1 
-                      }}>
-                        <ListItemText
-                          primary={`${card.nummer} - ${card.teil}`}
-                          secondary={
-                            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                              <Chip 
-                                label={`in ${card.daysUntil} Tagen`}
-                                size="small"
-                                color="info"
-                              />
-                              <Typography variant="caption">
-                                {card.trDatum.toLocaleDateString('de-DE')}
-                              </Typography>
-                              <Typography variant="caption">
-                                {card.stage}
-                              </Typography>
-                            </Box>
-                          }
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                </Box>
-              )}
+              {/* Performance Metriken */}
+              <Grid item xs={12} md={6}>
+                <Card sx={{ p: 2, height: '100%' }}>
+                  <Typography variant="h6" sx={{ mb: 2 }}>Performance Metriken</Typography>
+                  
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2">Checklisten-Fortschritt:</Typography>
+                      <Chip 
+                        label={`${kpis.checklistProgress}%`} 
+                        color={kpis.checklistProgress >= 70 ? "success" : kpis.checklistProgress >= 50 ? "warning" : "error"} 
+                        size="small"
+                      />
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2">TR-Abdeckung:</Typography>
+                      <Chip 
+                        label={`${kpis.trCoverage}%`} 
+                        color={kpis.trCoverage >= 80 ? "success" : kpis.trCoverage >= 60 ? "warning" : "error"} 
+                        size="small"
+                      />
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2">Karten mit TR-Terminen:</Typography>
+                      <Chip 
+                        label={`${kpis.cardsWithTR}/${kpis.totalCards}`} 
+                        color="info" 
+                        size="small"
+                      />
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2">Karten mit Checklisten:</Typography>
+                      <Chip 
+                        label={`${kpis.cardsWithChecklists}/${kpis.totalCards}`} 
+                        color="success" 
+                        size="small"
+                      />
+                    </Box>
+                    
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography variant="body2">Due Dates gesetzt:</Typography>
+                      <Chip 
+                        label={`${kpis.dueDatesSet}/${kpis.totalCards}`} 
+                        color="secondary" 
+                        size="small"
+                      />
+                    </Box>
 
-              {/* Keine kritischen TRs */}
-              {kpis.trOverdue === 0 && kpis.trToday === 0 && kpis.trThisWeek === 0 && (
-                <Box sx={{ textAlign: 'center', py: 4 }}>
-                  <Typography variant="h6" color="success.main">
-                    ✅ Alle TRs sind im grünen Bereich!
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Keine überfälligen oder kritischen TRs gefunden.
-                  </Typography>
-                </Box>
-              )}
-            </Box>
+                    {/* Performance Bewertung */}
+                    <Box sx={{ mt: 2, p: 2, backgroundColor: 'grey.100', borderRadius: 1 }}>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Performance Bewertung:</Typography>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        {kpis.trCoverage >= 80 && (
+                          <Chip label="Gute TR-Abdeckung" size="small" color="success" />
+                        )}
+                        {kpis.checklistProgress >= 70 && (
+                          <Chip label="Guter Checklisten-Fortschritt" size="small" color="success" />
+                        )}
+                        {kpis.avgCardsPerPerson <= 10 && (
+                          <Chip label="Ausgewogene Workload" size="small" color="success" />
+                        )}
+                        {kpis.trCoverage < 50 && (
+                          <Chip label="Niedrige TR-Abdeckung" size="small" color="warning" />
+                        )}
+                        {kpis.avgCardsPerPerson > 15 && (
+                          <Chip label="Hohe Workload" size="small" color="warning" />
+                        )}
+                      </Box>
+                    </Box>
+                  </Box>
+                </Card>
+              </Grid>
+            </Grid>
           </Box>
         )}
       </DialogContent>
@@ -1145,7 +1363,6 @@ const TRKPIPopup = ({ open, onClose, cards }: { open: boolean, onClose: () => vo
     </Dialog>
   );
 };
-
   
   const getEscalationClass = (escalation: string) => {
     if (escalation === 'LK') return 'esk-lk';
@@ -3625,12 +3842,12 @@ return (
         {renderNewCardModal()}
         {renderArchiveModal()}
 
-      {/* SCHRITT 4: TRKPIPopup hinzufügen */}
-      <TRKPIPopup 
-        open={kpiPopupOpen} 
-        onClose={() => setKpiPopupOpen(false)} 
-        cards={rows} 
-      />  
-      </Box>
-    );
+{/* SCHRITT 4: TRKPIPopup hinzufügen */}
+    <TRKPIPopup 
+      open={kpiPopupOpen} 
+      onClose={() => setKpiPopupOpen(false)} 
+      cards={rows} 
+    />  
+    </Box>
+  );
 };
