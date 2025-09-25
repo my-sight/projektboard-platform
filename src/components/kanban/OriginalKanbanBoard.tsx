@@ -12,7 +12,6 @@ import {
   FormControl,
   InputLabel,
   Chip,
-  Alert,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -28,8 +27,6 @@ import {
   Tab,
   List,
   ListItem,
-  ListItemText,
-  Divider,
   Badge, 
   Grid, 
   Card,
@@ -504,6 +501,8 @@ const saveCards = async () => {
         card_data: card,
         stage: stage,
         position: position,
+        project_number: card.Nummer || card["Nummer"] || null,
+        project_name: card.Teil,
         updated_at: new Date().toISOString()
       };
       
@@ -800,25 +799,6 @@ useEffect(() => {
           }
         ]
       },
-      {
-        "Nummer": "B-24-001",
-        "Teil": "Deckel",
-        "Board Stage": "Musterung",
-        "Status Kurz": "Muster werden geprüft",
-        "Verantwortlich": "Tom Schmidt",
-        "Due Date": "2024-02-01",
-        "Ampel": "gelb",
-        "Swimlane": "Projekt B",
-        "UID": "uid3",
-
-        "ChecklistDone": {
-        "Werkzeug beim Werkzeugmacher": {
-        "Werkzeug-Zeichnung prüfen": true,
-        "Material bestellt": false, 
-        "Bearbeitung gestartet": false
-      }
-        }
-      }
     ];
     setRows(testCards);
   };
@@ -838,7 +818,6 @@ useEffect(() => {
 
   const getPriorityColor = (ampel: string) => {
     if (ampel?.toLowerCase().startsWith('rot')) return '#ff5a5a';
-    if (ampel?.toLowerCase().startsWith('gelb')) return '#ffa500';
     return '#14c38e';
   };
 
@@ -847,8 +826,7 @@ const calculateKPIs = () => {
   
   // === GRUNDLEGENDE ZAHLEN ===
   const totalCards = activeCards.length;
-  const ampelGreen = activeCards.filter(r => String(r["Ampel"] || "").toLowerCase().includes("grün") || String(r["Ampel"] || "").toLowerCase().includes("green")).length;
-  const ampelYellow = activeCards.filter(r => String(r["Ampel"] || "").toLowerCase().includes("gelb") || String(r["Ampel"] || "").toLowerCase().includes("yellow")).length;
+  const ampelGreen = activeCards.filter(r => String(r["Ampel"] || "").toLowerCase().includes("grÃ¼n") || String(r["Ampel"] || "").toLowerCase().includes("green")).length;
   const ampelRed = activeCards.filter(r => String(r["Ampel"] || "").toLowerCase().includes("rot") || String(r["Ampel"] || "").toLowerCase().includes("red")).length;
   
   // === SPALTEN-VERTEILUNG ===
@@ -861,13 +839,19 @@ const calculateKPIs = () => {
   const lkEscalations = activeCards.filter(r => String(r["Eskalation"] || "").toUpperCase() === "LK");
   const skEscalations = activeCards.filter(r => String(r["Eskalation"] || "").toUpperCase() === "SK");
   
-  // === TR-TERMINE ===
+  // === TR-TERMINE (ERWEITERT MIT ABGESCHLOSSEN-STATUS) ===
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
   const trOverdue = activeCards.filter(r => {
     const trDate = r["TR_Neu"] || r["TR_Datum"];
     if (!trDate) return false;
+    
+    // âœ… NEUE LOGIK: Nicht als Ã¼berfÃ¤llig anzeigen wenn TR abgeschlossen ist
+    if (String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true) {
+      return false;
+    }
+    
     const date = new Date(trDate);
     date.setHours(0, 0, 0, 0);
     return date < today;
@@ -876,6 +860,12 @@ const calculateKPIs = () => {
   const trToday = activeCards.filter(r => {
     const trDate = r["TR_Neu"] || r["TR_Datum"];
     if (!trDate) return false;
+    
+    // Auch heute fÃ¤llige nicht anzeigen wenn abgeschlossen
+    if (String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true) {
+      return false;
+    }
+    
     const date = new Date(trDate);
     date.setHours(0, 0, 0, 0);
     return date.getTime() === today.getTime();
@@ -884,10 +874,23 @@ const calculateKPIs = () => {
   const trThisWeek = activeCards.filter(r => {
     const trDate = r["TR_Neu"] || r["TR_Datum"];
     if (!trDate) return false;
+    
+    // Diese Woche fÃ¤llige nicht anzeigen wenn abgeschlossen
+    if (String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true) {
+      return false;
+    }
+    
     const date = new Date(trDate);
     const weekEnd = new Date(today);
     weekEnd.setDate(today.getDate() + 7);
     return date >= today && date <= weekEnd;
+  });
+  
+  // âœ… NEUE METRIK: Abgeschlossene TRs
+  const trCompleted = activeCards.filter(r => {
+    const hasDate = r["TR_Neu"] || r["TR_Datum"];
+    const isCompleted = String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true;
+    return hasDate && isCompleted;
   });
   
   // === DUE DATES ===
@@ -940,7 +943,6 @@ const calculateKPIs = () => {
     // Grundzahlen
     totalCards,
     ampelGreen,
-    ampelYellow,
     ampelRed,
     
     // Spalten
@@ -954,6 +956,7 @@ const calculateKPIs = () => {
     trOverdue,
     trToday,
     trThisWeek,
+    trCompleted, // âœ… NEU!
     cardsWithTR,
     trCoverage,
     
@@ -969,7 +972,6 @@ const calculateKPIs = () => {
     checklistProgress
   };
 };
-
 
 // KPI-POPUP KOMPONENTE
 // 2. ERWEITERTE TRKPIPOPUP KOMPONENTE (ersetze deine bestehende)
@@ -1040,15 +1042,6 @@ const TRKPIPopup = ({ open, onClose, cards }) => {
                     {kpis.ampelGreen}
                   </Typography>
                   <Typography variant="caption">GrÃ¼n</Typography>
-                </Card>
-              </Grid>
-
-              <Grid item xs={6} sm={3}>
-                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'warning.main', color: 'white' }}>
-                  <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
-                    {kpis.ampelYellow}
-                  </Typography>
-                  <Typography variant="caption">Gelb</Typography>
                 </Card>
               </Grid>
 
@@ -1710,7 +1703,7 @@ const updateCard = (updates: any) => {
                   >
                     {card["Nummer"]}
                   </Typography>
-                </Box>
+                  </Box>
 
                 {/* Controls */}
                 <Box className="controls" sx={{ display: 'flex', gap: 0.5 }}>
@@ -1917,6 +1910,7 @@ const updateCard = (updates: any) => {
                   >
                     {String(card["Due Date"]).slice(0, 10)}
                   </Typography>
+                  
                 )}
               </Box>
 
@@ -1970,8 +1964,19 @@ const updateCard = (updates: any) => {
   </Box>
 )}
 
-
-
+  {/* MINI-HAKEN WENN TR ERLEDIGT */}
+                {(card["TR_Neu"] || card["TR_Datum"]) && card["TR_Completed"] === true && (
+                  <Typography 
+                    variant="caption" 
+                    sx={{ 
+                      color: 'success.main', 
+                      fontWeight: 'bold',
+                      fontSize: '1rem'
+                    }}
+                  >
+                    âœ“
+                  </Typography>
+                )}
 
 
               {/* GROSS: Team-Mitglieder */}
@@ -2608,6 +2613,47 @@ const renderEditModal = () => {
       />
     </Box>
     
+  {/* TR-DATUM FELD (falls noch nicht vorhanden) */}
+              <TextField
+                label="TR-Datum"
+                type="date"
+                value={(selectedCard && (selectedCard["TR_Neu"] || selectedCard["TR_Datum"])) || ""}
+                onChange={(e) => {
+                  if (selectedCard) {
+                    const newCard = { ...selectedCard };
+                    newCard["TR_Neu"] = e.target.value;
+                    setSelectedCard(newCard);
+                  }
+                }}
+                InputLabelProps={{ shrink: true }}
+                sx={{ mb: 2 }}
+              />
+
+              {/* TR-CHECKBOX ZUM ABHAKEN */}
+              {selectedCard && (selectedCard["TR_Neu"] || selectedCard["TR_Datum"]) && (
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={selectedCard && selectedCard["TR_Completed"] === true}
+                      onChange={(e) => {
+                        if (selectedCard) {
+                          const newCard = { ...selectedCard };
+                          newCard["TR_Completed"] = e.target.checked;
+                          setSelectedCard(newCard);
+                        }
+                      }}
+                      sx={{
+                        color: 'success.main',
+                        '&.Mui-checked': {
+                          color: 'success.main',
+                        }
+                      }}
+                    />
+                  }
+                  label="TR abgeschlossen"
+                  sx={{ mt: 1, mb: 2 }}
+                />
+              )}
 
 {/* TR-DATEN ANZEIGE IM POPUP - OHNE DUPLIKATE (VERBESSERT) */}
 {(selectedCard["TR_Datum"] || selectedCard["TR_Neu"] || (selectedCard["TR_History"] && selectedCard["TR_History"].length > 0)) && (
@@ -3465,22 +3511,6 @@ return (
         </Box>
       </Box>
 
-{/* Einstellungen Button */}
-          <Button 
-            variant="outlined" 
-            size="small"
-            onClick={() => setSettingsOpen(true)}
-            sx={{ 
-              borderColor: 'var(--line)',
-              color: 'var(--muted)',
-              '&:hover': { 
-                borderColor: 'var(--ink)',
-                backgroundColor: 'rgba(0,0,0,0.04)' 
-              }
-            }}
-          >
-            ⚙️ Einstellungen
-          </Button>
           
           {/* KPI-BUTTON MIT BADGE */}
           <Badge 
