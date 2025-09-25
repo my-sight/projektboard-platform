@@ -1979,59 +1979,61 @@ const updateCard = (updates: any) => {
                 )}
 
 
-              {/* GROSS: Team-Mitglieder */}
-              {currentSize === 'large' && card["Team"] && Array.isArray(card["Team"]) && card["Team"].length > 0 && (
-                <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid var(--line)' }}>
-                  <Typography variant="caption" sx={{ 
-                    fontSize: '10px', 
-                    color: 'var(--muted)',
-                    fontWeight: 600,
-                    display: 'block',
-                    mb: 0.5
-                  }}>
-                    Team ({card["Team"].length}):
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {card["Team"].slice(0, 3).map((member: any, idx: number) => (
-                      <Chip 
-                        key={idx}
-                        label={`${member.name}${member.role ? ` (${member.role})` : ''}`}
-                        size="small"
-                        sx={{ 
-                          fontSize: '9px',
-                          height: 16,
-                          backgroundColor: 'var(--chip)',
-                          color: 'var(--muted)'
-                        }}
-                      />
-                    ))}
-                    {card["Team"].length > 3 && (
-                      <Typography variant="caption" sx={{ 
-                        fontSize: '9px', 
-                        color: 'var(--muted)',
-                        alignSelf: 'center'
-                      }}>
-                        +{card["Team"].length - 3} weitere
-                      </Typography>
-                    )}
-                  </Box>
-                </Box>
-              )}
+{/* TEAM-MITGLIEDER - FARBIGE BADGES NACH ROLLE */}
+{currentSize === 'large' && card["Team"] && Array.isArray(card["Team"]) && card["Team"].length > 0 && (
+  <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid var(--line)' }}>
+    <Typography variant="caption" sx={{ 
+      fontSize: '10px', 
+      color: 'var(--muted)',
+      fontWeight: 600,
+      display: 'block',
+      mb: 0.5
+    }}>
+      Team ({card["Team"].filter((m: any) => m.userId || m.name).length}):
+    </Typography>
+    
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+      {card["Team"]
+        .filter((member: any) => member.userId || member.name)
+        .map((member: any, idx: number) => {
+          // Farbe basierend auf Rolle
+          const getRoleColor = (role: string) => {
+            const roleColors = {
+              'entwickler': '#2196f3',
+              'designer': '#9c27b0', 
+              'manager': '#ff9800',
+              'tester': '#4caf50'
+            };
+            const roleKey = (role || '').toLowerCase();
+            return roleColors[roleKey] || '#757575';
+          };
+          
+          const roleColor = getRoleColor(member.role);
+          
+          return (
+            <Chip 
+              key={idx}
+              label={`${member.name}${member.role ? ` (${member.role})` : ''}`}
+              size="small"
+              sx={{ 
+                fontSize: '8px',
+                height: 18,
+                backgroundColor: roleColor + '20',
+                color: roleColor,
+                border: `1px solid ${roleColor}`,
+                '& .MuiChip-label': {
+                  px: 1,
+                  py: 0,
+                  fontWeight: 500
+                }
+              }}
+            />
+          );
+        })}
+    </Box>
+  </Box>
+)}
 
-              {/* GROSS: Swimlane */}
-              {currentSize === 'large' && card["Swimlane"] && (
-                <Chip 
-                  label={card["Swimlane"]}
-                  size="small"
-                  sx={{ 
-                    fontSize: '11px',
-                    height: 20,
-                    mt: 0.5,
-                    backgroundColor: 'var(--chip)',
-                    color: 'var(--muted)'
-                  }}
-                />
-              )}
             </>
           )}
         </Box>
@@ -2902,65 +2904,136 @@ const renderEditModal = () => {
               Team-Mitglieder
             </Typography>
 
-            {/* Team-Mitglieder Liste */}
-            <Box sx={{ mb: 3 }}>
-              {(selectedCard.Team || []).map((member: any, idx: number) => (
-                <Box key={idx} sx={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: '1fr 1fr auto', 
-                  gap: 2, 
-                  alignItems: 'center',
-                  mb: 2,
-                  p: 2,
-                  border: 1,
-                  borderColor: 'divider',
-                  borderRadius: 1
+        {/* Team-Mitglieder Liste - KOMPAKT UND SCHÖN */}
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
+            Team-Mitglieder
+          </Typography>
+          
+          {(selectedCard.Team || []).map((member: any, idx: number) => (
+            <Box key={idx} sx={{ 
+              display: 'flex', 
+              alignItems: 'center',
+              gap: 2, 
+              mb: 1.5,
+              p: 1.5,
+              border: 1,
+              borderColor: 'divider',
+              borderRadius: 1,
+              backgroundColor: 'background.paper'
+            }}>
+              
+              {/* BENUTZER AUSWAHL */}
+              <FormControl size="small" sx={{ minWidth: 200, flex: 1 }}>
+                <InputLabel>Team-Mitglied</InputLabel>
+                <Select
+                  value={member.userId || ""}
+                  onChange={(e) => {
+                    const selectedUser = users.find(u => u.id === e.target.value);
+                    
+                    if (selectedUser) {
+                      selectedCard.Team[idx] = {
+                        ...selectedCard.Team[idx],
+                        userId: selectedUser.id,
+                        name: selectedUser.name,
+                        email: selectedUser.email
+                      };
+                    } else {
+                      selectedCard.Team[idx] = {
+                        ...selectedCard.Team[idx],
+                        userId: "",
+                        name: "",
+                        email: ""
+                      };
+                    }
+                    setRows([...rows]);
+                  }}
+                >
+                  <MenuItem value="">
+                    <em>Kein Benutzer ausgewählt</em>
+                  </MenuItem>
+                  {users.map(user => (
+                    <MenuItem key={user.id} value={user.id}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box sx={{
+                          width: 8, height: 8, borderRadius: '50%',
+                          backgroundColor: user.isActive === false ? '#ff9800' : '#14c38e'
+                        }} />
+                        <Box>
+                          <Typography variant="body2">{user.name}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {user.email}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              
+              {/* EMAIL ANZEIGE - NUR WENN AUSGEWÄHLT */}
+              {member.email && (
+                <Typography variant="caption" sx={{ 
+                  color: 'text.secondary',
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
                 }}>
-                  <TextField
-                    size="small"
-                    label="Name"
-                    value={member.name || ""}
-                    onChange={(e) => {
-                      if (!selectedCard.Team) selectedCard.Team = [];
-                      selectedCard.Team[idx].name = e.target.value;
-                      setRows([...rows]);
-                    }}
-                  />
-                  <TextField
-                    size="small"
-                    label="Rolle"
-                    value={member.role || ""}
-                    onChange={(e) => {
-                      if (!selectedCard.Team) selectedCard.Team = [];
-                      selectedCard.Team[idx].role = e.target.value;
-                      setRows([...rows]);
-                    }}
-                  />
-                  <IconButton 
-                    color="error"
-                    onClick={() => {
-                      if (!selectedCard.Team) selectedCard.Team = [];
-                      selectedCard.Team.splice(idx, 1);
-                      setRows([...rows]);
-                    }}
-                  >
-                    🗑️
-                  </IconButton>
-                </Box>
-              ))}
+                  {member.email}
+                </Typography>
+              )}
+              
+              {/* ROLLE */}
+              <TextField
+                size="small"
+                label="Rolle"
+                value={member.role || ""}
+                onChange={(e) => {
+                  selectedCard.Team[idx].role = e.target.value;
+                  setRows([...rows]);
+                }}
+                sx={{ minWidth: 120, maxWidth: 150 }}
+                placeholder="z.B. Dev, Design..."
+              />
+              
+              {/* MÜLLEIMER - GANZ RECHTS */}
+              <IconButton 
+                color="error"
+                size="small"
+                onClick={() => {
+                  selectedCard.Team.splice(idx, 1);
+                  setRows([...rows]);
+                }}
+                title="Mitglied entfernen"
+                sx={{ 
+                  flexShrink: 0,
+                  '&:hover': { backgroundColor: 'error.light', color: 'white' }
+                }}
+              >
+                🗑️
+              </IconButton>
             </Box>
+          ))}
+          
+        <Button 
+          variant="outlined" 
+          onClick={() => {
+            if (!selectedCard.Team) selectedCard.Team = [];
+            selectedCard.Team.push({ 
+              userId: '',    // ← Neue Struktur!
+              name: '', 
+              email: '', 
+              role: '' 
+            });
+            setRows([...rows]);
+          }}
+          sx={{ mt: 1 }}
+        >
+          + Team-Mitglied hinzufügen
+        </Button>
+        </Box>
 
-            {/* Neues Team-Mitglied hinzufügen */}
-            <Button 
-              variant="outlined" 
-              onClick={() => {
-                if (!selectedCard.Team) selectedCard.Team = [];
-                selectedCard.Team.push({ name: '', role: '' });
-                setRows([...rows]);
-              }}
-            >
-              + Team-Mitglied hinzufügen
-            </Button>
 
             {/* Team-Statistiken */}
             {selectedCard.Team && selectedCard.Team.length > 0 && (
