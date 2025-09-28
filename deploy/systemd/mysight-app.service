@@ -1,0 +1,16 @@
+[Unit]
+Description=mysight Next.js Anwendung
+After=network.target mariadb.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mysight/app
+ExecStart=/usr/bin/env npm run start
+Environment=NODE_ENV=production
+Restart=always
+RestartSec=10
+User=mysight
+Group=mysight
+
+[Install]
+WantedBy=multi-user.target

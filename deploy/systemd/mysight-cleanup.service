@@ -1,0 +1,14 @@
+[Unit]
+Description=mysight archivierte Tasks bereinigen
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=NODE_ENV=production
+WorkingDirectory=/opt/mysight/app
+ExecStart=/usr/bin/env npx ts-node scripts/cleanup-archived-tasks.ts
+User=mysight
+Group=mysight
+
+[Install]
+WantedBy=multi-user.target

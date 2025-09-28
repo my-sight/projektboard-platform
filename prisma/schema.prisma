@@ -1,0 +1,171 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OWNER
+  MEMBER
+}
+
+enum SubColumnName {
+  WAIT
+  USER
+  NEXT_FLOW
+  FLOW
+  DONE
+}
+
+model User {
+  id             String              @id @default(cuid())
+  email          String              @unique
+  passwordHash   String
+  role           Role                @default(MEMBER)
+  createdAt      DateTime            @default(now())
+  boards         Board[]             @relation("BoardOwner")
+  projectCards   ProjectCard[]       @relation("ProjectOwner")
+  teamMembership ProjectTeamMember[]
+  subLanes       SubLane[]
+}
+
+model Board {
+  id               String         @id @default(cuid())
+  name             String
+  ownerId          String
+  owner            User           @relation("BoardOwner", fields: [ownerId], references: [id])
+  settingsJson     Json           @default(json_object())
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  phases           BoardPhase[]
+  projectCards     ProjectCard[]
+
+  @@index([ownerId])
+}
+
+model BoardPhase {
+  id                      String       @id @default(cuid())
+  boardId                 String
+  board                   Board        @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  name                    String
+  displayOrder            Int
+  checklistTemplateJson   Json         @default(json_array())
+  projectCards            ProjectCard[]
+
+  @@index([boardId])
+  @@unique([boardId, displayOrder])
+}
+
+model ProjectCard {
+  id              String               @id @default(cuid())
+  boardId         String
+  board           Board                @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  phaseId         String
+  phase           BoardPhase           @relation(fields: [phaseId], references: [id])
+  number          String
+  title           String
+  position        Float                @default(0)
+  statusDot       String               @default("green")
+  batchSK         Boolean              @default(false)
+  batchLK         Boolean              @default(false)
+  statusShort     String               @default("")
+  phaseTargetDate DateTime?            @db.Date
+  imageUrl        String?              @db.Text
+  sop             String?              @db.Text
+  trDate          DateTime?            @db.Date
+  trPlanDates     Json                 @default(json_array())
+  trActualDate    DateTime?            @db.Date
+  projectOwnerId  String?
+  projectOwner    User?                @relation("ProjectOwner", fields: [projectOwnerId], references: [id])
+  statusEntries   ProjectStatusEntry[]
+  teamMembers     ProjectTeamMember[]
+  subBoard        SubBoard?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@unique([boardId, number])
+  @@index([phaseId])
+}
+
+model ProjectStatusEntry {
+  id            String      @id @default(cuid())
+  projectCardId String
+  projectCard   ProjectCard @relation(fields: [projectCardId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+  summary       String      @db.Text
+  quality       String
+  cost          String
+  schedule      String
+}
+
+model ProjectTeamMember {
+  id            String       @id @default(cuid())
+  projectCardId String
+  projectCard   ProjectCard  @relation(fields: [projectCardId], references: [id], onDelete: Cascade)
+  userId        String?
+  user          User?        @relation(fields: [userId], references: [id])
+  displayName   String
+  roleText      String?
+}
+
+model SubBoard {
+  id            String        @id @default(cuid())
+  projectCardId String        @unique
+  projectCard   ProjectCard   @relation(fields: [projectCardId], references: [id], onDelete: Cascade)
+  name          String
+  lanes         SubLane[]
+  columns       SubColumn[]
+  tasks         SubTaskCard[]
+}
+
+model SubLane {
+  id          String    @id @default(cuid())
+  subBoardId  String
+  subBoard    SubBoard  @relation(fields: [subBoardId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+  displayName String
+  sortOrder   Int       @default(0)
+  tasks       SubTaskCard[]
+
+  @@index([subBoardId])
+}
+
+model SubColumn {
+  id         String         @id @default(cuid())
+  subBoardId String
+  subBoard   SubBoard       @relation(fields: [subBoardId], references: [id], onDelete: Cascade)
+  name       SubColumnName
+  order      Int
+  tasks      SubTaskCard[]
+
+  @@unique([subBoardId, name])
+  @@index([subBoardId])
+}
+
+model SubTaskCard {
+  id                 String       @id @default(cuid())
+  subBoardId         String
+  subBoard           SubBoard     @relation(fields: [subBoardId], references: [id], onDelete: Cascade)
+  laneId             String
+  lane               SubLane      @relation(fields: [laneId], references: [id], onDelete: Cascade)
+  columnId           String
+  column             SubColumn    @relation(fields: [columnId], references: [id])
+  text               String
+  planDate           DateTime?    @db.Date
+  statusDot          String       @default("green")
+  projectNumberBadge String?
+  archivedAt         DateTime?
+  sortOrder          Float        @default(0)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([laneId])
+  @@index([columnId])
+  @@index([subBoardId])
+  @@index([archivedAt])
+}
