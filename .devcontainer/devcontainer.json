@@ -1,0 +1,32 @@
+{
+  "name": "mysight Codespace",
+  "dockerComposeFile": [
+    "docker-compose.yml"
+  ],
+  "service": "app",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "npm install && npx prisma generate",
+  "forwardPorts": [3000, 3306],
+  "remoteEnv": {
+    "DATABASE_URL": "mysql://mysight:mysightpass@db:3306/mysight",
+    "NEXTAUTH_URL": "https://\${CODESPACE_NAME}-3000.app.github.dev",
+    "NEXTAUTH_SECRET": "devcontainer-generated-secret",
+    "CSRF_SECRET": "devcontainer-generated-csrf",
+    "RATE_LIMIT_WINDOW_MS": "10000",
+    "RATE_LIMIT_MAX": "60"
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": true,
+        "files.autoSave": "onFocusChange"
+      },
+      "extensions": [
+        "esbenp.prettier-vscode",
+        "Prisma.prisma",
+        "dbaeumer.vscode-eslint",
+        "bradlc.vscode-tailwindcss"
+      ]
+    }
+  }
+}

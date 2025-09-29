@@ -19,6 +19,21 @@ npm run dev
 
 Environment-Variablen siehe [.env.example](./.env.example).
 
+### GitHub Codespaces
+Dieses Repository enthält eine vorgefertigte Devcontainer-Konfiguration mit MariaDB-Service. So startest du eine Codespace-Sitzung:
+
+1. Repository auf GitHub öffnen und **Code → Create codespace on main** wählen.
+2. Nach dem Build führt Codespaces automatisch `npm install` und `npx prisma generate` aus (siehe `.devcontainer/devcontainer.json`).
+3. Kopiere die Beispiel-Umgebung: `cp .env.example .env.local` und passe bei Bedarf Secrets an (die Devcontainer-Defaults sind nur für Tests gedacht).
+4. Wende das Datenbankschema an und seed den Admin-Benutzer:
+   ```bash
+   npx prisma migrate dev
+   npx prisma db seed
+   ```
+5. Starte den Dev-Server: `npm run dev`. In Codespaces erreichst du die App über den weitergeleiteten Port 3000 (`https://<codespace>-3000.app.github.dev`).
+
+Die Devcontainer-Umgebung setzt `DATABASE_URL` sowie temporäre Secrets bereits auf den internen MariaDB-Container (`db`).
+
 ### Prisma
 ```bash
 npx prisma migrate dev
