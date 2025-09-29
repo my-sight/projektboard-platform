@@ -1,0 +1,10 @@
+[Unit]
+Description=Täglicher Cleanup der archivierten Tasks
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+Unit=mysight-cleanup.service
+
+[Install]
+WantedBy=timers.target

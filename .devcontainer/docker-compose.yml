@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye
+    user: "node"
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    init: true
+    environment:
+      DATABASE_URL: mysql://mysight:mysightpass@db:3306/mysight
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: devcontainer-generated-secret
+      CSRF_SECRET: devcontainer-generated-csrf
+      RATE_LIMIT_WINDOW_MS: "10000"
+      RATE_LIMIT_MAX: "60"
+    depends_on:
+      - db
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: mysight
+      MYSQL_USER: mysight
+      MYSQL_PASSWORD: mysightpass
+    ports:
+      - "3306:3306"
+    volumes:
+      - devcontainer-mysight-db:/var/lib/mysql
+volumes:
+  devcontainer-mysight-db:

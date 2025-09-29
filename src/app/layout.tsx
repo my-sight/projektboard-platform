@@ -1,33 +1,35 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v13-appRouter';
-import { ThemeRegistry } from './ThemeRegistry';
-import CssBaseline from '@mui/material/CssBaseline';
-import { AuthProvider } from '../contexts/AuthContext';  // ← KORRIGIERT!
-
-const inter = Inter({ subsets: ['latin'] });
+import type { Metadata } from "next";
+import "./globals.css";
+import { ReactNode } from "react";
+import { Toaster } from "sonner";
+import { SessionProvider } from "@/providers/session-provider";
+import { ReactQueryProvider } from "@/providers/react-query-provider";
+import { auth } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: 'Kanban Board System',
-  description: 'Modernes Kanban Board System für Projektmanagement',
+  title: "mysight Multiprojektplattform",
+  description:
+    "Produktionsreifes Multiprojekt- und Task-Management für mysight auf dem Raspberry Pi.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
+  const session = await auth();
+
   return (
-    <html lang="de">
-      <body className={inter.className}>
-        <AppRouterCacheProvider>
-          <ThemeRegistry>
-            <AuthProvider>
-              <CssBaseline />
+    <html lang="de" className="h-full">
+      <body className="min-h-full bg-slate-950 font-sans text-slate-100">
+        <SessionProvider session={session}>
+          <ReactQueryProvider>
+            <div className="flex min-h-full flex-col">
               {children}
-            </AuthProvider>
-          </ThemeRegistry>
-        </AppRouterCacheProvider>
+            </div>
+            <Toaster richColors theme="dark" position="top-right" />
+          </ReactQueryProvider>
+        </SessionProvider>
       </body>
     </html>
   );
