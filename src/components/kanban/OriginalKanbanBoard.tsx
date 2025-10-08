@@ -979,6 +979,7 @@ const TRKPIPopup = ({ open, onClose, cards }) => {
   const [activeTab, setActiveTab] = useState(0);
   const kpis = calculateKPIs();
   
+
   return (
     <Dialog 
       open={open} 
@@ -1964,20 +1965,10 @@ const updateCard = (updates: any) => {
   </Box>
 )}
 
-  {/* MINI-HAKEN WENN TR ERLEDIGT */}
-                {(card["TR_Neu"] || card["TR_Datum"]) && card["TR_Completed"] === true && (
-                  <Typography 
-                    variant="caption" 
-                    sx={{ 
-                      color: 'success.main', 
-                      fontWeight: 'bold',
-                      fontSize: '1rem'
-                    }}
-                  >
-                    âœ“
-                  </Typography>
-                )}
-
+{(card["TR_Neu"] || card["TR_Datum"]) &&
+  (String(card["TR_Completed"] || "").toLowerCase() === "true" || card["TR_Completed"] === true) && (
+    <Chip label="✓ TR erledigt" size="small" color="success" sx={{ mt: 1 }} />
+)}
 
 {/* TEAM-MITGLIEDER - FARBIGE BADGES NACH ROLLE */}
 {currentSize === 'large' && card["Team"] && Array.isArray(card["Team"]) && card["Team"].length > 0 && (
