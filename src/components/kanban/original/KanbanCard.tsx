@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { Box, Chip, IconButton, Typography } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
 
@@ -20,6 +20,14 @@ export interface KanbanCardProps {
   setEditTabValue: (value: number) => void;
   inferStage: (card: any) => string;
   idFor: (card: any) => string;
+  users: Array<{
+    id: string;
+    name?: string;
+    full_name?: string;
+    email?: string;
+    department?: string | null;
+    company?: string | null;
+  }>;
 }
 
 const statusKeys = ['message', 'qualitaet', 'kosten', 'termine'];
@@ -36,9 +44,20 @@ export function KanbanCard({
   setEditTabValue,
   inferStage,
   idFor,
+  users,
 }: KanbanCardProps) {
   const cardId = idFor(card);
   const stage = inferStage(card);
+
+  const usersById = useMemo(() => {
+    const map = new Map<string, any>();
+    users.forEach((user) => {
+      if (user && user.id) {
+        map.set(String(user.id), user);
+      }
+    });
+    return map;
+  }, [users]);
 
   const escalation = String(card.Eskalation || '').trim().toUpperCase();
   const hasLKEscalation = escalation === 'LK';
@@ -524,9 +543,23 @@ export function KanbanCard({
                           const roleKey = String(member.role || '').toLowerCase();
                           const roleColor = roleColors[roleKey] || '#757575';
 
-                          const baseName = member.name || member.email || 'Unbekannt';
-                          const department = member.department || member.company;
-                          const labelParts = [baseName];
+                          const lookupUser = member.userId
+                            ? usersById.get(String(member.userId))
+                            : undefined;
+                          const resolvedName =
+                            (lookupUser?.full_name || lookupUser?.name || '').trim() ||
+                            (member.name || '').trim();
+                          const fallbackEmail = lookupUser?.email || member.email || '';
+                          const displayName =
+                            resolvedName ||
+                            (fallbackEmail ? fallbackEmail.split('@')[0] : 'Unbekannt');
+                          const department =
+                            lookupUser?.department ||
+                            lookupUser?.company ||
+                            member.department ||
+                            member.company ||
+                            '';
+                          const labelParts = [displayName];
                           if (department) {
                             labelParts.push(`– ${department}`);
                           }

@@ -108,17 +108,10 @@ export default function HomePage() {
       }
 
       if (!boardsData) {
-        let query = supabase.from('kanban_boards').select('*');
-
-        if (user) {
-          query = query.or(
-            `visibility.eq.public,owner_id.eq.${user.id},user_id.eq.${user.id}`,
-          );
-        } else {
-          query = query.eq('visibility', 'public');
-        }
-
-        const { data, error } = await query.order('created_at', { ascending: false });
+        const { data, error } = await supabase
+          .from('kanban_boards')
+          .select('*')
+          .order('created_at', { ascending: false });
 
         if (error) throw error;
 
@@ -167,6 +160,38 @@ export default function HomePage() {
     loadProfile();
     loadBoards();
   }, [user, loadProfile, loadBoards]);
+
+  useEffect(() => {
+    const handleBoardMetaUpdated = (event: Event) => {
+      const { id, name, description } = (event as CustomEvent<{
+        id?: string;
+        name?: string | null;
+        description?: string | null;
+      }>).detail || {};
+
+      if (!id) return;
+
+      setBoards((prev) =>
+        prev.map((board) =>
+          board.id === id
+            ? {
+                ...board,
+                ...(name !== undefined ? { name: name ?? board.name } : {}),
+                ...(description !== undefined
+                  ? { description: description ?? board.description }
+                  : {}),
+              }
+            : board,
+        ),
+      );
+    };
+
+    window.addEventListener('board-meta-updated', handleBoardMetaUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener('board-meta-updated', handleBoardMetaUpdated as EventListener);
+    };
+  }, []);
 
   const createBoard = async () => {
     if (!newBoardName.trim()) return;

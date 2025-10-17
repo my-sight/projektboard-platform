@@ -154,10 +154,10 @@ export function EditCardDialog({
                   <em>Nicht zugewiesen</em>
                 </MenuItem>
                 {users.map((user: any) => (
-                  <MenuItem key={user.id || user.email} value={user.name || user.email}>
+                  <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
                     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {(user.name || user.email) ?? 'Unbekannt'}
+                        {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
                         {user.department || user.company ? ` – ${user.department || user.company}` : ''}
                       </Typography>
                       {user.email && (
@@ -552,7 +552,7 @@ export function EditCardDialog({
 
                 const formatUserLabel = (user: any) => {
                   if (!user) return 'Mitglied auswählen';
-                  const baseName = user.name || user.email || 'Unbekannt';
+                  const baseName = user.full_name || user.name || user.email || 'Unbekannt';
                   const department = user.department || user.company;
                   return department ? `${baseName} – ${department}` : baseName;
                 };
@@ -587,10 +587,12 @@ export function EditCardDialog({
                               if (userId) {
                                 const selected = userById.get(userId) || null;
                                 if (selected) {
+                                  const displayName =
+                                    selected.full_name || selected.name || selected.email || 'Unbekannt';
                                   selectedCard.Team[idx] = {
                                     ...selectedCard.Team[idx],
                                     userId,
-                                    name: selected.name || selected.email || 'Unbekannt',
+                                    name: displayName,
                                     email: selected.email || '',
                                     department: selected.department || selected.company || '',
                                   };
@@ -621,7 +623,7 @@ export function EditCardDialog({
                                 <MenuItem key={user.id} value={user.id}>
                                   <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                      {user.name || user.email || 'Unbekannt'}
+                                      {user.full_name || user.name || user.email || 'Unbekannt'}
                                     </Typography>
                                     {(user.department || user.company) && (
                                       <Typography variant="caption" color="text.secondary">
@@ -927,10 +929,10 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
                 <em>Keiner</em>
               </MenuItem>
               {availableUsers.map((user: any) => (
-                <MenuItem key={user.id || user.email} value={user.name || user.email}>
+                <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
                   <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {(user.name || user.email) ?? 'Unbekannt'}
+                      {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
                       {user.department || user.company ? ` – ${user.department || user.company}` : ''}
                     </Typography>
                     {user.email && (

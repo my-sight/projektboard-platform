@@ -96,6 +96,13 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
   const [users, setUsers] = useState<any[]>([]);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archivedCards, setArchivedCards] = useState<any[]>([]);
+  const [boardMeta, setBoardMeta] = useState<{
+    name: string;
+    description?: string | null;
+    updated_at?: string | null;
+  } | null>(null);
+  const [boardName, setBoardName] = useState('');
+  const [boardDescription, setBoardDescription] = useState('');
 
 
   // --- helper: re-index order inside each Board Stage (column) ---
@@ -173,6 +180,7 @@ const loadUsers = async () => {
         id: user.id,
         email: user.email,
         name: user.full_name || user.email?.split('@')[0] || 'Unbekannt',
+        full_name: user.full_name || '',
         department: user.company ?? null,
         company: user.company || '',
         role: user.role || 'user',
@@ -199,6 +207,7 @@ const loadUsers = async () => {
         id: user.id,
         email: user.email,
         name: user.full_name || user.email?.split('@')[0] || 'Unbekannt',
+        full_name: user.full_name || '',
         department: user.company ?? null,
         company: user.company || '',
         role: user.role || 'user',
@@ -231,6 +240,7 @@ const createFallbackUsers = () => {
       id: 'fallback-1',
       email: 'test@test.de',
       name: 'Test User',
+      full_name: 'Test User',
       department: 'Test Company',
       company: 'Test Company',
       role: 'user',
@@ -240,6 +250,7 @@ const createFallbackUsers = () => {
       id: 'fallback-2',
       email: 'michael@mysight.net',
       name: 'Michael',
+      full_name: 'Michael',
       department: 'MySight',
       company: 'MySight',
       role: 'admin',
@@ -249,6 +260,7 @@ const createFallbackUsers = () => {
       id: 'fallback-3',
       email: 'max.mustermann@firma.de',
       name: 'Max Mustermann',
+      full_name: 'Max Mustermann',
       department: 'Firma GmbH',
       company: 'Firma GmbH',
       role: 'user',
@@ -258,6 +270,7 @@ const createFallbackUsers = () => {
       id: 'fallback-4',
       email: 'anna.klein@firma.de',
       name: 'Anna Klein',
+      full_name: 'Anna Klein',
       department: 'Firma GmbH',
       company: 'Firma GmbH',
       role: 'user',
@@ -268,12 +281,43 @@ const createFallbackUsers = () => {
   console.log('✅ Fallback-Benutzer erstellt:', fallbackUsers.length);
 };
 
+const loadBoardMeta = async () => {
+  try {
+    console.log('📋 Lade Board-Metadaten...');
+    const { data, error } = await supabase
+      .from('kanban_boards')
+      .select('name, description, updated_at')
+      .eq('id', boardId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('❌ Fehler beim Laden der Board-Metadaten:', error);
+      return null;
+    }
+
+    if (data) {
+      setBoardMeta(data);
+      setBoardName(data.name || '');
+      setBoardDescription(data.description || '');
+      return data;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('❌ Unerwarteter Fehler bei Board-Metadaten:', error);
+    return null;
+  }
+};
+
 
 // ✅ WICHTIG: KORRIGIERTE INITIALISIERUNG - BENUTZER ZUERST LADEN!
 useEffect(() => {
   const initializeBoard = async () => {
     console.log('🚀 Initialisiere Kanban Board für boardId:', boardId);
-    
+
+    console.log('📋 Lade Boardinformationen...');
+    await loadBoardMeta();
+
     // 1. ZUERST Benutzer laden (WICHTIG!)
     console.log('👥 Lade Benutzer...');
     await loadUsers();
@@ -313,9 +357,9 @@ const handleLoadUsers = async () => {
     const createFallbackUsers = () => {
     console.log('🔄 Erstelle Fallback-Benutzer...');
     const fallbackUsers = [
-    { id: 'fallback-1', email: 'max.mustermann@firma.de', name: 'Max Mustermann', department: 'Fallback' },
-    { id: 'fallback-2', email: 'anna.klein@firma.de', name: 'Anna Klein', department: 'Fallback' },
-    { id: 'fallback-3', email: 'tom.schmidt@firma.de', name: 'Tom Schmidt', department: 'Fallback' }
+    { id: 'fallback-1', email: 'max.mustermann@firma.de', name: 'Max Mustermann', full_name: 'Max Mustermann', department: 'Fallback' },
+    { id: 'fallback-2', email: 'anna.klein@firma.de', name: 'Anna Klein', full_name: 'Anna Klein', department: 'Fallback' },
+    { id: 'fallback-3', email: 'tom.schmidt@firma.de', name: 'Tom Schmidt', full_name: 'Tom Schmidt', department: 'Fallback' }
   ];
   setUsers(fallbackUsers);
 };
@@ -378,10 +422,10 @@ const [editTabValue, setEditTabValue] = useState(0);
 
 // 👇 HIER HINZUFÜGEN (nach Zeile 133):
 // Einstellungen in Supabase speichern - MIT DEBUGGING
-const saveSettings = async () => {
+const saveSettings = async (options?: { skipMeta?: boolean }) => {
   try {
     console.log('🔄 Starte Speichern der Einstellungen...');
-    
+
     const settings = {
       cols,
       lanes,
@@ -393,13 +437,12 @@ const saveSettings = async () => {
 
     console.log('📦 Einstellungen zu speichern:', settings);
 
-    // Vereinfachte Version ohne user_id für Tests
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('kanban_board_settings')
       .upsert({
         board_id: boardId,
-        user_id: null, // Temporär null für Tests
-        settings: settings,
+        user_id: null,
+        settings,
         updated_at: new Date().toISOString()
       });
 
@@ -409,7 +452,85 @@ const saveSettings = async () => {
       return false;
     }
 
-    console.log('✅ Einstellungen erfolgreich gespeichert:', data);
+    if (options?.skipMeta) {
+      return true;
+    }
+
+    const trimmedName = boardName.trim();
+    const trimmedDescription = boardDescription.trim();
+
+    if (!trimmedName) {
+      alert('Board-Name darf nicht leer sein.');
+      if (boardMeta?.name) {
+        setBoardName(boardMeta.name);
+      }
+      return false;
+    }
+
+    const metaUpdates: Record<string, any> = {};
+
+    if (!boardMeta || trimmedName !== (boardMeta.name || '')) {
+      metaUpdates.name = trimmedName;
+    }
+
+    if (!boardMeta || trimmedDescription !== (boardMeta.description || '')) {
+      metaUpdates.description = trimmedDescription ? trimmedDescription : null;
+    }
+
+    if (Object.keys(metaUpdates).length) {
+      const { data: updatedBoard, error: boardError } = await supabase
+        .from('kanban_boards')
+        .update(metaUpdates)
+        .eq('id', boardId)
+        .select('name, description, updated_at')
+        .maybeSingle();
+
+      if (boardError) {
+        console.error('❌ Fehler beim Aktualisieren des Boards:', boardError);
+        alert(`Board-Update fehlgeschlagen: ${boardError.message}`);
+        return false;
+      }
+
+      if (updatedBoard) {
+        setBoardMeta(updatedBoard);
+        setBoardName(updatedBoard.name || '');
+        setBoardDescription(updatedBoard.description || '');
+
+        window.dispatchEvent(
+          new CustomEvent('board-meta-updated', {
+            detail: {
+              id: boardId,
+              name: updatedBoard.name,
+              description: updatedBoard.description,
+            },
+          }),
+        );
+      } else {
+        const fallbackMeta = {
+          name: trimmedName,
+          description: trimmedDescription ? trimmedDescription : null,
+          updated_at: boardMeta?.updated_at || null,
+        };
+        setBoardMeta(fallbackMeta);
+        setBoardName(trimmedName);
+        setBoardDescription(trimmedDescription);
+
+        window.dispatchEvent(
+          new CustomEvent('board-meta-updated', {
+            detail: {
+              id: boardId,
+              name: trimmedName,
+              description: trimmedDescription || null,
+            },
+          }),
+        );
+      }
+    } else {
+      setBoardName(trimmedName);
+      setBoardDescription(trimmedDescription);
+    }
+
+    console.log('✅ Einstellungen und Board-Metadaten gespeichert');
     return true;
   } catch (error) {
     console.error('❌ Unerwarteter Fehler:', error);
@@ -718,7 +839,9 @@ const loadCards = async () => {
 useEffect(() => {
   const initializeBoard = async () => {
     console.log('🚀 Initialisiere Kanban Board für boardId:', boardId);
-    
+
+    await loadBoardMeta();
+
     // Erst Einstellungen laden
     const settingsLoaded = await loadSettings();
     console.log('⚙️ Einstellungen geladen:', settingsLoaded);
@@ -759,11 +882,71 @@ useEffect(() => {
 useEffect(() => {
   const timeoutId = setTimeout(() => {
     console.log('⚙️ Auto-Speichere Einstellungen...');
-    saveSettings();
+    saveSettings({ skipMeta: true });
   }, 1000);
 
   return () => clearTimeout(timeoutId);
 }, [cols, lanes, checklistTemplates, viewMode, density]);
+
+useEffect(() => {
+  if (!users.length || !rows.length) return;
+
+  const userMap = new Map(
+    users
+      .filter((user: any) => user && user.id)
+      .map((user: any) => [String(user.id), user]),
+  );
+
+  let hasChanges = false;
+
+  const normalizedRows = rows.map((card: any) => {
+    if (!Array.isArray(card.Team) || card.Team.length === 0) {
+      return card;
+    }
+
+    let cardChanged = false;
+
+    const updatedTeam = card.Team.map((member: any) => {
+      if (!member || !member.userId) {
+        return member;
+      }
+
+      const lookup = userMap.get(String(member.userId));
+      if (!lookup) {
+        return member;
+      }
+
+      const resolvedName = (lookup.full_name || lookup.name || '').trim();
+      const fallbackEmail = lookup.email || member.email || '';
+      const displayName = resolvedName || (fallbackEmail ? fallbackEmail.split('@')[0] : 'Unbekannt');
+      const department = lookup.department || lookup.company || member.department || member.company || '';
+      const email = fallbackEmail;
+
+      if (member.name !== displayName || member.department !== department || member.email !== email) {
+        cardChanged = true;
+        return {
+          ...member,
+          name: displayName,
+          department,
+          email,
+        };
+      }
+
+      return member;
+    });
+
+    if (cardChanged) {
+      hasChanges = true;
+      return { ...card, Team: updatedTeam };
+    }
+
+    return card;
+  });
+
+  if (hasChanges) {
+    setRows(normalizedRows);
+  }
+}, [rows, users]);
 
 
   const loadTestData = () => {
@@ -1601,9 +1784,10 @@ const onDragEnd = (result: DropResult) => {
         setEditTabValue={setEditTabValue}
         inferStage={inferStage}
         idFor={idFor}
+        users={users}
       />
     ),
-    [density, idFor, inferStage, rows, saveCards, setEditModalOpen, setEditTabValue, setRows, setSelectedCard]
+    [density, idFor, inferStage, rows, saveCards, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users]
   );
 
 // ✅ KORRIGIERTE TR-NEU ÄNDERUNGS-HANDLER (ersetze die bisherige Funktion)
@@ -1682,7 +1866,7 @@ return (
        {/* Board Title mit Settings */}
 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
   <Typography variant="h5">
-    Multiprojektboard
+    {(boardName && boardName.trim()) || boardMeta?.name || 'Multiprojektboard'}
   </Typography>
   <IconButton 
     size="small"
@@ -1702,8 +1886,17 @@ return (
   </IconButton>
 </Box>
 
-          <Button 
-  variant="outlined" 
+        {((boardDescription && boardDescription.trim()) || boardMeta?.description) && (
+          <Typography
+            variant="body2"
+            sx={{ color: 'var(--muted)', mb: 1 }}
+          >
+            {(boardDescription && boardDescription.trim()) || boardMeta?.description || ''}
+          </Typography>
+        )}
+
+          <Button
+  variant="outlined"
   onClick={async () => {
     await loadArchivedCards();
     setArchiveOpen(true);
@@ -1868,7 +2061,32 @@ return (
   
   <DialogContent sx={{ p: 3 }}>
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      
+
+      <Box>
+        <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
+          Allgemein
+        </Typography>
+        <TextField
+          label="Board-Name"
+          value={boardName}
+          onChange={(e) => setBoardName(e.target.value)}
+          fullWidth
+          required
+          error={!!boardMeta && !boardName.trim()}
+          helperText={!!boardMeta && !boardName.trim() ? 'Board-Name darf nicht leer sein.' : ' '}
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          label="Beschreibung"
+          value={boardDescription}
+          onChange={(e) => setBoardDescription(e.target.value)}
+          fullWidth
+          multiline
+          minRows={2}
+          placeholder="Beschreibe das Board..."
+        />
+      </Box>
+
       {/* Spalten Konfiguration */}
       <Box>
         <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
