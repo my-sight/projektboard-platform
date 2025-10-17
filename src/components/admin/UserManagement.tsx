@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Typography,
@@ -27,8 +27,13 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper
+  Paper,
+  Switch,
+  Stack,
+  Tooltip,
+  IconButton
 } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { createClient } from '@supabase/supabase-js';
 
 const supabase = createClient(
@@ -69,6 +74,8 @@ export default function UserManagement() {
 
   const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState('');
+
+  const postJson = useMemo(() => ({ 'Content-Type': 'application/json' }), []);
 
   useEffect(() => {
     loadData();
@@ -124,44 +131,60 @@ export default function UserManagement() {
     }
   };
 
-  const updateUserRole = async (userId: string, newRole: string) => {
+  const mutateUser = async (
+    userId: string,
+    payload: Partial<Pick<UserProfile, 'full_name' | 'role' | 'company' | 'is_active'>>,
+    successMessage: string,
+  ) => {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: newRole })
-        .eq('id', userId);
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'PATCH',
+        headers: postJson,
+        body: JSON.stringify(payload),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const { error: errorMessage } = await response.json();
+        throw new Error(errorMessage ?? 'Unbekannter Fehler');
+      }
 
-      setMessage('✅ Benutzerrolle erfolgreich aktualisiert!');
-      await loadData();
+      const { data } = await response.json();
+
+      setUsers(prev =>
+        prev.map(profile => (profile.id === userId ? { ...profile, ...data } : profile)),
+      );
+
+      if ('full_name' in payload) {
+        const updatedName =
+          typeof payload.full_name === 'string'
+            ? payload.full_name
+            : (data?.full_name as string | null) ?? '';
+        setEditableNames(prev => ({ ...prev, [userId]: updatedName ?? '' }));
+      }
+
+      setMessage(`✅ ${successMessage}`);
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
-      console.error('Fehler beim Aktualisieren:', error);
-      setMessage('❌ Fehler beim Aktualisieren der Rolle');
+      console.error('Benutzeraktualisierung fehlgeschlagen:', error);
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Fehler beim Aktualisieren der Benutzerdaten';
+      setMessage(`❌ ${message}`);
+      setTimeout(() => setMessage(''), 4000);
     }
   };
 
+  const updateUserRole = async (userId: string, newRole: string) => {
+    await mutateUser(userId, { role: newRole }, 'Benutzerrolle erfolgreich aktualisiert!');
+  };
+
   const updateUserDepartment = async (userId: string, departmentName: string) => {
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ company: departmentName || null })
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      setUsers(prev =>
-        prev.map(profile =>
-          profile.id === userId ? { ...profile, company: departmentName || null } : profile,
-        ),
-      );
-      setMessage('✅ Abteilung erfolgreich aktualisiert!');
-      setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      console.error('Fehler beim Aktualisieren der Abteilung:', error);
-      setMessage('❌ Fehler beim Aktualisieren der Abteilung');
-    }
+    await mutateUser(
+      userId,
+      { company: departmentName || null },
+      'Abteilung erfolgreich aktualisiert!',
+    );
   };
 
   const updateUserName = async (userId: string, fullName: string) => {
@@ -174,45 +197,69 @@ export default function UserManagement() {
       return;
     }
 
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ full_name: trimmed })
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      setUsers(prev =>
-        prev.map(profile =>
-          profile.id === userId ? { ...profile, full_name: trimmed } : profile,
-        ),
-      );
-      setEditableNames(prev => ({ ...prev, [userId]: trimmed }));
-
-      setMessage('✅ Benutzername erfolgreich aktualisiert!');
-      setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      console.error('Fehler beim Aktualisieren des Namens:', error);
-      setMessage('❌ Fehler beim Aktualisieren des Namens');
-    }
+    await mutateUser(userId, { full_name: trimmed }, 'Benutzername erfolgreich aktualisiert!');
   };
 
   const handleInlineNameChange = (userId: string, value: string) => {
     setEditableNames(prev => ({ ...prev, [userId]: value }));
   };
 
+  const toggleUserActive = async (userId: string, currentState: boolean) => {
+    await mutateUser(
+      userId,
+      { is_active: !currentState },
+      `Benutzer ${currentState ? 'deaktiviert' : 'reaktiviert'}!`,
+    );
+  };
+
+  const deleteUser = async (userId: string) => {
+    if (!window.confirm('Benutzer wirklich löschen? Dies kann nicht rückgängig gemacht werden.')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const { error } = await response.json();
+        throw new Error(error ?? 'Fehler beim Löschen des Benutzers');
+      }
+
+      setUsers(prev => prev.filter(user => user.id !== userId));
+      setEditableNames(prev => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+
+      setMessage('✅ Benutzer erfolgreich gelöscht!');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      console.error('Benutzerlöschen fehlgeschlagen:', error);
+      const message = error instanceof Error ? error.message : 'Fehler beim Löschen des Benutzers';
+      setMessage(`❌ ${message}`);
+      setTimeout(() => setMessage(''), 4000);
+    }
+  };
+
   const addDepartment = async () => {
     if (!newDepartmentName.trim()) return;
 
     try {
-      const name = newDepartmentName.trim();
-      const { data, error } = await supabase
-        .from('departments')
-        .insert([{ name }])
-        .select()
-        .single();
+      const response = await fetch('/api/admin/departments', {
+        method: 'POST',
+        headers: postJson,
+        body: JSON.stringify({ name: newDepartmentName.trim() }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const { error } = await response.json();
+        throw new Error(error ?? 'Fehler beim Anlegen der Abteilung');
+      }
+
+      const { data } = await response.json();
 
       if (data) {
         setDepartments(prev => [...prev, data]);
@@ -224,7 +271,9 @@ export default function UserManagement() {
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Fehler beim Anlegen der Abteilung:', error);
-      setMessage('❌ Fehler beim Anlegen der Abteilung');
+      const message = error instanceof Error ? error.message : 'Fehler beim Anlegen der Abteilung';
+      setMessage(`❌ ${message}`);
+      setTimeout(() => setMessage(''), 4000);
     }
   };
 
@@ -232,19 +281,23 @@ export default function UserManagement() {
     if (!window.confirm('Abteilung wirklich löschen?')) return;
 
     try {
-      const { error } = await supabase
-        .from('departments')
-        .delete()
-        .eq('id', departmentId);
+      const response = await fetch(`/api/admin/departments/${departmentId}`, {
+        method: 'DELETE',
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const { error } = await response.json();
+        throw new Error(error ?? 'Fehler beim Löschen der Abteilung');
+      }
 
       setDepartments(prev => prev.filter(department => department.id !== departmentId));
       setMessage('✅ Abteilung erfolgreich gelöscht!');
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('Fehler beim Löschen der Abteilung:', error);
-      setMessage('❌ Fehler beim Löschen der Abteilung');
+      const message = error instanceof Error ? error.message : 'Fehler beim Löschen der Abteilung';
+      setMessage(`❌ ${message}`);
+      setTimeout(() => setMessage(''), 4000);
     }
   };
 
@@ -281,6 +334,7 @@ export default function UserManagement() {
     } catch (err: any) {
       console.error('Fehler beim Benutzer anlegen:', err);
       setMessage(`❌ Fehler beim Erstellen: ${err.message ?? err}`);
+      setTimeout(() => setMessage(''), 4000);
     }
   };
 
@@ -434,6 +488,7 @@ export default function UserManagement() {
                   <TableCell>Rolle</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Registriert</TableCell>
+                  <TableCell align="right">Aktionen</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -492,14 +547,35 @@ export default function UserManagement() {
                       </FormControl>
                     </TableCell>
                     <TableCell>
-                      <Chip
-                        label={userProfile.is_active ? 'Aktiv' : 'Inaktiv'}
-                        color={userProfile.is_active ? 'success' : 'default'}
-                        size="small"
-                      />
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Switch
+                          checked={userProfile.is_active}
+                          onChange={() => toggleUserActive(userProfile.id, userProfile.is_active)}
+                          inputProps={{ 'aria-label': 'Benutzerstatus umschalten' }}
+                          size="small"
+                        />
+                        <Chip
+                          label={userProfile.is_active ? 'Aktiv' : 'Inaktiv'}
+                          color={userProfile.is_active ? 'success' : 'default'}
+                          size="small"
+                        />
+                      </Stack>
                     </TableCell>
                     <TableCell>
                       {new Date(userProfile.created_at).toLocaleDateString('de-DE')}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Tooltip title="Benutzer löschen">
+                        <span>
+                          <IconButton
+                            color="error"
+                            onClick={() => deleteUser(userProfile.id)}
+                            size="small"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </TableCell>
                   </TableRow>
                 ))}
