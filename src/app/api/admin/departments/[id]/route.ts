@@ -1,16 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServiceSupabaseClient } from '@/lib/supabaseServer';
-
-const handleConfigError = () =>
-  NextResponse.json({ error: 'Supabase service role key is not configured.' }, { status: 500 });
+import { resolveAdminSupabaseClient } from '@/lib/supabaseServer';
 
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
-  let supabase;
-  try {
-    supabase = getServiceSupabaseClient();
-  } catch (error) {
-    console.error('Service client error:', error);
-    return handleConfigError();
+  const { client: supabase, isService } = resolveAdminSupabaseClient();
+
+  if (!isService) {
+    return NextResponse.json(
+      {
+        error:
+          'Zum Löschen von Abteilungen wird ein SUPABASE_SERVICE_ROLE_KEY oder passende Supabase-Policies benötigt.'
+      },
+      { status: 403 },
+    );
   }
 
   try {

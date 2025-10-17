@@ -1,6 +1,6 @@
 # Admin API Setup
 
-Die Admin-Ansicht verwendet serverseitige API-Routen, um Benutzer- und Abteilungsdaten mit erhöhten Rechten zu ändern. Damit diese Funktionen funktionieren, muss in deiner Umgebung der Supabase Service-Role-Key verfügbar sein.
+Die Admin-Ansicht verwendet serverseitige API-Routen, um Benutzer- und Abteilungsdaten mit erhöhten Rechten zu ändern. Wenn verfügbar, nutzen die Routen automatisch den Supabase Service-Role-Key. Fehlt der Key, fällt das System auf den authentifizierten Benutzerkontext zurück und erlaubt damit zumindest Änderungen am eigenen Profil (z. B. sich selbst zum Admin befördern), während privilegierte Aktionen entsprechend mit einem Hinweis abbrechen.
 
 ## Benötigte Umgebungsvariable
 
@@ -8,7 +8,7 @@ Die Admin-Ansicht verwendet serverseitige API-Routen, um Benutzer- und Abteilung
 SUPABASE_SERVICE_ROLE_KEY=dein-service-role-key
 ```
 
-> **Wichtig:** Der Service-Role-Key darf niemals im Browser landen. Hinterlege ihn nur in serverseitigen Umgebungen (.env.local, Vercel Project Settings etc.).
+> **Wichtig:** Der Service-Role-Key darf niemals im Browser landen. Hinterlege ihn nur in serverseitigen Umgebungen (.env.local, Vercel Project Settings etc.). Ohne den Key bleiben sensitive Operationen gesperrt und die API meldet dies mit einem eindeutigen Fehler.
 
 ## Benötigte Tabellen & Policies
 
@@ -21,9 +21,9 @@ Die API-Routen erwarten, dass dein Supabase-Schema INSERT/UPDATE/DELETE über de
 
 | Methode & Pfad | Beschreibung |
 | --- | --- |
-| `PATCH /api/admin/users/:id` | Aktualisiert Name, Rolle, Abteilung oder Aktiv-Status eines Profils. |
-| `DELETE /api/admin/users/:id` | Entfernt Benutzer (inklusive Supabase Auth-Account) dauerhaft. |
-| `POST /api/admin/departments` | Legt eine neue Abteilung an. |
-| `DELETE /api/admin/departments/:id` | Löscht eine vorhandene Abteilung. |
+| `PATCH /api/admin/users/:id` | Aktualisiert Name, Rolle, Abteilung oder Aktiv-Status eines Profils. Ohne Service-Role-Key sind nur Änderungen am eigenen Profil möglich. |
+| `DELETE /api/admin/users/:id` | Entfernt Benutzer (inklusive Supabase Auth-Account) dauerhaft. Erfordert zwingend den Service-Role-Key. |
+| `POST /api/admin/departments` | Legt eine neue Abteilung an. Erfordert den Service-Role-Key oder angepasste Supabase-Policies. |
+| `DELETE /api/admin/departments/:id` | Löscht eine vorhandene Abteilung. Erfordert den Service-Role-Key oder angepasste Supabase-Policies. |
 
 Die Admin-Oberfläche ruft diese Endpunkte direkt auf. Stelle sicher, dass deine Umgebung korrekt konfiguriert ist, bevor du Benutzeränderungen durchführst.
