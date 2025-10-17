@@ -84,24 +84,55 @@ export default function HomePage() {
 
   const loadBoards = useCallback(async () => {
     try {
-      let query = supabase.from('kanban_boards').select('*');
+      let boardsData: Board[] | null = null;
 
-      if (user) {
-        query = query.or(
-          `visibility.eq.public,owner_id.eq.${user.id},user_id.eq.${user.id}`,
-        );
-      } else {
-        query = query.eq('visibility', 'public');
+      try {
+        const { data: rpcBoards, error: rpcError } = await supabase
+          .rpc('list_all_boards');
+
+        if (rpcError) {
+          if (rpcError.code === '42883') {
+            console.warn('Supabase Funktion list_all_boards nicht gefunden. Fallback auf direkte Abfrage.');
+            if (isAdmin) {
+              setMessage('ℹ️ Bitte lege die Supabase-Funktion "list_all_boards" an, damit alle Boards für alle Nutzer sichtbar werden.');
+              setTimeout(() => setMessage(''), 6000);
+            }
+          } else {
+            console.warn('RPC list_all_boards fehlgeschlagen:', rpcError);
+          }
+        } else {
+          boardsData = (rpcBoards as Board[]) ?? [];
+        }
+      } catch (rpcUnexpectedError) {
+        console.warn('Unerwarteter RPC-Fehler:', rpcUnexpectedError);
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false });
+      if (!boardsData) {
+        let query = supabase.from('kanban_boards').select('*');
 
-      if (error) throw error;
+        if (user) {
+          query = query.or(
+            `visibility.eq.public,owner_id.eq.${user.id},user_id.eq.${user.id}`,
+          );
+        } else {
+          query = query.eq('visibility', 'public');
+        }
 
-      const boardsData = data || [];
-      setBoards(boardsData);
+        const { data, error } = await query.order('created_at', { ascending: false });
 
-      const boardsWithoutVisibility = boardsData
+        if (error) throw error;
+
+        boardsData = (data as Board[]) ?? [];
+      }
+
+      const sanitizedBoards = (boardsData ?? []).map((board) => ({
+        ...board,
+        visibility: board.visibility ?? 'public',
+      }));
+
+      setBoards(sanitizedBoards);
+
+      const boardsWithoutVisibility = sanitizedBoards
         .filter((board) => !board.visibility || board.visibility === '');
 
       if (boardsWithoutVisibility.length && isAdmin) {

@@ -173,6 +173,7 @@ const loadUsers = async () => {
         id: user.id,
         email: user.email,
         name: user.full_name || user.email?.split('@')[0] || 'Unbekannt',
+        department: user.company ?? null,
         company: user.company || '',
         role: user.role || 'user',
         avatar: user.avatar_url || '',
@@ -198,6 +199,7 @@ const loadUsers = async () => {
         id: user.id,
         email: user.email,
         name: user.full_name || user.email?.split('@')[0] || 'Unbekannt',
+        department: user.company ?? null,
         company: user.company || '',
         role: user.role || 'user',
         avatar: user.avatar_url || '',
@@ -225,34 +227,38 @@ const loadUsers = async () => {
 const createFallbackUsers = () => {
   console.log('🔄 Erstelle Fallback-Benutzer...');
   const fallbackUsers = [
-    { 
-      id: 'fallback-1', 
-      email: 'test@test.de', 
+    {
+      id: 'fallback-1',
+      email: 'test@test.de',
       name: 'Test User',
+      department: 'Test Company',
       company: 'Test Company',
       role: 'user',
       isActive: true
     },
-    { 
-      id: 'fallback-2', 
-      email: 'michael@mysight.net', 
+    {
+      id: 'fallback-2',
+      email: 'michael@mysight.net',
       name: 'Michael',
+      department: 'MySight',
       company: 'MySight',
       role: 'admin',
       isActive: true
     },
-    { 
-      id: 'fallback-3', 
-      email: 'max.mustermann@firma.de', 
+    {
+      id: 'fallback-3',
+      email: 'max.mustermann@firma.de',
       name: 'Max Mustermann',
+      department: 'Firma GmbH',
       company: 'Firma GmbH',
       role: 'user',
       isActive: true
     },
-    { 
-      id: 'fallback-4', 
-      email: 'anna.klein@firma.de', 
+    {
+      id: 'fallback-4',
+      email: 'anna.klein@firma.de',
       name: 'Anna Klein',
+      department: 'Firma GmbH',
       company: 'Firma GmbH',
       role: 'user',
       isActive: true
@@ -307,9 +313,9 @@ const handleLoadUsers = async () => {
     const createFallbackUsers = () => {
     console.log('🔄 Erstelle Fallback-Benutzer...');
     const fallbackUsers = [
-    { id: 'fallback-1', email: 'max.mustermann@firma.de', name: 'Max Mustermann' },
-    { id: 'fallback-2', email: 'anna.klein@firma.de', name: 'Anna Klein' },
-    { id: 'fallback-3', email: 'tom.schmidt@firma.de', name: 'Tom Schmidt' }
+    { id: 'fallback-1', email: 'max.mustermann@firma.de', name: 'Max Mustermann', department: 'Fallback' },
+    { id: 'fallback-2', email: 'anna.klein@firma.de', name: 'Anna Klein', department: 'Fallback' },
+    { id: 'fallback-3', email: 'tom.schmidt@firma.de', name: 'Tom Schmidt', department: 'Fallback' }
   ];
   setUsers(fallbackUsers);
 };

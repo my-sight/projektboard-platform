@@ -154,8 +154,18 @@ export function EditCardDialog({
                   <em>Nicht zugewiesen</em>
                 </MenuItem>
                 {users.map((user: any) => (
-                  <MenuItem key={user.id} value={user.name}>
-                    {user.name} ({user.email})
+                  <MenuItem key={user.id || user.email} value={user.name || user.email}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {(user.name || user.email) ?? 'Unbekannt'}
+                        {user.department || user.company ? ` – ${user.department || user.company}` : ''}
+                      </Typography>
+                      {user.email && (
+                        <Typography variant="caption" color="text.secondary">
+                          {user.email}
+                        </Typography>
+                      )}
+                    </Box>
                   </MenuItem>
                 ))}
               </Select>
@@ -531,72 +541,157 @@ export function EditCardDialog({
             </Typography>
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {(selectedCard.Team || []).map((member: any, idx: number) => (
-                <Box
-                  key={idx}
-                  sx={{
-                    display: 'grid',
-                    gridTemplateColumns: '2fr 3fr 2fr auto',
-                    alignItems: 'center',
-                    gap: 1,
-                    border: '1px solid var(--line)',
-                    borderRadius: 1,
-                    p: 1,
-                  }}
-                >
-                  <TextField
-                    size="small"
-                    label="Name"
-                    value={member.name || ''}
-                    onChange={(e) => {
-                      selectedCard.Team[idx].name = e.target.value;
-                      setRows([...rows]);
-                    }}
-                  />
-                  <TextField
-                    size="small"
-                    label="E-Mail"
-                    value={member.email || ''}
-                    onChange={(e) => {
-                      selectedCard.Team[idx].email = e.target.value;
-                      setRows([...rows]);
-                    }}
-                  />
-                  <TextField
-                    size="small"
-                    label="Rolle"
-                    value={member.role || ''}
-                    onChange={(e) => {
-                      selectedCard.Team[idx].role = e.target.value;
-                      setRows([...rows]);
-                    }}
-                    sx={{ minWidth: 120, maxWidth: 150 }}
-                    placeholder="z.B. Dev, Design..."
-                  />
-                  <IconButton
-                    color="error"
-                    size="small"
-                    onClick={() => {
-                      selectedCard.Team.splice(idx, 1);
-                      setRows([...rows]);
-                    }}
-                    title="Mitglied entfernen"
-                    sx={{
-                      flexShrink: 0,
-                      '&:hover': { backgroundColor: 'error.light', color: 'white' },
-                    }}
-                  >
-                    🗑️
-                  </IconButton>
-                </Box>
-              ))}
+              {(() => {
+                const userList = Array.isArray(users) ? users : [];
+                const userById = new Map<string, any>();
+                userList.forEach((user: any) => {
+                  if (user.id) {
+                    userById.set(user.id, user);
+                  }
+                });
+
+                const formatUserLabel = (user: any) => {
+                  if (!user) return 'Mitglied auswählen';
+                  const baseName = user.name || user.email || 'Unbekannt';
+                  const department = user.department || user.company;
+                  return department ? `${baseName} – ${department}` : baseName;
+                };
+
+                return (selectedCard.Team || []).map((member: any, idx: number) => {
+                  const memberId = `team-member-${idx}`;
+                  const selectedUser = member.userId ? userById.get(member.userId) : null;
+
+                  return (
+                    <Box
+                      key={idx}
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: '3fr 2fr auto',
+                        alignItems: 'flex-start',
+                        gap: 1,
+                        border: '1px solid var(--line)',
+                        borderRadius: 1,
+                        p: 1,
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel id={`${memberId}-label`}>Mitglied</InputLabel>
+                          <Select
+                            labelId={`${memberId}-label`}
+                            id={memberId}
+                            value={member.userId || ''}
+                            label="Mitglied"
+                            onChange={(e) => {
+                              const userId = String(e.target.value);
+                              if (userId) {
+                                const selected = userById.get(userId) || null;
+                                if (selected) {
+                                  selectedCard.Team[idx] = {
+                                    ...selectedCard.Team[idx],
+                                    userId,
+                                    name: selected.name || selected.email || 'Unbekannt',
+                                    email: selected.email || '',
+                                    department: selected.department || selected.company || '',
+                                  };
+                                }
+                              } else {
+                                selectedCard.Team[idx] = {
+                                  ...selectedCard.Team[idx],
+                                  userId: '',
+                                  name: '',
+                                  email: '',
+                                  department: '',
+                                };
+                              }
+                              setRows([...rows]);
+                            }}
+                            renderValue={(selected) => {
+                              if (!selected) return 'Mitglied auswählen';
+                              const user = userById.get(String(selected));
+                              return formatUserLabel(user);
+                            }}
+                          >
+                            <MenuItem value="">
+                              <em>Mitglied auswählen</em>
+                            </MenuItem>
+                            {userList
+                              .filter((user: any) => user.id)
+                              .map((user: any) => (
+                                <MenuItem key={user.id} value={user.id}>
+                                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                      {user.name || user.email || 'Unbekannt'}
+                                    </Typography>
+                                    {(user.department || user.company) && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        {(user.department || user.company) as string}
+                                      </Typography>
+                                    )}
+                                    {user.email && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        {user.email}
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                </MenuItem>
+                              ))}
+                          </Select>
+                        </FormControl>
+
+                        {selectedUser && (
+                          <Box>
+                            <Typography variant="caption" color="text.secondary">
+                              {selectedUser.email}
+                            </Typography>
+                            {selectedUser.department && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                Abteilung: {selectedUser.department}
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
+                      </Box>
+
+                      <TextField
+                        size="small"
+                        label="Rolle"
+                        value={member.role || ''}
+                        onChange={(e) => {
+                          selectedCard.Team[idx].role = e.target.value;
+                          setRows([...rows]);
+                        }}
+                        sx={{ minWidth: 120 }}
+                        placeholder="z.B. Dev, Design..."
+                      />
+
+                      <IconButton
+                        color="error"
+                        size="small"
+                        onClick={() => {
+                          selectedCard.Team.splice(idx, 1);
+                          setRows([...rows]);
+                        }}
+                        title="Mitglied entfernen"
+                        sx={{
+                          flexShrink: 0,
+                          mt: 0.5,
+                          '&:hover': { backgroundColor: 'error.light', color: 'white' },
+                        }}
+                      >
+                        🗑️
+                      </IconButton>
+                    </Box>
+                  );
+                });
+              })()}
             </Box>
 
             <Button
               variant="outlined"
               onClick={() => {
                 if (!selectedCard.Team) selectedCard.Team = [];
-                selectedCard.Team.push({ userId: '', name: '', email: '', role: '' });
+                selectedCard.Team.push({ userId: '', name: '', email: '', department: '', role: '' });
                 setRows([...rows]);
               }}
               sx={{ mt: 1 }}
@@ -613,6 +708,21 @@ export function EditCardDialog({
                 <Typography variant="body2">
                   Rollen: {Array.from(new Set(selectedCard.Team.map((m: any) => m.role).filter(Boolean))).join(', ')}
                 </Typography>
+                {(() => {
+                  const departments = Array.from(
+                    new Set(
+                      (selectedCard.Team || [])
+                        .map((m: any) => (m.department || m.company || '').toString().trim())
+                        .filter(Boolean),
+                    ),
+                  );
+                  if (!departments.length) return null;
+                  return (
+                    <Typography variant="body2">
+                      Abteilungen: {departments.join(', ')}
+                    </Typography>
+                  );
+                })()}
               </Box>
             )}
           </Box>
@@ -818,7 +928,17 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
               </MenuItem>
               {availableUsers.map((user: any) => (
                 <MenuItem key={user.id || user.email} value={user.name || user.email}>
-                  {(user.name || user.email) ?? 'Unbekannt'}
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {(user.name || user.email) ?? 'Unbekannt'}
+                      {user.department || user.company ? ` – ${user.department || user.company}` : ''}
+                    </Typography>
+                    {user.email && (
+                      <Typography variant="caption" color="text.secondary">
+                        {user.email}
+                      </Typography>
+                    )}
+                  </Box>
                 </MenuItem>
               ))}
             </Select>

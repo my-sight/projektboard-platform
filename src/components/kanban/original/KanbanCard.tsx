@@ -524,10 +524,21 @@ export function KanbanCard({
                           const roleKey = String(member.role || '').toLowerCase();
                           const roleColor = roleColors[roleKey] || '#757575';
 
+                          const baseName = member.name || member.email || 'Unbekannt';
+                          const department = member.department || member.company;
+                          const labelParts = [baseName];
+                          if (department) {
+                            labelParts.push(`– ${department}`);
+                          }
+                          if (member.role) {
+                            labelParts.push(`(${member.role})`);
+                          }
+                          const label = labelParts.join(' ');
+
                           return (
                             <Chip
                               key={idx}
-                              label={`${member.name}${member.role ? ` (${member.role})` : ''}`}
+                              label={label}
                               size="small"
                               sx={{
                                 fontSize: '8px',
