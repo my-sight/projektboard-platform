@@ -4,6 +4,8 @@ import { ReactNode } from 'react';
 import { Box, Chip, IconButton, Typography } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
 
+import { nullableDate, toBoolean } from '@/utils/booleans';
+
 export type KanbanDensity = 'compact' | 'xcompact' | 'large';
 
 export interface KanbanCardProps {
@@ -58,6 +60,12 @@ export function KanbanCard({
   }
 
   const isOverdue = card['Due Date'] && new Date(card['Due Date']) < new Date();
+  const trCompleted = toBoolean(card['TR_Completed']);
+  const trOriginalDate = nullableDate(card['TR_Datum']);
+  const trCompletedDate = nullableDate(card['TR_Completed_At'] || card['TR_Completed_Date']);
+  const trCompletionDiff = trOriginalDate && trCompletedDate
+    ? Math.round((trCompletedDate.getTime() - trOriginalDate.getTime()) / (1000 * 60 * 60 * 24))
+    : null;
 
   let currentSize: KanbanDensity = density;
   if (card['Collapsed'] === 'large') {
@@ -432,11 +440,18 @@ export function KanbanCard({
                 </Box>
               )}
 
-              {(card['TR_Neu'] || card['TR_Datum']) &&
-                (String(card['TR_Completed'] || '').toLowerCase() === 'true' ||
-                  card['TR_Completed'] === true) && (
-                  <Chip label="✓ TR erledigt" size="small" color="success" sx={{ mt: 1 }} />
-                )}
+              {(card['TR_Neu'] || card['TR_Datum']) && trCompleted && (
+                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                  <Chip label="✓ TR erledigt" size="small" color="success" />
+                  <Typography
+                    variant="caption"
+                    sx={{ display: 'block', color: '#2e7d32', fontWeight: 500 }}
+                  >
+                    Abschluss: {trCompletedDate ? trCompletedDate.toLocaleDateString('de-DE') : 'Datum unbekannt'}
+                    {trCompletionDiff !== null ? ` (${trCompletionDiff >= 0 ? '+' : ''}${trCompletionDiff} Tage)` : ''}
+                  </Typography>
+                </Box>
+              )}
 
               {currentSize === 'large' &&
                 card['Team'] &&

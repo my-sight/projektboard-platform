@@ -37,6 +37,7 @@ import { createClient } from '@supabase/supabase-js';
 import { KanbanCard } from './original/KanbanCard';
 import { KanbanColumnsView, KanbanLaneView, KanbanSwimlaneView } from './original/KanbanViews';
 import { ArchiveDialog, EditCardDialog, NewCardDialog } from './original/KanbanDialogs';
+import { nullableDate, toBoolean } from '@/utils/booleans';
 
 const getErrorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 // import { useAuth } from '../../contexts/AuthContext';
@@ -859,7 +860,7 @@ const calculateKPIs = () => {
     if (!trDate) return false;
     
     // âœ… NEUE LOGIK: Nicht als Ã¼berfÃ¤llig anzeigen wenn TR abgeschlossen ist
-    if (String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true) {
+    if (toBoolean(r["TR_Completed"])) {
       return false;
     }
     
@@ -873,7 +874,7 @@ const calculateKPIs = () => {
     if (!trDate) return false;
     
     // Auch heute fÃ¤llige nicht anzeigen wenn abgeschlossen
-    if (String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true) {
+    if (toBoolean(r["TR_Completed"])) {
       return false;
     }
     
@@ -887,7 +888,7 @@ const calculateKPIs = () => {
     if (!trDate) return false;
     
     // Diese Woche fÃ¤llige nicht anzeigen wenn abgeschlossen
-    if (String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true) {
+    if (toBoolean(r["TR_Completed"])) {
       return false;
     }
     
@@ -900,7 +901,7 @@ const calculateKPIs = () => {
   // âœ… NEUE METRIK: Abgeschlossene TRs
   const trCompleted = activeCards.filter(r => {
     const hasDate = r["TR_Neu"] || r["TR_Datum"];
-    const isCompleted = String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true;
+    const isCompleted = toBoolean(r["TR_Completed"]);
     return hasDate && isCompleted;
   });
   
@@ -1185,7 +1186,6 @@ const TRKPIPopup = ({ open, onClose, cards }: TRKPIPopupProps) => {
                     )}
                   </Box>
 
-                  {/* Diese Wochefällige TR */}
                   <Box>
                     <Typography variant="subtitle2" sx={{ color: 'info.main', fontWeight: 'bold' }}>
                       Diese Woche ({kpis.trThisWeek.length})
@@ -1203,6 +1203,34 @@ const TRKPIPopup = ({ open, onClose, cards }: TRKPIPopupProps) => {
                       </Box>
                     ) : (
                       <Typography variant="caption" color="text.secondary">Keine TR-Termine diese Woche</Typography>
+                    )}
+                  </Box>
+
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'success.main', fontWeight: 'bold' }}>
+                      Abgeschlossen ({kpis.trCompleted.length})
+                    </Typography>
+                    {kpis.trCompleted.length > 0 ? (
+                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
+                        {kpis.trCompleted.map((card, idx) => {
+                          const originalDate = nullableDate(card["TR_Datum"]);
+                          const completedDate = nullableDate(card["TR_Completed_At"] || card["TR_Completed_Date"]);
+                          const diff = originalDate && completedDate
+                            ? Math.round((completedDate.getTime() - originalDate.getTime()) / (1000 * 60 * 60 * 24))
+                            : null;
+                          const diffLabel = diff === null ? '' : ` (${diff >= 0 ? '+' : ''}${diff} Tage)`;
+                          const completedLabel = completedDate
+                            ? completedDate.toLocaleDateString('de-DE')
+                            : 'Datum unbekannt';
+                          return (
+                            <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'success.main' }}>
+                              {card["Nummer"]} - Abschluss: {completedLabel}{diffLabel}
+                            </Typography>
+                          );
+                        })}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">Keine abgeschlossenen TR-Termine</Typography>
                     )}
                   </Box>
                 </Card>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { toBoolean } from '@/utils/booleans';
 import {
   Box,
   Button,
@@ -404,11 +405,27 @@ export function EditCardDialog({
                 <FormControlLabel
                   control={
                     <Checkbox
-                      checked={selectedCard['TR_Completed'] === true}
+                      checked={toBoolean(selectedCard['TR_Completed'])}
                       onChange={(e) => {
-                        const newCard = { ...selectedCard };
-                        newCard['TR_Completed'] = e.target.checked;
+                        const checked = e.target.checked;
+                        const completionTimestamp = checked ? new Date().toISOString() : null;
+                        const newCard = { ...selectedCard, TR_Completed: checked };
+                        newCard['TR_Completed_At'] = completionTimestamp;
+                        newCard['TR_Completed_Date'] = completionTimestamp;
                         setSelectedCard(newCard);
+
+                        const index = rows.findIndex((row) => idFor(row) === idFor(selectedCard));
+                        if (index >= 0) {
+                          const updatedRows = [...rows];
+                          updatedRows[index] = {
+                            ...updatedRows[index],
+                            TR_Completed: checked,
+                            TR_Completed_At: completionTimestamp,
+                            TR_Completed_Date: completionTimestamp,
+                          };
+                          setRows(updatedRows);
+                          setTimeout(() => saveCards(), 500);
+                        }
                       }}
                       sx={{
                         color: 'success.main',
