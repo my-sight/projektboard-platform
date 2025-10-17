@@ -1,5 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-import { Board, BoardColumn, Card, User } from '@/types';
+import { createClient, User } from '@supabase/supabase-js';
+import { Board, BoardColumn, Card } from '@/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -35,7 +35,7 @@ export const boardService = {
 
           if (columnsError) {
             console.error('Columns error for board', board.id, ':', columnsError);
-            return { ...board, board_columns: [] };
+            return { ...board, columns: [] };
           }
 
           // Load cards for all columns
@@ -64,7 +64,7 @@ export const boardService = {
             })
           );
 
-          return { ...board, board_columns: columnsWithCards };
+          return { ...board, columns: columnsWithCards };
         })
       );
 
@@ -126,7 +126,7 @@ export const boardService = {
         })
       );
 
-      return { ...boardData, board_columns: columnsWithCards };
+      return { ...boardData, columns: columnsWithCards };
     } catch (error) {
       console.error('Error in getBoard:', error);
       throw error;
@@ -182,7 +182,7 @@ export const boardService = {
 
       return {
         ...boardData,
-        board_columns: (columnsData || []).map(col => ({ ...col, cards: [] }))
+        columns: (columnsData || []).map(col => ({ ...col, cards: [] }))
       };
     } catch (error) {
       console.error('Error in createBoard:', error);

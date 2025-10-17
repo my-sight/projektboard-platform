@@ -100,7 +100,8 @@ const loadData = async () => {
 
   } catch (error) {
     console.error('💥 Unerwarteter Fehler:', error);
-    setMessage(`❌ Unerwarteter Fehler: ${error.message}`);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    setMessage(`❌ Unerwarteter Fehler: ${errorMessage}`);
   } finally {
     setLoading(false);
   }
