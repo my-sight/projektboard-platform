@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react';
 import { 
   Box, 
   Typography, 
@@ -49,8 +49,14 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+export interface OriginalKanbanBoardHandle {
+  openSettings: () => void;
+  openArchive: () => Promise<void>;
+}
+
 interface OriginalKanbanBoardProps {
   boardId: string;
+  onArchiveCountChange?: (count: number) => void;
 }
 
 // Deine ursprünglichen Spalten
@@ -83,7 +89,8 @@ const DEFAULT_CHECKLISTS = {
   ]
 };
 
-export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProps) {
+const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanbanBoardProps>(
+function OriginalKanbanBoard({ boardId, onArchiveCountChange }: OriginalKanbanBoardProps, ref) {
   // State für Benutzer
 
   const [viewMode, setViewMode] = useState<'columns' | 'swim' | 'lane'>('columns');
@@ -103,6 +110,11 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
   } | null>(null);
   const [boardName, setBoardName] = useState('');
   const [boardDescription, setBoardDescription] = useState('');
+
+  const updateArchivedState = useCallback((cards: any[]) => {
+    setArchivedCards(cards);
+    onArchiveCountChange?.(cards.length);
+  }, [onArchiveCountChange]);
 
 
   // --- helper: re-index order inside each Board Stage (column) ---
@@ -671,35 +683,43 @@ const saveCards = async () => {
 };
 
 // 2. ARCHIV LADEN FUNKTION:
-const loadArchivedCards = async () => {
+const loadArchivedCards = useCallback(async () => {
   try {
     console.log('🗃️ Lade archivierte Karten...');
-    
+
     const { data, error } = await supabase
       .from('kanban_cards')
       .select('card_data')
       .eq('board_id', boardId);
-    
+
     if (error) throw error;
-    
+
     if (data && data.length > 0) {
       const archived = data
         .map(item => item.card_data)
         .filter(card => card["Archived"] === "1");
-      
+
       console.log('🗃️ Archivierte Karten gefunden:', archived.length);
-      setArchivedCards(archived);
+      updateArchivedState(archived);
       return archived;
     }
-    
-    setArchivedCards([]);
+
+    updateArchivedState([]);
     return [];
   } catch (error) {
     console.error('❌ Fehler beim Laden des Archivs:', error);
-    setArchivedCards([]);
+    updateArchivedState([]);
     return [];
   }
-};
+}, [boardId, updateArchivedState]);
+
+useImperativeHandle(ref, () => ({
+  openSettings: () => setSettingsOpen(true),
+  openArchive: async () => {
+    await loadArchivedCards();
+    setArchiveOpen(true);
+  },
+}), [loadArchivedCards]);
 
 // 3. KARTE AUS ARCHIV WIEDERHERSTELLEN:
 const restoreCard = async (card: any) => {
@@ -717,7 +737,7 @@ const restoreCard = async (card: any) => {
     
     // Entferne aus archivierten Karten
     const updatedArchived = archivedCards.filter(c => idFor(c) !== idFor(card));
-    setArchivedCards(updatedArchived);
+    updateArchivedState(updatedArchived);
     
     // Speichere Änderungen
     await saveCards();
@@ -750,7 +770,7 @@ const deleteCardPermanently = async (card: any) => {
     
     // Entferne aus lokaler Liste
     const updatedArchived = archivedCards.filter(c => idFor(c) !== idFor(card));
-    setArchivedCards(updatedArchived);
+    updateArchivedState(updatedArchived);
     
     console.log('🗑️ Karte endgültig gelöscht:', card.Nummer);
   } catch (error) {
@@ -1855,7 +1875,7 @@ return (
       color: 'var(--ink)'
     }}>
       {/* Header mit Toolbar */}
-      <Box sx={{ 
+      <Box sx={{
         position: 'sticky',
         top: 0,
         zIndex: 5,
@@ -1863,58 +1883,13 @@ return (
         borderBottom: '1px solid var(--line)',
         p: 2
       }}>
-       {/* Board Title mit Settings */}
-<Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-  <Typography variant="h5">
-    {(boardName && boardName.trim()) || boardMeta?.name || 'Multiprojektboard'}
-  </Typography>
-  <IconButton 
-    size="small"
-    onClick={() => setSettingsOpen(true)}
-    sx={{ 
-      width: 32, 
-      height: 32,
-      border: '1px solid var(--line)',
-      backgroundColor: 'transparent',
-      '&:hover': {
-        backgroundColor: 'rgba(255,255,255,0.1)'
-      }
-    }}
-    title="Einstellungen"
-  >
-    ⚙️
-  </IconButton>
-</Box>
-
-        {((boardDescription && boardDescription.trim()) || boardMeta?.description) && (
-          <Typography
-            variant="body2"
-            sx={{ color: 'var(--muted)', mb: 1 }}
-          >
-            {(boardDescription && boardDescription.trim()) || boardMeta?.description || ''}
-          </Typography>
-        )}
-
-          <Button
-  variant="outlined"
-  onClick={async () => {
-    await loadArchivedCards();
-    setArchiveOpen(true);
-  }}
-  sx={{ mr: 1 }}
-  startIcon={<span>🗃️</span>}
->
-  Archiv ({archivedCards.length > 0 ? archivedCards.length : '?'})
-</Button>
-
-
         {/* Toolbar */}
-        <Box sx={{ 
+        <Box sx={{
           display: 'grid',
           gridTemplateColumns: '1fr auto auto auto auto auto auto auto auto auto auto',
           gap: 1.5,
           alignItems: 'center',
-          mt: 2
+          mt: 0
         }}>
           {/* Suchfeld */}
           <TextField
@@ -2436,9 +2411,11 @@ return (
 {/* SCHRITT 4: TRKPIPopup hinzufügen */}
     <TRKPIPopup
       open={kpiPopupOpen}
-      onClose={() => setKpiPopupOpen(false)} 
-      cards={rows} 
-    />  
+      onClose={() => setKpiPopupOpen(false)}
+      cards={rows}
+    />
     </Box>
   );
-};
+});
+
+export default OriginalKanbanBoard;

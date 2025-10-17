@@ -1,21 +1,27 @@
 'use client';
 
-import { useState } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Button, 
+import { useEffect, useRef, useState } from 'react';
+import {
+  Box,
+  Typography,
+  Button,
   Container,
-  Paper,
   Grid,
   Card,
   CardContent,
-  CardActions
+  CardActions,
+  IconButton
 } from '@mui/material';
-import OriginalKanbanBoard from '@/components/kanban/OriginalKanbanBoard';
+import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
 
 export default function HomePage() {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
+  const boardRef = useRef<OriginalKanbanBoardHandle>(null);
+  const [archivedCount, setArchivedCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    setArchivedCount(null);
+  }, [selectedBoard]);
 
   // Beispiel-Boards
   const boards = [
@@ -46,29 +52,58 @@ export default function HomePage() {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         {/* Header mit Zurück-Button */}
-        <Box sx={{ 
-          p: 2, 
+        <Box sx={{
+          p: 2,
           borderBottom: '1px solid var(--line)',
           backgroundColor: 'var(--panel)',
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: 2
         }}>
-          <Button 
-            variant="outlined" 
-            onClick={() => setSelectedBoard(null)}
-            sx={{ minWidth: 'auto' }}
-          >
-            ← Zurück
-          </Button>
-          <Typography variant="h6">
-            {boards.find(b => b.id === selectedBoard)?.name}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={() => setSelectedBoard(null)}
+              sx={{ minWidth: 'auto' }}
+            >
+              ← Zurück
+            </Button>
+            <Typography variant="h6">
+              {boards.find(b => b.id === selectedBoard)?.name}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Button
+              variant="outlined"
+              onClick={() => boardRef.current?.openArchive()}
+              startIcon={<span>🗃️</span>}
+            >
+              Archiv{archivedCount !== null ? ` (${archivedCount})` : ' (?)'}
+            </Button>
+            <IconButton
+              onClick={() => boardRef.current?.openSettings()}
+              sx={{
+                border: '1px solid',
+                borderColor: 'var(--line)',
+                width: 36,
+                height: 36,
+                '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' }
+              }}
+              title="Board-Einstellungen"
+            >
+              ⚙️
+            </IconButton>
+          </Box>
         </Box>
 
         {/* Board */}
         <Box sx={{ flex: 1 }}>
-          <OriginalKanbanBoard boardId={selectedBoard} />
+          <OriginalKanbanBoard
+            ref={boardRef}
+            boardId={selectedBoard}
+            onArchiveCountChange={(count) => setArchivedCount(count)}
+          />
         </Box>
       </Box>
     );

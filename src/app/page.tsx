@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { 
   Box, 
   Typography, 
@@ -18,7 +18,7 @@ import {
   TextField,
   Alert,
 } from '@mui/material';
-import OriginalKanbanBoard from '@/components/kanban/OriginalKanbanBoard';
+import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
 import { useTheme } from '@/theme/ThemeRegistry';
 import { useAuth } from '../contexts/AuthContext';
 import { createClient } from '@supabase/supabase-js';
@@ -43,7 +43,8 @@ export default function HomePage() {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
   const { isDark, toggleTheme } = useTheme();
   const { user, loading, signOut } = useAuth();
-  
+  const boardRef = useRef<OriginalKanbanBoardHandle>(null);
+
   // Board Management States
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -53,6 +54,11 @@ export default function HomePage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [boardToDelete, setBoardToDelete] = useState<Board | null>(null);
   const [message, setMessage] = useState('');
+  const [archivedCount, setArchivedCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    setArchivedCount(null);
+  }, [selectedBoard]);
 
   // Auth-Check
   useEffect(() => {
@@ -305,38 +311,62 @@ export default function HomePage() {
             </Typography>
           </Box>
           
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-  <Button 
-    variant="outlined" 
-    onClick={() => window.location.href = '/admin'}
-    sx={{ 
-      color: '#9c27b0', 
-      borderColor: '#9c27b0',
-      '&:hover': {
-        backgroundColor: '#f3e5f5',
-        borderColor: '#7b1fa2'
-      }
-    }}
-  >
-   
-    👥 Admin
-  </Button>
-  <Typography variant="body2">
-    👋 {user.email}
-  </Typography>
-  <IconButton onClick={toggleTheme} color="primary">
-    {isDark ? '☀️' : '🌙'}
-  </IconButton>
-  <Button variant="outlined" onClick={signOut} color="error">
-    🚪 Abmelden
-  </Button>
-</Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <Button
+              variant="outlined"
+              onClick={() => boardRef.current?.openArchive()}
+              startIcon={<span>🗃️</span>}
+              sx={{ whiteSpace: 'nowrap' }}
+            >
+              Archiv{archivedCount !== null ? ` (${archivedCount})` : ' (?)'}
+            </Button>
+            <IconButton
+              onClick={() => boardRef.current?.openSettings()}
+              sx={{
+                border: '1px solid',
+                borderColor: 'divider',
+                width: 36,
+                height: 36,
+                '&:hover': { backgroundColor: 'action.hover' }
+              }}
+              title="Board-Einstellungen"
+            >
+              ⚙️
+            </IconButton>
+            <Button
+              variant="outlined"
+              onClick={() => window.location.href = '/admin'}
+              sx={{
+                color: '#9c27b0',
+                borderColor: '#9c27b0',
+                '&:hover': {
+                  backgroundColor: '#f3e5f5',
+                  borderColor: '#7b1fa2'
+                }
+              }}
+            >
+              👥 Admin
+            </Button>
+            <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+              👋 {user.email}
+            </Typography>
+            <IconButton onClick={toggleTheme} color="primary">
+              {isDark ? '☀️' : '🌙'}
+            </IconButton>
+            <Button variant="outlined" onClick={signOut} color="error">
+              🚪 Abmelden
+            </Button>
+          </Box>
 
         </Box>
 
         {/* Board */}
         <Box sx={{ flex: 1 }}>
-          <OriginalKanbanBoard boardId={selectedBoard} />
+          <OriginalKanbanBoard
+            ref={boardRef}
+            boardId={selectedBoard}
+            onArchiveCountChange={(count) => setArchivedCount(count)}
+          />
         </Box>
       </Box>
     );
