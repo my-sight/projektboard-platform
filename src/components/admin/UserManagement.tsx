@@ -63,7 +63,9 @@ export default function UserManagement() {
   const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserName, setNewUserName] = useState('');
   const [newUserDepartment, setNewUserDepartment] = useState('');
+  const [editableNames, setEditableNames] = useState<Record<string, string>>({});
 
   const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState('');
@@ -94,6 +96,11 @@ export default function UserManagement() {
         setUsers([]);
       } else {
         setUsers(usersData || []);
+        const mappedNames: Record<string, string> = {};
+        (usersData || []).forEach(profile => {
+          mappedNames[profile.id] = profile.full_name || '';
+        });
+        setEditableNames(mappedNames);
       }
 
       const { data: departmentsData, error: departmentsError } = departmentsResult;
@@ -155,6 +162,43 @@ export default function UserManagement() {
       console.error('Fehler beim Aktualisieren der Abteilung:', error);
       setMessage('❌ Fehler beim Aktualisieren der Abteilung');
     }
+  };
+
+  const updateUserName = async (userId: string, fullName: string) => {
+    const trimmed = fullName.trim();
+    if (!trimmed) {
+      const fallbackName = users.find(profile => profile.id === userId)?.full_name || '';
+      setEditableNames(prev => ({ ...prev, [userId]: fallbackName }));
+      setMessage('❌ Name darf nicht leer sein.');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: trimmed })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      setUsers(prev =>
+        prev.map(profile =>
+          profile.id === userId ? { ...profile, full_name: trimmed } : profile,
+        ),
+      );
+      setEditableNames(prev => ({ ...prev, [userId]: trimmed }));
+
+      setMessage('✅ Benutzername erfolgreich aktualisiert!');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (error) {
+      console.error('Fehler beim Aktualisieren des Namens:', error);
+      setMessage('❌ Fehler beim Aktualisieren des Namens');
+    }
+  };
+
+  const handleInlineNameChange = (userId: string, value: string) => {
+    setEditableNames(prev => ({ ...prev, [userId]: value }));
   };
 
   const addDepartment = async () => {
@@ -219,6 +263,7 @@ export default function UserManagement() {
         await supabase.from('profiles').insert({
           id: data.user.id,
           email: newUserEmail.trim(),
+          full_name: newUserName.trim() || null,
           role: 'user',
           is_active: true,
           company: newUserDepartment || null
@@ -228,6 +273,7 @@ export default function UserManagement() {
       setCreateUserDialogOpen(false);
       setNewUserEmail('');
       setNewUserPassword('');
+      setNewUserName('');
       setNewUserDepartment('');
       setMessage('✅ Benutzer erfolgreich erstellt!');
       await loadData();
@@ -398,10 +444,14 @@ export default function UserManagement() {
                         <Avatar src={userProfile.avatar_url} sx={{ width: 32, height: 32 }}>
                           {userProfile.full_name?.[0] || userProfile.email[0].toUpperCase()}
                         </Avatar>
-                        <Box>
-                          <Typography variant="body2" fontWeight="bold">
-                            {userProfile.full_name || 'Unbekannt'}
-                          </Typography>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                          <TextField
+                            value={editableNames[userProfile.id] ?? userProfile.full_name ?? ''}
+                            onChange={(e) => handleInlineNameChange(userProfile.id, e.target.value)}
+                            onBlur={(e) => updateUserName(userProfile.id, e.target.value)}
+                            size="small"
+                            placeholder="Name eingeben"
+                          />
                           {userProfile.company && (
                             <Typography variant="caption" color="text.secondary">
                               {userProfile.company}
@@ -462,6 +512,13 @@ export default function UserManagement() {
       <Dialog open={createUserDialogOpen} onClose={() => setCreateUserDialogOpen(false)} maxWidth="xs" fullWidth>
         <DialogTitle>👤 Neuen Benutzer anlegen</DialogTitle>
         <DialogContent>
+          <TextField
+            label="Name"
+            value={newUserName}
+            onChange={(e) => setNewUserName(e.target.value)}
+            fullWidth
+            margin="normal"
+          />
           <TextField
             label="E-Mail"
             type="email"

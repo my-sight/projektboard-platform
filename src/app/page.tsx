@@ -33,6 +33,9 @@ interface Board {
   name: string;
   description: string;
   created_at: string;
+  visibility?: string | null;
+  owner_id?: string | null;
+  user_id?: string | null;
   cardCount?: number;
 }
 
@@ -81,18 +84,48 @@ export default function HomePage() {
 
   const loadBoards = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('kanban_boards')
-        .select('*')
-        .order('created_at', { ascending: false });
+      let query = supabase.from('kanban_boards').select('*');
+
+      if (user) {
+        query = query.or(
+          `visibility.eq.public,owner_id.eq.${user.id},user_id.eq.${user.id}`,
+        );
+      } else {
+        query = query.eq('visibility', 'public');
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
-      setBoards(data || []);
+
+      const boardsData = data || [];
+      setBoards(boardsData);
+
+      const boardsWithoutVisibility = boardsData
+        .filter((board) => !board.visibility || board.visibility === '');
+
+      if (boardsWithoutVisibility.length && isAdmin) {
+        const ids = boardsWithoutVisibility.map((board) => board.id);
+        const { error: updateError } = await supabase
+          .from('kanban_boards')
+          .update({ visibility: 'public' })
+          .in('id', ids);
+
+        if (updateError) {
+          console.error('Fehler beim Aktualisieren der Sichtbarkeit:', updateError);
+        } else {
+          setBoards((prev) =>
+            prev.map((board) =>
+              ids.includes(board.id) ? { ...board, visibility: 'public' } : board,
+            ),
+          );
+        }
+      }
     } catch (error) {
       console.error('Fehler beim Laden der Boards:', error);
       setMessage('❌ Fehler beim Laden der Boards');
     }
-  }, []);
+  }, [isAdmin, user]);
 
   useEffect(() => {
     if (!user) {

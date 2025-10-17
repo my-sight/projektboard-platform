@@ -171,6 +171,27 @@ export function EditCardDialog({
                 }}
               />
 
+              <Typography>Priorität</Typography>
+              <Checkbox
+                checked={toBoolean(selectedCard['Priorität'])}
+                onChange={(e) => {
+                  selectedCard['Priorität'] = e.target.checked;
+                  setRows([...rows]);
+                  setTimeout(() => saveCards(), 500);
+                }}
+              />
+
+              <Typography>SOP</Typography>
+              <TextField
+                size="small"
+                type="date"
+                value={String(selectedCard['SOP_Datum'] || '').slice(0, 10)}
+                onChange={(e) => {
+                  selectedCard['SOP_Datum'] = e.target.value;
+                  setRows([...rows]);
+                }}
+              />
+
               <Typography>Swimlane</Typography>
               <Select
                 size="small"
@@ -713,6 +734,8 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
     'Status Kurz': '',
     Verantwortlich: '',
     'Due Date': '',
+    'Priorität': false,
+    SOP_Datum: '',
     Ampel: 'grün',
     Swimlane: lanes[0] || 'Allgemein',
     UID: `uid_${Date.now()}`,
@@ -741,6 +764,8 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
       'Status Kurz': '',
       Verantwortlich: '',
       'Due Date': '',
+      'Priorität': false,
+      SOP_Datum: '',
       Ampel: 'grün',
       Swimlane: lanes[0] || 'Allgemein',
       UID: `uid_${Date.now()}`,
@@ -817,6 +842,24 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
             type="date"
             value={newCard['Due Date']}
             onChange={(e) => setNewCard({ ...newCard, 'Due Date': e.target.value })}
+            InputLabelProps={{ shrink: true }}
+          />
+          <FormControlLabel
+            control={(
+              <Checkbox
+                checked={Boolean(newCard['Priorität'])}
+                onChange={(e) =>
+                  setNewCard({ ...newCard, 'Priorität': e.target.checked })
+                }
+              />
+            )}
+            label="Priorität"
+          />
+          <TextField
+            label="SOP Datum"
+            type="date"
+            value={newCard.SOP_Datum}
+            onChange={(e) => setNewCard({ ...newCard, SOP_Datum: e.target.value })}
             InputLabelProps={{ shrink: true }}
           />
           <TextField

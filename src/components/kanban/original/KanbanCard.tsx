@@ -59,13 +59,16 @@ export function KanbanCard({
     statusKurz = String(card['Status Kurz'] || '').trim();
   }
 
-  const isOverdue = card['Due Date'] && new Date(card['Due Date']) < new Date();
+  const dueDate = nullableDate(card['Due Date']);
   const trCompleted = toBoolean(card['TR_Completed']);
+  const isOverdue = !!dueDate && !trCompleted && dueDate < new Date();
   const trOriginalDate = nullableDate(card['TR_Datum']);
   const trCompletedDate = nullableDate(card['TR_Completed_At'] || card['TR_Completed_Date']);
   const trCompletionDiff = trOriginalDate && trCompletedDate
     ? Math.round((trCompletedDate.getTime() - trOriginalDate.getTime()) / (1000 * 60 * 60 * 24))
     : null;
+  const hasPriority = toBoolean(card['Priorität']);
+  const sopDate = nullableDate(card['SOP_Datum']);
 
   let currentSize: KanbanDensity = density;
   if (card['Collapsed'] === 'large') {
@@ -231,7 +234,23 @@ export function KanbanCard({
                   </Typography>
                 </Box>
 
-                <Box className="controls" sx={{ display: 'flex', gap: 0.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  {hasPriority && (
+                    <Chip
+                      label="!"
+                      size="small"
+                      color="error"
+                      sx={{
+                        fontWeight: 700,
+                        height: 20,
+                        '& .MuiChip-label': {
+                          px: 0.75,
+                          fontSize: '12px',
+                        },
+                      }}
+                    />
+                  )}
+                  <Box className="controls" sx={{ display: 'flex', gap: 0.5 }}>
                   <IconButton
                     size="small"
                     sx={{
@@ -326,6 +345,7 @@ export function KanbanCard({
                   >
                     ✎
                   </IconButton>
+                  </Box>
                 </Box>
               </Box>
 
@@ -395,7 +415,7 @@ export function KanbanCard({
                   {card['Verantwortlich'] || ''}
                 </Typography>
 
-                {card['Due Date'] && (
+                {dueDate && (
                   <Typography
                     variant="caption"
                     sx={{
@@ -407,35 +427,55 @@ export function KanbanCard({
                       borderRadius: isOverdue ? '4px' : '0',
                     }}
                   >
-                    {String(card['Due Date']).slice(0, 10)}
+                    {dueDate.toLocaleDateString('de-DE')}
                   </Typography>
                 )}
               </Box>
 
-              {(card['TR_Datum'] || card['TR_Neu']) && (
+              {(card['TR_Datum'] || card['TR_Neu'] || sopDate) && (
                 <Box
                   sx={{
                     mt: 1,
                     pt: 1,
                     borderTop: '1px solid var(--line)',
                     display: 'flex',
-                    justifyContent: 'center',
+                    justifyContent: sopDate ? 'space-between' : 'center',
                     gap: 0.5,
+                    alignItems: 'center',
                   }}
                 >
-                  {renderTRChip(
-                    'TR',
-                    card['TR_Datum'],
-                    '#2e7d32',
-                    '1px solid #c8e6c9',
-                    '#e8f5e8',
-                  )}
-                  {renderTRChip(
-                    'TR neu',
-                    card['TR_Neu'],
-                    '#1976d2',
-                    '1px solid #bbdefb',
-                    '#e3f2fd',
+                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                    {renderTRChip(
+                      'TR',
+                      card['TR_Datum'],
+                      '#2e7d32',
+                      '1px solid #c8e6c9',
+                      '#e8f5e8',
+                    )}
+                    {renderTRChip(
+                      'TR neu',
+                      card['TR_Neu'],
+                      '#1976d2',
+                      '1px solid #bbdefb',
+                      '#e3f2fd',
+                    )}
+                  </Box>
+                  {sopDate && (
+                    <Chip
+                      label={`SOP: ${sopDate.toLocaleDateString('de-DE')}`}
+                      size="small"
+                      sx={{
+                        fontSize: '10px',
+                        height: '18px',
+                        backgroundColor: '#f3e5f5',
+                        color: '#6a1b9a',
+                        border: '1px solid #e1bee7',
+                        '& .MuiChip-label': {
+                          px: 0.8,
+                          py: 0,
+                        },
+                      }}
+                    />
                   )}
                 </Box>
               )}
