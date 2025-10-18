@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveAdminSupabaseClient } from '@/lib/supabaseServer';
 
 export async function POST(request: NextRequest) {
-  const { client: supabase, isService } = resolveAdminSupabaseClient();
+  const { client: supabase, isService } = await resolveAdminSupabaseClient();
 
   try {
     const { name } = await request.json();

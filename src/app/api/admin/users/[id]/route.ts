@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveAdminSupabaseClient } from '@/lib/supabaseServer';
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
-  const { client: supabase } = resolveAdminSupabaseClient();
+  const { client: supabase } = await resolveAdminSupabaseClient();
 
   try {
     const payload = await request.json();
@@ -62,7 +62,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
-  const { client: supabase, isService } = resolveAdminSupabaseClient();
+  const { client: supabase, isService } = await resolveAdminSupabaseClient();
 
   if (!isService) {
     return NextResponse.json(

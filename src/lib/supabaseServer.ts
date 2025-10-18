@@ -1,14 +1,35 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 
-type AnySupabaseClient = SupabaseClient<any, any, any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnySupabaseClient = SupabaseClient<any, any, any>;
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+
+  if (!value) {
+    throw new Error(`${name} ist nicht konfiguriert.`);
+  }
+
+  return value;
+}
+
+function getProjectRef(supabaseUrl: string): string | null {
+  try {
+    const { host } = new URL(supabaseUrl);
+    const [ref] = host.split('.');
+    return ref || null;
+  } catch (error) {
+    console.warn('Konnte Supabase-Projekt-Ref aus URL nicht ermitteln:', error);
+    return null;
+  }
+}
 
 export function getServiceSupabaseClient(): AnySupabaseClient {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseUrl = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!supabaseUrl || !serviceRoleKey) {
+  if (!serviceRoleKey) {
     throw new Error('Supabase service role client is not configured.');
   }
 
@@ -19,15 +40,56 @@ export function getServiceSupabaseClient(): AnySupabaseClient {
   });
 }
 
-export function getRouteSupabaseClient(): AnySupabaseClient {
-  return createRouteHandlerClient({ cookies }) as unknown as AnySupabaseClient;
+async function createSessionClientFromCookies(): Promise<AnySupabaseClient> {
+  const supabaseUrl = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
+  const anonKey = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  const client = createClient(supabaseUrl, anonKey, {
+    auth: {
+      persistSession: false
+    }
+  });
+
+  try {
+    const projectRef = getProjectRef(supabaseUrl);
+
+    if (!projectRef) {
+      return client;
+    }
+
+    const authCookie = cookies().get(`sb-${projectRef}-auth-token`);
+
+    if (!authCookie?.value) {
+      return client;
+    }
+
+    const parsed = JSON.parse(authCookie.value) as {
+      access_token?: string;
+      refresh_token?: string;
+    };
+
+    if (parsed.access_token && parsed.refresh_token) {
+      const { error } = await client.auth.setSession({
+        access_token: parsed.access_token,
+        refresh_token: parsed.refresh_token
+      });
+
+      if (error) {
+        console.warn('Konnte Supabase-Session aus Cookies nicht übernehmen:', error.message);
+      }
+    }
+  } catch (error) {
+    console.warn('Fehler beim Anwenden der Supabase-Session aus Cookies:', error);
+  }
+
+  return client;
 }
 
-export function resolveAdminSupabaseClient(): { client: AnySupabaseClient; isService: boolean } {
+export async function resolveAdminSupabaseClient(): Promise<{ client: AnySupabaseClient; isService: boolean }> {
   try {
     return { client: getServiceSupabaseClient(), isService: true };
   } catch (error) {
     console.warn('Falling back to authenticated Supabase client – service role key missing.');
-    return { client: getRouteSupabaseClient(), isService: false };
+    const client = await createSessionClientFromCookies();
+    return { client, isService: false };
   }
 }
