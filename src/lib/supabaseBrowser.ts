@@ -2,17 +2,12 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 let browserClient: SupabaseClient | null = null;
 
-function readEnv(name: string): string | null {
-  const value = process.env[name];
-  if (!value || value.trim().length === 0) {
-    return null;
-  }
-  return value;
-}
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export function getSupabaseBrowserClient(): SupabaseClient | null {
-  const supabaseUrl = readEnv('NEXT_PUBLIC_SUPABASE_URL');
-  const anonKey = readEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
+  const supabaseUrl = SUPABASE_URL?.trim();
+  const anonKey = SUPABASE_ANON_KEY?.trim();
 
   if (!supabaseUrl || !anonKey) {
     if (process.env.NODE_ENV !== 'production') {
