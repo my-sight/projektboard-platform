@@ -27,6 +27,8 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AddIcon from '@mui/icons-material/Add';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { ClientProfile, fetchClientProfiles } from '@/lib/clientProfiles';
@@ -48,7 +50,7 @@ interface AttendanceRecord {
   board_id: string;
   profile_id: string;
   week_start: string;
-  status: string;
+  status: 'present' | 'absent' | string;
 }
 
 interface Topic {
@@ -100,14 +102,6 @@ interface BoardManagementPanelProps {
   canEdit: boolean;
   memberCanSee: boolean;
 }
-
-const ATTENDANCE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'present', label: 'Anwesend' },
-  { value: 'remote', label: 'Remote' },
-  { value: 'vacation', label: 'Urlaub' },
-  { value: 'sick', label: 'Krank' },
-  { value: 'absent', label: 'Abwesend' },
-];
 
 function startOfWeek(date: Date): Date {
   const copy = new Date(date);
@@ -259,6 +253,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
   const [attendance, setAttendance] = useState<Record<string, AttendanceRecord | undefined>>({});
+  const [attendanceDialogOpen, setAttendanceDialogOpen] = useState(false);
+  const [attendanceDraft, setAttendanceDraft] = useState<Record<string, boolean>>({});
+  const [attendanceSaving, setAttendanceSaving] = useState(false);
 
   const [topics, setTopics] = useState<Topic[]>([]);
   const [escalations, setEscalations] = useState<EscalationView[]>([]);
@@ -288,10 +285,42 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     return map;
   }, [profiles]);
 
-  const attendanceFor = (profileId: string): string => {
+  const attendanceStatus = (profileId: string): 'present' | 'absent' => {
     const record = attendance[profileId];
-    return record?.status ?? 'present';
+    return record?.status === 'absent' ? 'absent' : 'present';
   };
+
+  const absentMembers = useMemo(
+    () => members.filter(member => attendanceStatus(member.profile_id) === 'absent'),
+    [attendance, members],
+  );
+
+  const buildAttendanceDraft = () => {
+    const draft: Record<string, boolean> = {};
+    members.forEach(member => {
+      draft[member.profile_id] = attendanceStatus(member.profile_id) === 'present';
+    });
+    return draft;
+  };
+
+  const openAttendanceDialog = () => {
+    setAttendanceDraft(buildAttendanceDraft());
+    setAttendanceDialogOpen(true);
+  };
+
+  const closeAttendanceDialog = () => {
+    if (attendanceSaving) return;
+    setAttendanceDialogOpen(false);
+  };
+
+  const toggleAttendanceDraft = (profileId: string) => {
+    setAttendanceDraft(prev => ({ ...prev, [profileId]: !(prev[profileId] ?? true) }));
+  };
+
+  useEffect(() => {
+    if (!attendanceDialogOpen) return;
+    setAttendanceDraft(buildAttendanceDraft());
+  }, [attendanceDialogOpen, attendance, members]);
 
   const handleError = (error: unknown, fallback: string) => {
     console.error(fallback, error);
@@ -383,29 +412,41 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     setWeekStart(startOfWeek(next));
   };
 
-  const upsertAttendance = async (profileId: string, status: string) => {
+  const saveAttendance = async () => {
+    if (!canEdit || members.length === 0) {
+      setAttendanceDialogOpen(false);
+      return;
+    }
+
     try {
-      const { error, data } = await supabase
+      setAttendanceSaving(true);
+      const payload = members.map(member => ({
+        board_id: boardId,
+        profile_id: member.profile_id,
+        week_start: isoDate(weekStart),
+        status: (attendanceDraft[member.profile_id] ?? true) ? 'present' : 'absent',
+      }));
+
+      if (payload.length === 0) {
+        setAttendance({});
+        setAttendanceDialogOpen(false);
+        return;
+      }
+
+      const { error } = await supabase
         .from('board_attendance')
-        .upsert(
-          {
-            board_id: boardId,
-            profile_id: profileId,
-            week_start: isoDate(weekStart),
-            status,
-          },
-          { onConflict: 'board_id,profile_id,week_start' },
-        )
-        .select()
-        .single();
+        .upsert(payload, { onConflict: 'board_id,profile_id,week_start' });
 
       if (error) throw new Error(error.message);
 
-      if (data) {
-        setAttendance(prev => ({ ...prev, [profileId]: data as AttendanceRecord }));
-      }
+      await loadAttendance(weekStart);
+      setAttendanceDialogOpen(false);
+      setMessage('✅ Anwesenheit gespeichert');
+      setTimeout(() => setMessage(''), 4000);
     } catch (error) {
       handleError(error, 'Fehler beim Speichern der Anwesenheit');
+    } finally {
+      setAttendanceSaving(false);
     }
   };
 
@@ -679,16 +720,108 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         </CardContent>
       </Card>
 
+
+      <Dialog open={attendanceDialogOpen} onClose={closeAttendanceDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>Anwesenheit verwalten</DialogTitle>
+        <DialogContent dividers>
+          {members.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Es sind keine Mitglieder hinterlegt.
+            </Typography>
+          ) : (
+            <Stack spacing={3}>
+              <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+                <IconButton onClick={() => adjustWeek(-1)} size="small">
+                  <ArrowBackIcon />
+                </IconButton>
+                <Box textAlign="center">
+                  <Typography variant="subtitle1">Woche {isoWeekNumber(weekStart)}</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {weekRangeLabel(weekStart)}
+                  </Typography>
+                </Box>
+                <IconButton onClick={() => adjustWeek(1)} size="small">
+                  <ArrowForwardIcon />
+                </IconButton>
+              </Stack>
+
+              <Typography variant="body2" color="text.secondary">
+                Klicke auf den Status, um zwischen Anwesend und Abwesend zu wechseln. Standard ist Anwesend.
+              </Typography>
+
+              <Stack spacing={1.5}>
+                {members.map(member => {
+                  const present = attendanceDraft[member.profile_id] ?? true;
+                  const profile = member.profile;
+                  const label = profile?.full_name || profile?.email || 'Unbekannt';
+                  const clickable = canEdit && !attendanceSaving;
+                  return (
+                    <Box
+                      key={member.id}
+                      sx={{
+                        border: '1px solid',
+                        borderColor: 'divider',
+                        borderRadius: 2,
+                        p: 1.5,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: 2,
+                      }}
+                    >
+                      <Box>
+                        <Typography variant="subtitle2">{label}</Typography>
+                        {profile?.company && (
+                          <Typography variant="body2" color="text.secondary">
+                            {profile.company}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Chip
+                        icon={present ? <CheckIcon /> : <CloseIcon />}
+                        label={present ? 'Anwesend' : 'Abwesend'}
+                        color={present ? 'success' : 'default'}
+                        variant={present ? 'filled' : 'outlined'}
+                        onClick={clickable ? () => toggleAttendanceDraft(member.profile_id) : undefined}
+                        clickable={clickable}
+                        sx={{ minWidth: 140 }}
+                      />
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeAttendanceDialog} disabled={attendanceSaving}>
+            Schließen
+          </Button>
+          <Button
+            onClick={saveAttendance}
+            variant="contained"
+            disabled={!canEdit || attendanceSaving || members.length === 0}
+          >
+            Speichern
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <Card>
         <CardContent>
-          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} justifyContent="space-between">
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={2}
+            alignItems={{ sm: 'center' }}
+            justifyContent="space-between"
+          >
             <Box>
               <Typography variant="h6">🗓️ Anwesenheit</Typography>
               <Typography variant="body2" color="text.secondary">
                 Woche {isoWeekNumber(weekStart)} ({weekRangeLabel(weekStart)})
               </Typography>
             </Box>
-            <Stack direction="row" spacing={1}>
+            <Stack direction="row" spacing={1} alignItems="center">
               <IconButton onClick={() => adjustWeek(-1)}>
                 <ArrowBackIcon />
               </IconButton>
@@ -698,32 +831,49 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             </Stack>
           </Stack>
 
-          <Grid container spacing={2} sx={{ mt: 2 }}>
-            {members.map(member => (
-              <Grid item xs={12} md={6} lg={4} key={member.id}>
-                <Stack spacing={1}>
-                  <Typography variant="subtitle2">
-                    {member.profile?.full_name || member.profile?.email}
-                  </Typography>
-                  <FormControl size="small">
-                    <InputLabel>Status</InputLabel>
-                    <Select
-                      label="Status"
-                      value={attendanceFor(member.profile_id)}
-                      disabled={!canEdit}
-                      onChange={(event) => upsertAttendance(member.profile_id, event.target.value)}
-                    >
-                      {ATTENDANCE_OPTIONS.map(option => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Stack>
-              </Grid>
-            ))}
-          </Grid>
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={2}
+            justifyContent="space-between"
+            alignItems={{ sm: 'center' }}
+            sx={{ mt: 2 }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Anwesenheit wird pro Woche gespeichert. Standard ist „Anwesend“ – Abwesenheiten lassen
+              sich im Dialog erfassen.
+            </Typography>
+            <Button
+              variant="contained"
+              onClick={openAttendanceDialog}
+              disabled={members.length === 0}
+            >
+              Anwesenheit verwalten
+            </Button>
+          </Stack>
+
+          <Divider sx={{ my: 2 }} />
+
+          {members.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Füge Mitglieder hinzu, um Anwesenheiten zu dokumentieren.
+            </Typography>
+          ) : absentMembers.length === 0 ? (
+            <Typography variant="body2">Alle Mitglieder sind für diese Woche als anwesend markiert.</Typography>
+          ) : (
+            <Stack spacing={1}>
+              <Typography variant="subtitle2">Abwesend in dieser Woche</Typography>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                {absentMembers.map(member => (
+                  <Chip
+                    key={member.id}
+                    label={member.profile?.full_name || member.profile?.email || 'Unbekannt'}
+                    color="default"
+                    sx={{ mr: 1, mb: 1 }}
+                  />
+                ))}
+              </Stack>
+            </Stack>
+          )}
         </CardContent>
       </Card>
 

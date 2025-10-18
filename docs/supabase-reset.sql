@@ -176,7 +176,7 @@ create table public.board_attendance (
   board_id     uuid not null references public.kanban_boards(id) on delete cascade,
   profile_id   uuid not null references public.profiles(id) on delete cascade,
   week_start   date not null,
-  status       text not null default 'present',
+  status       text not null default 'present' check (status in ('present', 'absent')),
   created_at   timestamptz not null default timezone('utc', now()),
   updated_at   timestamptz not null default timezone('utc', now()),
   constraint board_attendance_unique unique (board_id, profile_id, week_start)
