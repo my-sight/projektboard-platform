@@ -347,22 +347,27 @@ export default function UserManagement() {
     if (!newUserEmail.trim() || !newUserPassword.trim()) return;
 
     try {
+      const trimmedEmail = newUserEmail.trim();
+      const trimmedPassword = newUserPassword.trim();
+      const trimmedName = newUserName.trim();
+      const trimmedDepartment = newUserDepartment.trim();
+
       const { data, error } = await supabase.auth.signUp({
-        email: newUserEmail.trim(),
-        password: newUserPassword.trim()
+        email: trimmedEmail,
+        password: trimmedPassword,
+        options: {
+          data: {
+            full_name: trimmedName || null,
+            company: trimmedDepartment || null,
+            role: 'user'
+          }
+        }
       });
 
       if (error) throw error;
 
-      if (data.user?.id) {
-        await supabase.from('profiles').insert({
-          id: data.user.id,
-          email: newUserEmail.trim(),
-          full_name: newUserName.trim() || null,
-          role: 'user',
-          is_active: true,
-          company: newUserDepartment || null
-        });
+      if (!data.user?.id) {
+        throw new Error('Benutzerkonto konnte nicht erstellt werden.');
       }
 
       setCreateUserDialogOpen(false);

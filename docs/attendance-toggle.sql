@@ -26,3 +26,19 @@ $$;
 alter table public.board_attendance
   add constraint board_attendance_status_check
   check (status in ('present', 'absent'));
+
+-- Index zur schnelleren Abfrage nach Board und Kalenderwoche
+create index if not exists board_attendance_board_week_idx
+  on public.board_attendance (board_id, week_start desc);
+
+-- Optionale Sicht, die jede gespeicherte KW nur einmal zurückliefert
+create or replace view public.board_attendance_weeks as
+select
+  board_id,
+  week_start,
+  min(created_at) as first_recorded_at
+from public.board_attendance
+group by board_id, week_start
+order by board_id, week_start desc;
+
+grant select on public.board_attendance_weeks to authenticated;
