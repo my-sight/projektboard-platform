@@ -10,7 +10,7 @@ export default function Board({ board }: BoardProps) {
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom>
-        {board.title}
+        {board.name}
       </Typography>
       {board.description && (
         <Typography variant="body1" color="text.secondary" gutterBottom sx={{ mb: 3 }}>
@@ -19,7 +19,7 @@ export default function Board({ board }: BoardProps) {
       )}
       
       <Box sx={{ display: 'flex', overflowX: 'auto', pb: 2 }}>
-        {board.columns.map((column) => (
+        {(board.columns ?? []).map((column) => (
           <Column key={column.id} column={column} />
         ))}
       </Box>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { 
   Box, 
   Typography, 
@@ -31,20 +31,32 @@ import {
   Grid, 
   Card,
 } from '@mui/material';
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
+import { DropResult } from '@hello-pangea/dnd';
 import { Assessment, Close } from '@mui/icons-material';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
+import { KanbanCard } from './original/KanbanCard';
+import { KanbanColumnsView, KanbanLaneView, KanbanSwimlaneView } from './original/KanbanViews';
+import { ArchiveDialog, EditCardDialog, NewCardDialog } from './original/KanbanDialogs';
+import { nullableDate, toBoolean } from '@/utils/booleans';
+import { fetchClientProfiles } from '@/lib/clientProfiles';
+import { isSuperuserEmail } from '@/constants/superuser';
+
+const getErrorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 // import { useAuth } from '../../contexts/AuthContext';
 // import { AuthProvider } from '../../contexts/AuthContext';
 // import { LoginForm } from '../auth/LoginForm';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+export interface OriginalKanbanBoardHandle {
+  openSettings: () => void;
+  openArchive: () => Promise<void>;
+  openKpis: () => void;
+}
 
 interface OriginalKanbanBoardProps {
   boardId: string;
+  onArchiveCountChange?: (count: number) => void;
+  onKpiCountChange?: (count: number) => void;
 }
 
 // Deine ursprünglichen Spalten
@@ -77,8 +89,18 @@ const DEFAULT_CHECKLISTS = {
   ]
 };
 
-export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProps) {
+const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanbanBoardProps>(
+function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }: OriginalKanbanBoardProps, ref) {
   // State für Benutzer
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+
+  if (!supabase) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <SupabaseConfigNotice />
+      </Box>
+    );
+  }
 
   const [viewMode, setViewMode] = useState<'columns' | 'swim' | 'lane'>('columns');
   const [density, setDensity] = useState<'compact' | 'xcompact' | 'large'>('compact');
@@ -90,6 +112,18 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
   const [users, setUsers] = useState<any[]>([]);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archivedCards, setArchivedCards] = useState<any[]>([]);
+  const [boardMeta, setBoardMeta] = useState<{
+    name: string;
+    description?: string | null;
+    updated_at?: string | null;
+  } | null>(null);
+  const [boardName, setBoardName] = useState('');
+  const [boardDescription, setBoardDescription] = useState('');
+
+  const updateArchivedState = useCallback((cards: any[]) => {
+    setArchivedCards(cards);
+    onArchiveCountChange?.(cards.length);
+  }, [onArchiveCountChange]);
 
 
   // --- helper: re-index order inside each Board Stage (column) ---
@@ -107,11 +141,24 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [newCardOpen, setNewCardOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [kpiPopupOpen, setKpiPopupOpen] = useState(false); 
+  const [kpiPopupOpen, setKpiPopupOpen] = useState(false);
+
+  const kpiBadgeCount = useMemo(() => {
+    return rows.filter(card => {
+      const trDate = card['TR_Neu'] || card['TR_Datum'];
+      if (!trDate) return false;
+      const tr = new Date(trDate);
+      return tr < new Date() && card['Archived'] !== '1';
+    }).length;
+  }, [rows]);
+
+  useEffect(() => {
+    onKpiCountChange?.(kpiBadgeCount);
+  }, [kpiBadgeCount, onKpiCountChange]);
 
  // Checklisten Templates State - SPALTENSPEZIFISCH
   const [checklistTemplates, setChecklistTemplates] = useState(() => {
-  const templates = {};
+  const templates: Record<string, string[]> = {};
   cols.forEach(col => {
     templates[col.name] = [
       "Anforderungen prüfen",
@@ -125,128 +172,77 @@ export default function OriginalKanbanBoard({ boardId }: OriginalKanbanBoardProp
 // ✅ KORRIGIERTE BENUTZER-LADUNG - BASIEREND AUF DEINER PROFILES STRUKTUR
 const loadUsers = async () => {
   try {
-    console.log('👥 Lade Benutzer aus Supabase profiles...');
-    
-    // Strategie 1: Auth-Users (meist nicht verfügbar)
-    try {
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      if (authUsers && authUsers.users && authUsers.users.length > 0) {
-        console.log('✅ Auth-Benutzer gefunden:', authUsers.users.length);
-        const userList = authUsers.users.map(user => ({
-          id: user.id,
-          email: user.email,
-          name: user.user_metadata?.name || user.email?.split('@')[0] || 'Unbekannt'
-        }));
-        setUsers(userList);
-        return true;
-      }
-    } catch (authError) {
-      console.log('⚠️ Auth-Admin nicht verfügbar');
-    }
-    
-    // Strategie 2: Profiles Tabelle - MIT KORREKTEN SPALTENNAMEN
-    console.log('🔍 Lade aus profiles Tabelle...');
-    const { data: profileUsers, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, avatar_url, bio, company, role, is_active')
-      .eq('is_active', true) // Nur aktive Benutzer
-      .order('full_name');
-    
-    console.log('📊 Profiles Ergebnis:', {
-      error: profileError,
-      dataLength: profileUsers?.length,
-      data: profileUsers
-    });
-    
-    if (profileError) {
-      console.error('❌ Profiles Fehler:', profileError);
-    } else if (profileUsers && profileUsers.length > 0) {
-      console.log('✅ Profile-Benutzer gefunden:', profileUsers.length);
-      
-      const userList = profileUsers.map(user => ({
-        id: user.id,
-        email: user.email,
-        name: user.full_name || user.email?.split('@')[0] || 'Unbekannt',
-        company: user.company || '',
-        role: user.role || 'user',
-        avatar: user.avatar_url || '',
-        bio: user.bio || ''
-      })).filter(user => user.id && user.email); // Nur gültige Benutzer
-      
-      console.log('✅ Verarbeitete Benutzer:', userList);
-      setUsers(userList);
+    const profiles = await fetchClientProfiles();
+
+    if (profiles.length) {
+      const normalized = profiles.map(profile => {
+        const email = profile.email ?? '';
+        const fallbackName = email ? email.split('@')[0] : 'Unbekannt';
+        return {
+          id: profile.id,
+          email,
+          name: profile.full_name || fallbackName || 'Unbekannt',
+          full_name: profile.full_name || '',
+          department: profile.company ?? null,
+          company: profile.company || '',
+          role: profile.role || 'user',
+          isActive: profile.is_active,
+        };
+      });
+
+      const visibleUsers = normalized.filter(user => user.isActive || isSuperuserEmail(user.email));
+      setUsers(visibleUsers);
       return true;
     }
-    
-    // Strategie 3: Alle Benutzer (auch inaktive) falls keine aktiven gefunden
-    console.log('🔍 Versuche alle Benutzer (auch inaktive)...');
-    const { data: allUsers, error: allError } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, avatar_url, bio, company, role, is_active')
-      .order('full_name');
-    
-    if (allUsers && allUsers.length > 0) {
-      console.log('✅ Alle Profile-Benutzer gefunden:', allUsers.length);
-      
-      const userList = allUsers.map(user => ({
-        id: user.id,
-        email: user.email,
-        name: user.full_name || user.email?.split('@')[0] || 'Unbekannt',
-        company: user.company || '',
-        role: user.role || 'user',
-        avatar: user.avatar_url || '',
-        bio: user.bio || '',
-        isActive: user.is_active
-      })).filter(user => user.id && user.email);
-      
-      console.log('✅ Alle verarbeiteten Benutzer:', userList);
-      setUsers(userList);
-      return true;
-    }
-    
-    console.log('⚠️ Keine Benutzer in profiles gefunden, verwende Fallback');
+
     createFallbackUsers();
     return false;
-    
   } catch (error) {
     console.error('❌ Fehler beim Laden der Benutzer:', error);
     createFallbackUsers();
     return false;
   }
 };
-
 // ✅ ERWEITERTE FALLBACK-BENUTZER (basierend auf deiner Struktur)
 const createFallbackUsers = () => {
   console.log('🔄 Erstelle Fallback-Benutzer...');
   const fallbackUsers = [
-    { 
-      id: 'fallback-1', 
-      email: 'test@test.de', 
+    {
+      id: 'fallback-1',
+      email: 'test@test.de',
       name: 'Test User',
+      full_name: 'Test User',
+      department: 'Test Company',
       company: 'Test Company',
       role: 'user',
       isActive: true
     },
-    { 
-      id: 'fallback-2', 
-      email: 'michael@mysight.net', 
+    {
+      id: 'fallback-2',
+      email: 'michael@mysight.net',
       name: 'Michael',
+      full_name: 'Michael',
+      department: 'MySight',
       company: 'MySight',
       role: 'admin',
       isActive: true
     },
-    { 
-      id: 'fallback-3', 
-      email: 'max.mustermann@firma.de', 
+    {
+      id: 'fallback-3',
+      email: 'max.mustermann@firma.de',
       name: 'Max Mustermann',
+      full_name: 'Max Mustermann',
+      department: 'Firma GmbH',
       company: 'Firma GmbH',
       role: 'user',
       isActive: true
     },
-    { 
-      id: 'fallback-4', 
-      email: 'anna.klein@firma.de', 
+    {
+      id: 'fallback-4',
+      email: 'anna.klein@firma.de',
       name: 'Anna Klein',
+      full_name: 'Anna Klein',
+      department: 'Firma GmbH',
       company: 'Firma GmbH',
       role: 'user',
       isActive: true
@@ -256,12 +252,43 @@ const createFallbackUsers = () => {
   console.log('✅ Fallback-Benutzer erstellt:', fallbackUsers.length);
 };
 
+const loadBoardMeta = async () => {
+  try {
+    console.log('📋 Lade Board-Metadaten...');
+    const { data, error } = await supabase
+      .from('kanban_boards')
+      .select('name, description, updated_at')
+      .eq('id', boardId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('❌ Fehler beim Laden der Board-Metadaten:', error);
+      return null;
+    }
+
+    if (data) {
+      setBoardMeta(data);
+      setBoardName(data.name || '');
+      setBoardDescription(data.description || '');
+      return data;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('❌ Unerwarteter Fehler bei Board-Metadaten:', error);
+    return null;
+  }
+};
+
 
 // ✅ WICHTIG: KORRIGIERTE INITIALISIERUNG - BENUTZER ZUERST LADEN!
 useEffect(() => {
   const initializeBoard = async () => {
     console.log('🚀 Initialisiere Kanban Board für boardId:', boardId);
-    
+
+    console.log('📋 Lade Boardinformationen...');
+    await loadBoardMeta();
+
     // 1. ZUERST Benutzer laden (WICHTIG!)
     console.log('👥 Lade Benutzer...');
     await loadUsers();
@@ -287,49 +314,6 @@ useEffect(() => {
     initializeBoard();
   }
 }, [boardId]);
-
-// ✅ ZUSÄTZLICH: Button zum manuellen Laden der Benutzer (für Debugging)
-const handleLoadUsers = async () => {
-  console.log('🔄 Manuelles Laden der Benutzer...');
-  const success = await loadUsers();
-  if (success) {
-    alert(`✅ ${users.length} Benutzer erfolgreich geladen!`);
-  } else {
-    alert('⚠️ Fallback-Benutzer wurden erstellt. Prüfe die Datenbank-Konfiguration.');
-  }
-
-    const createFallbackUsers = () => {
-    console.log('🔄 Erstelle Fallback-Benutzer...');
-    const fallbackUsers = [
-    { id: 'fallback-1', email: 'max.mustermann@firma.de', name: 'Max Mustermann' },
-    { id: 'fallback-2', email: 'anna.klein@firma.de', name: 'Anna Klein' },
-    { id: 'fallback-3', email: 'tom.schmidt@firma.de', name: 'Tom Schmidt' }
-  ];
-  setUsers(fallbackUsers);
-};
-
-// ✅ HIER die Debug-Funktion einfügen:
-  const debugSupabase = async () => {
-    try {
-      console.log('🔍 Debug: Prüfe Supabase Tabellen...');
-      
-      const { data: cards, error: cardsError } = await supabase
-        .from('kanban_cards')
-        .select('*')
-        .eq('board_id', boardId)
-        .limit(5);
-      
-      if (cardsError) {
-        console.error('❌ kanban_cards Tabelle Fehler:', cardsError);
-      } else {
-        console.log('✅ kanban_cards Tabelle OK, gefunden:', cards?.length || 0, 'Karten');
-      }
-      
-    } catch (error) {
-      console.error('❌ Debug Fehler:', error);
-    }
-  };
-}
 
 // Auto-Update Checklisten Templates wenn Spalten sich ändern
 useEffect(() => {
@@ -366,10 +350,10 @@ const [editTabValue, setEditTabValue] = useState(0);
 
 // 👇 HIER HINZUFÜGEN (nach Zeile 133):
 // Einstellungen in Supabase speichern - MIT DEBUGGING
-const saveSettings = async () => {
+const saveSettings = async (options?: { skipMeta?: boolean }) => {
   try {
     console.log('🔄 Starte Speichern der Einstellungen...');
-    
+
     const settings = {
       cols,
       lanes,
@@ -381,27 +365,104 @@ const saveSettings = async () => {
 
     console.log('📦 Einstellungen zu speichern:', settings);
 
-    // Vereinfachte Version ohne user_id für Tests
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('kanban_board_settings')
       .upsert({
         board_id: boardId,
-        user_id: null, // Temporär null für Tests
-        settings: settings,
+        user_id: null,
+        settings,
         updated_at: new Date().toISOString()
       });
 
     if (error) {
       console.error('❌ Supabase Fehler:', error);
-      alert(`Fehler: ${error.message}`);
+      alert(`Fehler: ${getErrorMessage(error)}`);
       return false;
     }
 
-    console.log('✅ Einstellungen erfolgreich gespeichert:', data);
+    if (options?.skipMeta) {
+      return true;
+    }
+
+    const trimmedName = boardName.trim();
+    const trimmedDescription = boardDescription.trim();
+
+    if (!trimmedName) {
+      alert('Board-Name darf nicht leer sein.');
+      if (boardMeta?.name) {
+        setBoardName(boardMeta.name);
+      }
+      return false;
+    }
+
+    const metaUpdates: Record<string, any> = {};
+
+    if (!boardMeta || trimmedName !== (boardMeta.name || '')) {
+      metaUpdates.name = trimmedName;
+    }
+
+    if (!boardMeta || trimmedDescription !== (boardMeta.description || '')) {
+      metaUpdates.description = trimmedDescription ? trimmedDescription : null;
+    }
+
+    if (Object.keys(metaUpdates).length) {
+      const { data: updatedBoard, error: boardError } = await supabase
+        .from('kanban_boards')
+        .update(metaUpdates)
+        .eq('id', boardId)
+        .select('name, description, updated_at')
+        .maybeSingle();
+
+      if (boardError) {
+        console.error('❌ Fehler beim Aktualisieren des Boards:', boardError);
+        alert(`Board-Update fehlgeschlagen: ${boardError.message}`);
+        return false;
+      }
+
+      if (updatedBoard) {
+        setBoardMeta(updatedBoard);
+        setBoardName(updatedBoard.name || '');
+        setBoardDescription(updatedBoard.description || '');
+
+        window.dispatchEvent(
+          new CustomEvent('board-meta-updated', {
+            detail: {
+              id: boardId,
+              name: updatedBoard.name,
+              description: updatedBoard.description,
+            },
+          }),
+        );
+      } else {
+        const fallbackMeta = {
+          name: trimmedName,
+          description: trimmedDescription ? trimmedDescription : null,
+          updated_at: boardMeta?.updated_at || null,
+        };
+        setBoardMeta(fallbackMeta);
+        setBoardName(trimmedName);
+        setBoardDescription(trimmedDescription);
+
+        window.dispatchEvent(
+          new CustomEvent('board-meta-updated', {
+            detail: {
+              id: boardId,
+              name: trimmedName,
+              description: trimmedDescription || null,
+            },
+          }),
+        );
+      }
+    } else {
+      setBoardName(trimmedName);
+      setBoardDescription(trimmedDescription);
+    }
+
+    console.log('✅ Einstellungen und Board-Metadaten gespeichert');
     return true;
   } catch (error) {
     console.error('❌ Unerwarteter Fehler:', error);
-    alert(`Unerwarteter Fehler: ${error.message}`);
+    alert(`Unerwarteter Fehler: ${getErrorMessage(error)}`);
     return false;
   }
 };
@@ -480,8 +541,8 @@ const saveCards = async () => {
     }
     
     // SCHRITT 2: Neue Karten vorbereiten
-    const cardsWithPositions = [];
-    const stagePositions = {};
+    const cardsWithPositions: any[] = [];
+    const stagePositions: Record<string, number> = {};
     
     rows.forEach((card, globalIndex) => {
       const stage = card["Board Stage"] || DEFAULT_COLS[0].name;
@@ -532,41 +593,50 @@ const saveCards = async () => {
     return true;
   } catch (error) {
     console.error('❌ Unerwarteter Fehler:', error);
-    alert(`Unerwarteter Fehler: ${error.message}`);
+    alert(`Unerwarteter Fehler: ${getErrorMessage(error)}`);
     return false;
   }
 };
 
 // 2. ARCHIV LADEN FUNKTION:
-const loadArchivedCards = async () => {
+const loadArchivedCards = useCallback(async () => {
   try {
     console.log('🗃️ Lade archivierte Karten...');
-    
+
     const { data, error } = await supabase
       .from('kanban_cards')
       .select('card_data')
       .eq('board_id', boardId);
-    
+
     if (error) throw error;
-    
+
     if (data && data.length > 0) {
       const archived = data
         .map(item => item.card_data)
         .filter(card => card["Archived"] === "1");
-      
+
       console.log('🗃️ Archivierte Karten gefunden:', archived.length);
-      setArchivedCards(archived);
+      updateArchivedState(archived);
       return archived;
     }
-    
-    setArchivedCards([]);
+
+    updateArchivedState([]);
     return [];
   } catch (error) {
     console.error('❌ Fehler beim Laden des Archivs:', error);
-    setArchivedCards([]);
+    updateArchivedState([]);
     return [];
   }
-};
+}, [boardId, updateArchivedState]);
+
+useImperativeHandle(ref, () => ({
+  openSettings: () => setSettingsOpen(true),
+  openArchive: async () => {
+    await loadArchivedCards();
+    setArchiveOpen(true);
+  },
+  openKpis: () => setKpiPopupOpen(true),
+}), [loadArchivedCards]);
 
 // 3. KARTE AUS ARCHIV WIEDERHERSTELLEN:
 const restoreCard = async (card: any) => {
@@ -584,7 +654,7 @@ const restoreCard = async (card: any) => {
     
     // Entferne aus archivierten Karten
     const updatedArchived = archivedCards.filter(c => idFor(c) !== idFor(card));
-    setArchivedCards(updatedArchived);
+    updateArchivedState(updatedArchived);
     
     // Speichere Änderungen
     await saveCards();
@@ -617,7 +687,7 @@ const deleteCardPermanently = async (card: any) => {
     
     // Entferne aus lokaler Liste
     const updatedArchived = archivedCards.filter(c => idFor(c) !== idFor(card));
-    setArchivedCards(updatedArchived);
+    updateArchivedState(updatedArchived);
     
     console.log('🗑️ Karte endgültig gelöscht:', card.Nummer);
   } catch (error) {
@@ -635,23 +705,29 @@ const loadCards = async () => {
     console.log('🔥 DEBUG: boardId =', boardId);
     
     // Versuche mit stage/position zu laden
-    let { data, error } = await supabase
+    let data: any[] | null = null;
+    let error: any = null;
+
+    const primaryResult = await supabase
       .from('kanban_cards')
       .select('card_data, stage, position')
       .eq('board_id', boardId)
       .order('stage', { ascending: true })
       .order('position', { ascending: true });
+
+    data = primaryResult.data;
+    error = primaryResult.error;
     
     // Falls stage/position nicht existieren, lade nur card_data
-    if (error && error.message.includes('column')) {
+    if (error instanceof Error && error.message.includes('column')) {
       console.log('⚠️ stage/position Spalten nicht gefunden, lade nur card_data');
       const result = await supabase
         .from('kanban_cards')
         .select('card_data')
         .eq('board_id', boardId)
         .order('updated_at', { ascending: false });
-      
-      data = result.data;
+
+      data = result.data as any[] | null;
       error = result.error;
     }
     
@@ -700,7 +776,9 @@ const loadCards = async () => {
 useEffect(() => {
   const initializeBoard = async () => {
     console.log('🚀 Initialisiere Kanban Board für boardId:', boardId);
-    
+
+    await loadBoardMeta();
+
     // Erst Einstellungen laden
     const settingsLoaded = await loadSettings();
     console.log('⚙️ Einstellungen geladen:', settingsLoaded);
@@ -741,11 +819,71 @@ useEffect(() => {
 useEffect(() => {
   const timeoutId = setTimeout(() => {
     console.log('⚙️ Auto-Speichere Einstellungen...');
-    saveSettings();
+    saveSettings({ skipMeta: true });
   }, 1000);
 
   return () => clearTimeout(timeoutId);
 }, [cols, lanes, checklistTemplates, viewMode, density]);
+
+useEffect(() => {
+  if (!users.length || !rows.length) return;
+
+  const userMap = new Map(
+    users
+      .filter((user: any) => user && user.id)
+      .map((user: any) => [String(user.id), user]),
+  );
+
+  let hasChanges = false;
+
+  const normalizedRows = rows.map((card: any) => {
+    if (!Array.isArray(card.Team) || card.Team.length === 0) {
+      return card;
+    }
+
+    let cardChanged = false;
+
+    const updatedTeam = card.Team.map((member: any) => {
+      if (!member || !member.userId) {
+        return member;
+      }
+
+      const lookup = userMap.get(String(member.userId));
+      if (!lookup) {
+        return member;
+      }
+
+      const resolvedName = (lookup.full_name || lookup.name || '').trim();
+      const fallbackEmail = lookup.email || member.email || '';
+      const displayName = resolvedName || (fallbackEmail ? fallbackEmail.split('@')[0] : 'Unbekannt');
+      const department = lookup.department || lookup.company || member.department || member.company || '';
+      const email = fallbackEmail;
+
+      if (member.name !== displayName || member.department !== department || member.email !== email) {
+        cardChanged = true;
+        return {
+          ...member,
+          name: displayName,
+          department,
+          email,
+        };
+      }
+
+      return member;
+    });
+
+    if (cardChanged) {
+      hasChanges = true;
+      return { ...card, Team: updatedTeam };
+    }
+
+    return card;
+  });
+
+  if (hasChanges) {
+    setRows(normalizedRows);
+  }
+}, [rows, users]);
 
 
   const loadTestData = () => {
@@ -830,7 +968,7 @@ const calculateKPIs = () => {
   const ampelRed = activeCards.filter(r => String(r["Ampel"] || "").toLowerCase().includes("rot") || String(r["Ampel"] || "").toLowerCase().includes("red")).length;
   
   // === SPALTEN-VERTEILUNG ===
-  const columnDistribution = {};
+  const columnDistribution: Record<string, number> = {};
   cols.forEach(col => {
     columnDistribution[col.name] = activeCards.filter(r => inferStage(r) === col.name).length;
   });
@@ -848,7 +986,7 @@ const calculateKPIs = () => {
     if (!trDate) return false;
     
     // âœ… NEUE LOGIK: Nicht als Ã¼berfÃ¤llig anzeigen wenn TR abgeschlossen ist
-    if (String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true) {
+    if (toBoolean(r["TR_Completed"])) {
       return false;
     }
     
@@ -862,7 +1000,7 @@ const calculateKPIs = () => {
     if (!trDate) return false;
     
     // Auch heute fÃ¤llige nicht anzeigen wenn abgeschlossen
-    if (String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true) {
+    if (toBoolean(r["TR_Completed"])) {
       return false;
     }
     
@@ -876,7 +1014,7 @@ const calculateKPIs = () => {
     if (!trDate) return false;
     
     // Diese Woche fÃ¤llige nicht anzeigen wenn abgeschlossen
-    if (String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true) {
+    if (toBoolean(r["TR_Completed"])) {
       return false;
     }
     
@@ -889,7 +1027,7 @@ const calculateKPIs = () => {
   // âœ… NEUE METRIK: Abgeschlossene TRs
   const trCompleted = activeCards.filter(r => {
     const hasDate = r["TR_Neu"] || r["TR_Datum"];
-    const isCompleted = String(r["TR_Completed"] || "").toLowerCase() === "true" || r["TR_Completed"] === true;
+    const isCompleted = toBoolean(r["TR_Completed"]);
     return hasDate && isCompleted;
   });
   
@@ -913,7 +1051,7 @@ const calculateKPIs = () => {
   
   // === PERFORMANCE METRIKEN ===
   // Team Workload
-  const teamWorkload = {};
+  const teamWorkload: Record<string, number> = {};
   activeCards.forEach(card => {
     const person = String(card["Verantwortlich"] || "Unbekannt").trim();
     teamWorkload[person] = (teamWorkload[person] || 0) + 1;
@@ -975,7 +1113,13 @@ const calculateKPIs = () => {
 
 // KPI-POPUP KOMPONENTE
 // 2. ERWEITERTE TRKPIPOPUP KOMPONENTE (ersetze deine bestehende)
-const TRKPIPopup = ({ open, onClose, cards }) => {
+interface TRKPIPopupProps {
+  open: boolean;
+  onClose: () => void;
+  cards: any[];
+}
+
+const TRKPIPopup = ({ open, onClose, cards }: TRKPIPopupProps) => {
   const [activeTab, setActiveTab] = useState(0);
   const kpis = calculateKPIs();
   
@@ -1168,7 +1312,6 @@ const TRKPIPopup = ({ open, onClose, cards }) => {
                     )}
                   </Box>
 
-                  {/* Diese Wochefällige TR */}
                   <Box>
                     <Typography variant="subtitle2" sx={{ color: 'info.main', fontWeight: 'bold' }}>
                       Diese Woche ({kpis.trThisWeek.length})
@@ -1186,6 +1329,34 @@ const TRKPIPopup = ({ open, onClose, cards }) => {
                       </Box>
                     ) : (
                       <Typography variant="caption" color="text.secondary">Keine TR-Termine diese Woche</Typography>
+                    )}
+                  </Box>
+
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="subtitle2" sx={{ color: 'success.main', fontWeight: 'bold' }}>
+                      Abgeschlossen ({kpis.trCompleted.length})
+                    </Typography>
+                    {kpis.trCompleted.length > 0 ? (
+                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
+                        {kpis.trCompleted.map((card, idx) => {
+                          const originalDate = nullableDate(card["TR_Datum"]);
+                          const completedDate = nullableDate(card["TR_Completed_At"] || card["TR_Completed_Date"]);
+                          const diff = originalDate && completedDate
+                            ? Math.round((completedDate.getTime() - originalDate.getTime()) / (1000 * 60 * 60 * 24))
+                            : null;
+                          const diffLabel = diff === null ? '' : ` (${diff >= 0 ? '+' : ''}${diff} Tage)`;
+                          const completedLabel = completedDate
+                            ? completedDate.toLocaleDateString('de-DE')
+                            : 'Datum unbekannt';
+                          return (
+                            <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'success.main' }}>
+                              {card["Nummer"]} - Abschluss: {completedLabel}{diffLabel}
+                            </Typography>
+                          );
+                        })}
+                      </Box>
+                    ) : (
+                      <Typography variant="caption" color="text.secondary">Keine abgeschlossenen TR-Termine</Typography>
                     )}
                   </Box>
                 </Card>
@@ -1535,1862 +1706,26 @@ const onDragEnd = (result: DropResult) => {
   };
 
 // Render einzelne Karte - EINHEITLICHE LOGIK
-  const renderCard = (card: any, index: number) => {
-  const cardId = idFor(card);
-  const stage = inferStage(card);
-  
-  // Bestimme Eskalationsstatus
-  const escalation = String(card.Eskalation || "").trim().toUpperCase();
-  const hasLKEscalation = escalation === "LK";
-  const hasSKEscalation = escalation === "SK";
-  console.log(`🔍 Karte ${card.Nummer}: Eskalation="${escalation}", LK=${hasLKEscalation}, SK=${hasSKEscalation}`);
-  
-  // Hauptstatus
-  let statusKurz = "";
-  if (Array.isArray(card.StatusHistory) && card.StatusHistory.length) {
-    const latest = card.StatusHistory[0];
-    ['message', 'qualitaet', 'kosten', 'termine'].some(key => {
-      const e = latest[key];
-      if (e && e.text && e.text.trim()) {
-        statusKurz = e.text.trim();
-        return true;
-      }
-      return false;
-    });
-  } else {
-    statusKurz = String(card["Status Kurz"] || "").trim();
-  }
-
-  const isOverdue = card["Due Date"] && new Date(card["Due Date"]) < new Date();
-  
-  // EINHEITLICHE LOGIK: Bestimme aktuelle Kartengröße
-  // Individual Override hat Vorrang vor globaler Einstellung
-  let currentSize = density; // Global: 'xcompact', 'compact', 'large'
-  
-  // Individual Override: 'large' wenn nicht collapsed, sonst global
-  if (card["Collapsed"] === "large") {
-    currentSize = "large";
-  } else if (card["Collapsed"] === "compact") {
-    currentSize = "compact";
-  }
-  // Wenn Collapsed leer/undefined ist, wird globale Einstellung verwendet
-  
-  // Kartenfarbe basierend auf Eskalation
-  let backgroundColor = 'white';
-  if (hasLKEscalation) backgroundColor = '#fff3e0';
-  if (hasSKEscalation) backgroundColor = '#ffebee';
-  
-  let borderColor = 'var(--line)';
-  if (hasLKEscalation) borderColor = '#ef6c00';
-  if (hasSKEscalation) borderColor = '#c62828';
-
-  const ampelColor = (hasLKEscalation || hasSKEscalation) ? '#ff5a5a' : '#14c38e';
-
-const updateCard = (updates: any) => {
-  const cardIndex = rows.findIndex((c: any) => idFor(c) === cardId);
-  if (cardIndex >= 0) {
-    const newRows = [...rows];
-    newRows[cardIndex] = { ...newRows[cardIndex], ...updates };
-    setRows(newRows);
-    
-    // WICHTIG: Sofort speichern nach Eskalations-Änderung
-    setTimeout(() => {
-      console.log('💾 Speichere Eskalations-Änderung...');
-      saveCards();
-    }, 200);
-  }
-};
-
-  return (
-    <Draggable key={cardId} draggableId={cardId} index={index}>
-      {(provided, snapshot) => (
-        <Box
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
-          className={`card ${hasLKEscalation ? 'esk-lk' : ''} ${hasSKEscalation ? 'esk-sk' : ''}`}
-          onClick={(e) => {
-            if (!(e.target as HTMLElement).closest('.controls')) {
-              setSelectedCard(card);
-              setEditModalOpen(true);
-              setEditTabValue(1);
-            }
-          }}
-          sx={{
-            backgroundColor,
-            border: `1px solid ${borderColor}`,
-            borderRadius: currentSize === 'xcompact' ? '4px' : '12px',
-            padding: currentSize === 'xcompact' ? '4px' : '10px',
-            cursor: 'pointer',
-            transition: 'transform 0.12s ease, box-shadow 0.12s ease',
-            opacity: snapshot.isDragging ? 0.96 : 1,
-            transform: snapshot.isDragging ? 'rotate(2deg) scale(1.03)' : 'none',
-            boxShadow: snapshot.isDragging 
-              ? '0 14px 28px rgba(0,0,0,0.30)' 
-              : '0 3px 8px rgba(0,0,0,0.06)',
-            minHeight: currentSize === 'xcompact' ? '18px' : (currentSize === 'large' ? '150px' : '80px'),
-            display: 'flex',
-            flexDirection: 'column',
-            position: 'relative',
-            '&:hover': {
-              transform: snapshot.isDragging ? 'rotate(2deg) scale(1.03)' : 'translateY(-2px)',
-              boxShadow: '0 6px 14px rgba(0,0,0,0.18)'
-            }
-          }}
-          title={statusKurz || ''}
-        >
-          {currentSize === 'xcompact' ? (
-            // EXTRAKOMPAKT: Nur Farbe + Nummer
-            <Box sx={{ 
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              width: '100%',
-              gap: 0.5,
-              padding: '2px'
-            }}>
-              <Box sx={{
-                width: 8,
-                height: 8,
-                borderRadius: '2px',
-                backgroundColor: ampelColor,
-                border: '1px solid var(--line)',
-                flexShrink: 0
-              }} />
-              <Typography 
-                variant="caption" 
-                sx={{ 
-                  fontSize: '9px',
-                  lineHeight: 1,
-                  color: 'var(--ink)',
-                  fontWeight: 600,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  flex: 1,
-                  textAlign: 'center'
-                }}
-              >
-                {card["Nummer"]}
-              </Typography>
-            </Box>
-          ) : (
-            // KOMPAKT & GROSS
-            <>
-              {/* Header mit Dot und Nummer */}
-              <Box sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'space-between',
-                mb: 0.5
-              }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Box sx={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: '50%',
-                    backgroundColor: ampelColor,
-                    border: '1px solid var(--line)',
-                    flexShrink: 0
-                  }} />
-                  <Typography 
-                    variant="subtitle2" 
-                    sx={{ 
-                      fontWeight: 700, 
-                      fontSize: '14px',
-                      color: 'var(--ink)'
-                    }}
-                  >
-                    {card["Nummer"]}
-                  </Typography>
-                  </Box>
-
-                {/* Controls */}
-                <Box className="controls" sx={{ display: 'flex', gap: 0.5 }}>
-                  {/* Toggle Button - NEUE LOGIK */}
-                  <IconButton 
-                    size="small" 
-                    sx={{ 
-                      width: 22, 
-                      height: 22, 
-                      fontSize: '10px',
-                      border: '1px solid var(--line)',
-                      backgroundColor: currentSize === 'large' ? '#e3f2fd' : 'transparent',
-                      color: currentSize === 'large' ? '#1976d2' : 'var(--muted)',
-                      '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' }
-                    }}
-                    title="Groß/Normal umschalten"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Toggle zwischen large und der globalen Einstellung
-                      const newSize = currentSize === 'large' ? '' : 'large';
-                      updateCard({ Collapsed: newSize });
-                    }}
-                  >
-                    ↕
-                  </IconButton>
-
-
-                  {/* LK Button - KORRIGIERT */}
-                  <IconButton 
-                    size="small" 
-                    sx={{ 
-                      width: 22, 
-                      height: 22, 
-                      fontSize: '9px',
-                      border: '1px solid var(--line)',
-                      backgroundColor: hasLKEscalation ? '#ef6c00' : 'transparent',
-                      color: hasLKEscalation ? 'white' : 'var(--muted)',
-                      '&:hover': { backgroundColor: hasLKEscalation ? '#e65100' : 'rgba(0,0,0,0.06)' }
-                    }}
-                    title="Leitungskreis"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      
-                      console.log('🔴 LK Button geklickt für Karte:', card.Nummer);
-                      console.log('🔴 Aktuelle Eskalation:', card.Eskalation);
-                      
-                      const newEskalation = hasLKEscalation ? "" : "LK";
-                      const newAmpel = newEskalation ? "rot" : "grün";
-                      
-                      console.log('🔴 Neue Eskalation:', newEskalation);
-                      console.log('🔴 Neue Ampel:', newAmpel);
-                      
-                      updateCard({ 
-                        Eskalation: newEskalation,
-                        Ampel: newAmpel
-                      });
-                    }}
-                  >
-                    LK
-                  </IconButton>
-
-                  {/* SK Button - KORRIGIERT */}
-                  <IconButton 
-                    size="small" 
-                    sx={{ 
-                      width: 22, 
-                      height: 22, 
-                      fontSize: '9px',
-                      border: '1px solid var(--line)',
-                      backgroundColor: hasSKEscalation ? '#c62828' : 'transparent',
-                      color: hasSKEscalation ? 'white' : 'var(--muted)',
-                      '&:hover': { backgroundColor: hasSKEscalation ? '#b71c1c' : 'rgba(0,0,0,0.06)' }
-                    }}
-                    title="Strategiekreis"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      
-                      console.log('🔵 SK Button geklickt für Karte:', card.Nummer);
-                      console.log('🔵 Aktuelle Eskalation:', card.Eskalation);
-                      
-                      const newEskalation = hasSKEscalation ? "" : "SK";
-                      const newAmpel = newEskalation ? "rot" : "grün";
-                      
-                      console.log('🔵 Neue Eskalation:', newEskalation);
-                      console.log('🔵 Neue Ampel:', newAmpel);
-                      
-                      updateCard({ 
-                        Eskalation: newEskalation,
-                        Ampel: newAmpel
-                      });
-                    }}
-                  >
-                    SK
-                  </IconButton>
-
-                  {/* Edit Button */}
-                  <IconButton 
-                    size="small" 
-                    sx={{ 
-                      width: 22, 
-                      height: 22, 
-                      fontSize: '10px',
-                      border: '1px solid var(--line)',
-                      backgroundColor: 'transparent',
-                      color: 'var(--muted)',
-                      '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' }
-                    }}
-                    title="Bearbeiten"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedCard(card);
-                      setEditModalOpen(true);
-                      setEditTabValue(1);
-                    }}
-                  >
-                    ✎
-                  </IconButton>
-                </Box>
-              </Box>
-
-              {/* Projektname */}
-              {card["Teil"] && (
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    fontSize: '12px',
-                    lineHeight: 1.3,
-                    color: 'var(--muted)',
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    mb: 1
-                  }}
-                >
-                  {card["Teil"]}
-                </Typography>
-              )}
-
-              {/* Status - GLEICHE LOGIK für beide */}
-              {statusKurz && (
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    fontSize: '12px',
-                    color: 'var(--muted)',
-                    overflow: 'hidden',
-                    textOverflow: currentSize === 'large' ? 'clip' : 'ellipsis',
-                    whiteSpace: currentSize === 'large' ? 'pre-wrap' : 'nowrap',
-                    display: currentSize === 'large' ? '-webkit-box' : 'block',
-                    WebkitLineClamp: currentSize === 'large' ? 6 : undefined,
-                    WebkitBoxOrient: currentSize === 'large' ? 'vertical' : undefined,
-                    mb: 0.5,
-                    wordBreak: currentSize === 'large' ? 'break-word' : 'normal'
-                  }}
-                >
-                  {statusKurz}
-                </Typography>
-              )}
-
-              {/* GROSS: Bild anzeigen */}
-              {currentSize === 'large' && card["Bild"] && (
-                <Box sx={{ 
-                  mb: 1,
-                  display: 'flex',
-                  justifyContent: 'center'
-                }}>
-                  <img 
-                    src={card["Bild"]} 
-                    alt="Projektbild"
-                    style={{ 
-                      maxWidth: '100%', 
-                      maxHeight: '60px',
-                      borderRadius: '6px',
-                      objectFit: 'cover'
-                    }} 
-                  />
-                </Box>
-              )}
-
-              {/* Footer */}
-              <Box sx={{ 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center',
-                mt: 'auto',
-                fontSize: '10px'
-              }}>
-                <Typography variant="caption" sx={{ fontSize: '10px', color: 'var(--muted)' }}>
-                  {card["Verantwortlich"] || ""}
-                </Typography>
-                
-                {card["Due Date"] && (
-                  <Typography 
-                    variant="caption" 
-                    sx={{ 
-                      fontSize: '9px',
-                      color: isOverdue ? '#d32f2f' : 'var(--muted)',
-                      fontWeight: isOverdue ? 600 : 400,
-                      backgroundColor: isOverdue ? '#ffebee' : 'transparent',
-                      padding: isOverdue ? '2px 4px' : '0',
-                      borderRadius: isOverdue ? '4px' : '0'
-                    }}
-                  >
-                    {String(card["Due Date"]).slice(0, 10)}
-                  </Typography>
-                  
-                )}
-              </Box>
-
-{/* TR-DATEN ANZEIGE - KOMPAKTE CHIPS NEBENEINANDER */}
-{(card["TR_Datum"] || card["TR_Neu"]) && (
-  <Box sx={{ 
-    mt: 1, 
-    pt: 1, 
-    borderTop: '1px solid var(--line)',
-    display: 'flex',
-    justifyContent: 'center',
-    gap: 0.5
-  }}>
-    {/* TR Original Chip */}
-    {card["TR_Datum"] && (
-      <Chip 
-        label={`TR: ${new Date(card["TR_Datum"]).toLocaleDateString('de-DE')}`}
-        size="small"
-        sx={{ 
-          fontSize: '10px',
-          height: '18px',
-          backgroundColor: '#e8f5e8',
-          color: '#2e7d32',
-          border: '1px solid #c8e6c9',
-          '& .MuiChip-label': { 
-            px: 0.8,
-            py: 0
-          }
-        }}
+  const renderCard = useCallback(
+    (card: any, index: number) => (
+      <KanbanCard
+        key={idFor(card)}
+        card={card}
+        index={index}
+        density={density}
+        rows={rows}
+        setRows={setRows}
+        saveCards={saveCards}
+        setSelectedCard={setSelectedCard}
+        setEditModalOpen={setEditModalOpen}
+        setEditTabValue={setEditTabValue}
+        inferStage={inferStage}
+        idFor={idFor}
+        users={users}
       />
-    )}
-    
-    {/* TR Neu Chip */}
-    {card["TR_Neu"] && (
-      <Chip 
-        label={`TR neu: ${new Date(card["TR_Neu"]).toLocaleDateString('de-DE')}`}
-        size="small"
-        sx={{ 
-          fontSize: '10px',
-          height: '18px',
-          backgroundColor: '#e3f2fd',
-          color: '#1976d2',
-          border: '1px solid #bbdefb',
-          '& .MuiChip-label': { 
-            px: 0.8,
-            py: 0
-          }
-        }}
-      />
-    )}
-  </Box>
-)}
-
-{(card["TR_Neu"] || card["TR_Datum"]) &&
-  (String(card["TR_Completed"] || "").toLowerCase() === "true" || card["TR_Completed"] === true) && (
-    <Chip label="✓ TR erledigt" size="small" color="success" sx={{ mt: 1 }} />
-)}
-
-{/* TEAM-MITGLIEDER - FARBIGE BADGES NACH ROLLE */}
-{currentSize === 'large' && card["Team"] && Array.isArray(card["Team"]) && card["Team"].length > 0 && (
-  <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid var(--line)' }}>
-    <Typography variant="caption" sx={{ 
-      fontSize: '10px', 
-      color: 'var(--muted)',
-      fontWeight: 600,
-      display: 'block',
-      mb: 0.5
-    }}>
-      Team ({card["Team"].filter((m: any) => m.userId || m.name).length}):
-    </Typography>
-    
-    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-      {card["Team"]
-        .filter((member: any) => member.userId || member.name)
-        .map((member: any, idx: number) => {
-          // Farbe basierend auf Rolle
-          const getRoleColor = (role: string) => {
-            const roleColors = {
-              'entwickler': '#2196f3',
-              'designer': '#9c27b0', 
-              'manager': '#ff9800',
-              'tester': '#4caf50'
-            };
-            const roleKey = (role || '').toLowerCase();
-            return roleColors[roleKey] || '#757575';
-          };
-          
-          const roleColor = getRoleColor(member.role);
-          
-          return (
-            <Chip 
-              key={idx}
-              label={`${member.name}${member.role ? ` (${member.role})` : ''}`}
-              size="small"
-              sx={{ 
-                fontSize: '8px',
-                height: 18,
-                backgroundColor: roleColor + '20',
-                color: roleColor,
-                border: `1px solid ${roleColor}`,
-                '& .MuiChip-label': {
-                  px: 1,
-                  py: 0,
-                  fontWeight: 500
-                }
-              }}
-            />
-          );
-        })}
-    </Box>
-  </Box>
-)}
-
-            </>
-          )}
-        </Box>
-      )}
-    </Draggable>
+    ),
+    [density, idFor, inferStage, rows, saveCards, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users]
   );
-};
-
-
-
-  // Render Spalten-Ansicht
-  const renderColumns = () => {
-    const filtered = rows.filter(r => 
-      !r["Archived"] && 
-      (!searchTerm || Object.values(r).some(v => 
-        String(v || "").toLowerCase().includes(searchTerm.toLowerCase())
-      ))
-    );
-
-    return (
-      <DragDropContext onDragEnd={onDragEnd}>
-        <Box sx={{ 
-          display: 'flex', 
-          gap: 1.5, 
-          p: 2, 
-          overflow: 'auto', 
-          alignItems: 'flex-start',
-          minHeight: '100%'
-        }}>
-          {cols.map(col => {
-            const colCards = filtered.filter(r => inferStage(r) === col.name);
-            const redCount = colCards.filter(r => (r["Ampel"] || '').toLowerCase().startsWith('rot')).length;
-            
-            return (
-              <Box
-                key={col.id}
-                sx={{
-                  minWidth: 'var(--colw)',
-                  width: 'var(--colw)',
-                  backgroundColor: 'var(--panel)',
-                  border: '1px solid var(--line)',
-                  borderRadius: '14px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  minHeight: '55vh'
-                }}
-              >
-                {/* Spalten-Header */}
-                <Box sx={{ 
-                  position: 'sticky',
-                  top: 0,
-                  backgroundColor: 'var(--panel)',
-                  padding: '10px 12px',
-                  borderBottom: '1px solid var(--line)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  zIndex: 3
-                }}>
-                  <Box>
-                    <Typography variant="h6" sx={{ 
-                      fontSize: '14px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      color: 'var(--muted)',
-                      fontWeight: 600
-                    }}>
-                      {col.name} {col.done && '✓'}
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 0.5 }}>
-                      <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
-                        ({colCards.length})
-                      </Typography>
-                      {redCount > 0 && (
-                        <Typography variant="caption" sx={{ color: '#ff5a5a' }}>
-                          ● {redCount}
-                        </Typography>
-                      )}
-                    </Box>
-                  </Box>
-                  
-                  {col.done && (
-                    <IconButton 
-                      size="small" 
-                      title="Alle Karten archivieren"
-                      onClick={() => archiveColumn(col.name)}
-                      sx={{ 
-                        width: 22, 
-                        height: 22,
-                        border: '1px solid var(--line)',
-                        backgroundColor: 'transparent'
-                      }}
-                    >
-                      📦
-                    </IconButton>
-                  )}
-                </Box>
-
-                {/* Karten */}
-                <Droppable droppableId={col.name}>
-                  {(provided, snapshot) => (
-                    <Box
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      sx={{ 
-                        flex: 1,
-                        padding: '8px',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: density === 'xcompact' ? 0 : 1,
-                        minHeight: '200px',
-                        backgroundColor: snapshot.isDraggingOver ? 'rgba(255,255,255,0.06)' : 'transparent',
-                        outline: snapshot.isDraggingOver ? '2px dashed var(--line)' : 'none',
-                        outlineOffset: snapshot.isDraggingOver ? '-4px' : '0',
-                        transition: 'background-color 0.12s ease, outline-color 0.12s ease'
-                      }}
-                    >
-                      {density === 'xcompact' ? (
-                        // Grid-Layout für extrakompakt
-                        <Box sx={{ 
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(5, 1fr)',
-                          gap: 0,
-                          gridAutoRows: '18px'
-                        }}>
-                          {colCards.map((card, index) => renderCard(card, index))}
-                        </Box>
-                      ) : (
-                        // Normale Liste
-                        colCards.map((card, index) => renderCard(card, index))
-                      )}
-                      {provided.placeholder}
-                    </Box>
-                  )}
-                </Droppable>
-              </Box>
-            );
-          })}
-        </Box>
-      </DragDropContext>
-    );
-  };
-
-  // Render Swimlanes (Verantwortlich)
-  const renderSwimlanes = () => {
-    const filtered = rows.filter(r => 
-      !r["Archived"] && 
-      (!searchTerm || Object.values(r).some(v => 
-        String(v || "").toLowerCase().includes(searchTerm.toLowerCase())
-      ))
-    );
-
-    const stages = cols.map(c => c.name);
-    const resps = Array.from(new Set(filtered.map(r => 
-      String(r["Verantwortlich"] || "").trim() || "—"
-    ))).sort();
-
-    return (
-        <DragDropContext onDragEnd={onDragEnd}>
-    <Box sx={{ 
-      display: 'grid',
-      gridTemplateColumns: `var(--rowheadw) ${stages.map(() => 'var(--colw)').join(' ')}`,
-      gap: '8px',
-      p: 2,
-      alignItems: 'start',
-      overflow: 'auto',
-      minHeight: '100%',
-      width: 'fit-content',
-      minWidth: '100%'
-        }}>
-          {/* Corner */}
-          <Box sx={{ 
-            position: 'sticky',
-            top: 0,
-            zIndex: 2,
-            backgroundColor: 'var(--panel)',
-            border: '1px solid var(--line)',
-            borderRadius: '12px',
-            padding: '10px 12px',
-            minHeight: '48px'
-          }} />
-
-          {/* Column Headers */}
-          {stages.map(stage => (
-            <Box key={stage} sx={{ 
-              position: 'sticky',
-              top: 0,
-              zIndex: 2,
-              backgroundColor: 'var(--panel)',
-              border: '1px solid var(--line)',
-              borderRadius: '12px',
-              padding: '10px 12px',
-              textTransform: 'uppercase',
-              color: 'var(--muted)',
-              letterSpacing: '0.06em',
-              fontSize: '14px',
-              fontWeight: 600
-            }}>
-              {stage}
-            </Box>
-          ))}
-
-          {/* Rows */}
-          {resps.map(resp => (
-            <>
-              {/* Row Header */}
-              <Box key={`header-${resp}`} sx={{ 
-                position: 'sticky',
-                left: 0,
-                zIndex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 12px',
-                backgroundColor: 'var(--panel)',
-                border: '1px solid var(--line)',
-                borderRadius: '12px',
-                minHeight: '48px'
-              }}>
-                <Typography sx={{ fontWeight: 700 }}>
-                  {resp}
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
-                  {filtered.filter(r => (String(r["Verantwortlich"] || "").trim() || "—") === resp).length} Karten
-                </Typography>
-              </Box>
-
-              {/* Cells */}
-              {stages.map(stage => {
-                const cellCards = filtered.filter(r => 
-                  inferStage(r) === stage && 
-                  (String(r["Verantwortlich"] || "").trim() || "—") === resp
-                );
-
-                return (
-                  <Droppable key={`${stage}-${resp}`} droppableId={`${stage}||${resp}`}>
-                    {(provided, snapshot) => (
-                      <Box
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        sx={{
-                          backgroundColor: snapshot.isDraggingOver ? 'rgba(255,255,255,0.06)' : 'var(--panel)',
-                          border: '1px solid var(--line)',
-                          borderRadius: '12px',
-                          minHeight: '140px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          padding: '8px',
-                          gap: 1
-                        }}
-                      >
-                        {cellCards.map((card, index) => renderCard(card, index))}
-                        {provided.placeholder}
-                      </Box>
-                    )}
-                  </Droppable>
-                );
-              })}
-            </>
-          ))}
-        </Box>
-      </DragDropContext>
-    );
-  };
-
-  // Render Swimlanes (Kategorie/Lane)
-  const renderSwimlanesByLane = () => {
-    const filtered = rows.filter(r => 
-      !r["Archived"] && 
-      (!searchTerm || Object.values(r).some(v => 
-        String(v || "").toLowerCase().includes(searchTerm.toLowerCase())
-      ))
-    );
-
-    const stages = cols.map(c => c.name);
-    const laneNames = lanes.length ? lanes : ["Allgemein"];
-
-    return (
-      <DragDropContext onDragEnd={onDragEnd}>
-        <Box sx={{ 
-          display: 'grid',
-          gridTemplateColumns: `var(--rowheadw) ${stages.map(() => 'var(--colw)').join(' ')}`,
-          gap: '8px',
-          p: 2,
-          alignItems: 'start'
-        }}>
-          {/* Corner */}
-          <Box sx={{ 
-            position: 'sticky',
-            top: 0,
-            zIndex: 2,
-            backgroundColor: 'var(--panel)',
-            border: '1px solid var(--line)',
-            borderRadius: '12px',
-            padding: '10px 12px',
-            minHeight: '48px'
-          }} />
-
-          {/* Column Headers */}
-          {stages.map(stage => (
-            <Box key={stage} sx={{ 
-              position: 'sticky',
-              top: 0,
-              zIndex: 2,
-              backgroundColor: 'var(--panel)',
-              border: '1px solid var(--line)',
-              borderRadius: '12px',
-              padding: '10px 12px',
-              textTransform: 'uppercase',
-              color: 'var(--muted)',
-              letterSpacing: '0.06em',
-              fontSize: '14px',
-              fontWeight: 600
-            }}>
-              {stage}
-            </Box>
-          ))}
-
-          {/* Rows */}
-          {laneNames.map(laneName => (
-            <>
-              {/* Row Header */}
-              <Box key={`header-${laneName}`} sx={{ 
-                position: 'sticky',
-                left: 0,
-                zIndex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 12px',
-                backgroundColor: 'var(--panel)',
-                border: '1px solid var(--line)',
-                borderRadius: '12px',
-                minHeight: '48px'
-              }}>
-                <Typography sx={{ fontWeight: 700 }}>
-                  {laneName}
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
-                  {filtered.filter(r => (r["Swimlane"] || laneNames[0]) === laneName).length} Karten
-                </Typography>
-              </Box>
-
-              {/* Cells */}
-              {stages.map(stage => {
-                const cellCards = filtered.filter(r => 
-                  inferStage(r) === stage && 
-                  (r["Swimlane"] || laneNames[0]) === laneName
-                );
-
-                return (
-                  <Droppable key={`${stage}-${laneName}`} droppableId={`${stage}||${laneName}`}>
-                    {(provided, snapshot) => (
-                      <Box
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        sx={{
-                          backgroundColor: snapshot.isDraggingOver ? 'rgba(255,255,255,0.06)' : 'var(--panel)',
-                          border: '1px solid var(--line)',
-                          borderRadius: '12px',
-                          minHeight: '140px',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          padding: '8px',
-                          gap: 1
-                        }}
-                      >
-                        {cellCards.map((card, index) => renderCard(card, index))}
-                        {provided.placeholder}
-                      </Box>
-                    )}
-                  </Droppable>
-                );
-              })}
-            </>
-          ))}
-        </Box>
-      </DragDropContext>
-    );
-  };
-// Render Edit Modal
-const renderEditModal = () => {
-  if (!selectedCard) return null;
-
-  const stage = inferStage(selectedCard);
-  const tasks = checklistTemplates[stage] || [];
-  const stageChecklist = (selectedCard.ChecklistDone && selectedCard.ChecklistDone[stage]) || {};
-
-  return (
-    <Dialog 
-      open={editModalOpen} 
-      onClose={() => setEditModalOpen(false)}
-      maxWidth="md"
-      fullWidth
-      PaperProps={{
-        sx: {
-          backgroundColor: 'background.paper',
-          color: 'text.primary'
-        }
-      }}
-    >
-      <DialogTitle sx={{ 
-        borderBottom: 1,
-        borderColor: 'divider',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        <Typography variant="h6">
-          Karte bearbeiten: {selectedCard["Nummer"]} - {selectedCard["Teil"]}
-        </Typography>
-        <IconButton onClick={() => setEditModalOpen(false)}>
-          ×
-        </IconButton>
-      </DialogTitle>
-      
-      <DialogContent sx={{ p: 0 }}>
-        <Tabs value={editTabValue} onChange={(e, v) => setEditTabValue(v)}>
-          <Tab label="Details" />
-          <Tab label="Status & Checkliste" />
-          <Tab label="Team" />
-        </Tabs>
-
-        {/* Tab 0: Details */}
-        {editTabValue === 0 && (
-          <Box sx={{ p: 3 }}>
-            <Box sx={{ 
-              display: 'grid', 
-              gridTemplateColumns: 'auto 1fr auto 1fr auto 1fr', 
-              gap: 2, 
-              alignItems: 'center',
-              mb: 3
-            }}>
-              <Typography>Nummer</Typography>
-              <TextField
-                size="small"
-                value={selectedCard["Nummer"] || ""}
-                onChange={(e) => {
-                  selectedCard["Nummer"] = e.target.value;
-                  setRows([...rows]);
-                }}
-              />
-
-              <Typography>Name</Typography>
-              <TextField
-                size="small"
-                value={selectedCard["Teil"] || ""}
-                onChange={(e) => {
-                  selectedCard["Teil"] = e.target.value;
-                  setRows([...rows]);
-                }}
-              />
-
-              <Typography>Verantwortlich</Typography>
-              <Select
-                size="small"
-                value={selectedCard["Verantwortlich"] || ""}
-                onChange={(e) => {
-                  selectedCard["Verantwortlich"] = e.target.value;
-                  setRows([...rows]);
-                }}
-              >
-                <MenuItem value="">
-                  <em>Nicht zugewiesen</em>
-                </MenuItem>
-                {users.map(user => (
-                  <MenuItem key={user.id} value={user.name}>
-                    {user.name} ({user.email})
-                  </MenuItem>
-                ))}
-              </Select>
-
-              <Typography>Fällig bis</Typography>
-              <TextField
-                size="small"
-                type="date"
-                value={String(selectedCard["Due Date"] || "").slice(0, 10)}
-                onChange={(e) => {
-                  selectedCard["Due Date"] = e.target.value;
-                  setRows([...rows]);
-                }}
-              />
-
-              <Typography>Swimlane</Typography>
-              <Select
-                size="small"
-                value={selectedCard["Swimlane"] || ""}
-                onChange={(e) => {
-                  selectedCard["Swimlane"] = e.target.value;
-                  setRows([...rows]);
-                }}
-              >
-                {lanes.map(lane => (
-                  <MenuItem key={lane} value={lane}>{lane}</MenuItem>
-                ))}
-              </Select>
-
-              <Typography>Bild</Typography>
-              <TextField
-                size="small"
-                type="file"
-                inputProps={{ accept: "image/*" }}
-                onChange={(e) => {
-                  const file = (e.target as HTMLInputElement).files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                      selectedCard["Bild"] = ev.target?.result;
-                      setRows([...rows]);
-                    };
-                    reader.readAsDataURL(file);
-                  }
-                }}
-               
-              />
-              </Box>
-{/* TR-Daten Sektion - NACH DEN GRUNDDATEN */}
-<Box sx={{ mt: 3 }}>
-  <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
-    TR-Termine
-  </Typography>
-  
-  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-    {/* Original TR-Datum (nur einmal setzbar) */}
-    <Box>
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        TR-Datum (Original)
-      </Typography>
-      {selectedCard["TR_Datum"] ? (
-        <Box sx={{ 
-          display: 'flex', 
-          alignItems: 'center', 
-          gap: 1,
-          p: 1,
-          backgroundColor: 'action.hover',
-          borderRadius: 1
-        }}>
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            {new Date(selectedCard["TR_Datum"]).toLocaleDateString('de-DE')}
-          </Typography>
-          <Chip 
-            label="Gesperrt" 
-            size="small" 
-            color="default"
-            sx={{ fontSize: '10px' }}
-          />
-        </Box>
-      ) : (
-        <TextField
-          size="small"
-          type="date"
-          value={selectedCard["TR_Datum"] || ""}
-          onChange={(e) => {
-            if (e.target.value && !selectedCard["TR_Datum"]) {
-              selectedCard["TR_Datum"] = e.target.value;
-              setRows([...rows]);
-            }
-          }}
-          helperText="Kann nach Eingabe nicht mehr geändert werden"
-          InputLabelProps={{ shrink: true }}
-        />
-      )}
-    </Box>
-    
-    {/* TR Neu (änderbar) */}
-    <Box>
-      <Typography variant="subtitle2" sx={{ mb: 1 }}>
-        TR neu
-      </Typography>
-      <TextField
-        size="small"
-        type="date"
-        value={selectedCard["TR_Neu"] || ""}
-        onChange={(e) => {
-          handleTRNeuChange(selectedCard, e.target.value);
-        }}
-        helperText="Neuer TR-Termin (überschreibt vorherigen)"
-        InputLabelProps={{ shrink: true }}
-      />
-    </Box>
-    
-  {/* TR-DATUM FELD (falls noch nicht vorhanden) */}
-              <TextField
-                label="TR-Datum"
-                type="date"
-                value={(selectedCard && (selectedCard["TR_Neu"] || selectedCard["TR_Datum"])) || ""}
-                onChange={(e) => {
-                  if (selectedCard) {
-                    const newCard = { ...selectedCard };
-                    newCard["TR_Neu"] = e.target.value;
-                    setSelectedCard(newCard);
-                  }
-                }}
-                InputLabelProps={{ shrink: true }}
-                sx={{ mb: 2 }}
-              />
-
-              {/* TR-CHECKBOX ZUM ABHAKEN */}
-              {selectedCard && (selectedCard["TR_Neu"] || selectedCard["TR_Datum"]) && (
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={selectedCard && selectedCard["TR_Completed"] === true}
-                      onChange={(e) => {
-                        if (selectedCard) {
-                          const newCard = { ...selectedCard };
-                          newCard["TR_Completed"] = e.target.checked;
-                          setSelectedCard(newCard);
-                        }
-                      }}
-                      sx={{
-                        color: 'success.main',
-                        '&.Mui-checked': {
-                          color: 'success.main',
-                        }
-                      }}
-                    />
-                  }
-                  label="TR abgeschlossen"
-                  sx={{ mt: 1, mb: 2 }}
-                />
-              )}
-
-{/* TR-DATEN ANZEIGE IM POPUP - OHNE DUPLIKATE (VERBESSERT) */}
-{(selectedCard["TR_Datum"] || selectedCard["TR_Neu"] || (selectedCard["TR_History"] && selectedCard["TR_History"].length > 0)) && (
-  <Box sx={{ 
-    mt: 2, 
-    pt: 2, 
-    borderTop: '1px solid var(--line)'
-  }}>
-    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-      TR-Termine
-    </Typography>
-    
-    {/* Ursprüngliches TR-Datum */}
-    {selectedCard["TR_Datum"] && (
-      <Typography variant="body2" sx={{ 
-        fontWeight: 600,
-        color: '#4caf50',
-        display: 'block',
-        mb: 0.5
-      }}>
-        TR ursprünglich: {new Date(selectedCard["TR_Datum"]).toLocaleDateString('de-DE')}
-      </Typography>
-    )}
-    
-    {/* TR-Historie - NUR EINDEUTIGE EINTRÄGE, OHNE AKTUELLES */}
-    {(() => {
-      // Filtere Historie: Entferne Duplikate und das aktuelle TR_Neu
-      const history = selectedCard["TR_History"] || [];
-      const currentTRNeu = selectedCard["TR_Neu"];
-      
-      // Erstelle Set für eindeutige Daten (ohne aktuelles)
-      const uniqueDates = new Set();
-      const uniqueEntries = [];
-      
-      history.forEach((entry: any) => {
-        const entryDate = entry.date;
-        // Überspringe wenn es das aktuelle TR_Neu ist oder bereits existiert
-        if (entryDate !== currentTRNeu && !uniqueDates.has(entryDate)) {
-          uniqueDates.add(entryDate);
-          uniqueEntries.push(entry);
-        }
-      });
-      
-      return uniqueEntries.length > 0 && (
-        <Box sx={{ mb: 1 }}>
-          {uniqueEntries.map((trEntry: any, idx: number) => (
-            <Typography 
-              key={`${trEntry.date}-${idx}`}
-              variant="body2" 
-              sx={{ 
-                color: 'var(--muted)',
-                display: 'block',
-                textDecoration: 'line-through',
-                opacity: 0.7,
-                mb: 0.5
-              }}
-            >
-              TR geändert: {new Date(trEntry.date).toLocaleDateString('de-DE')}
-              {trEntry.changedBy && (
-                <span style={{ fontSize: '12px', marginLeft: '8px' }}>
-                  (von {trEntry.changedBy})
-                </span>
-              )}
-            </Typography>
-          ))}
-        </Box>
-      );
-    })()}
-    
-    {/* Aktuelles TR_Neu (falls vorhanden) */}
-    {selectedCard["TR_Neu"] && (
-      <Typography variant="body2" sx={{ 
-        fontWeight: 600,
-        color: '#2196f3',
-        display: 'block'
-      }}>
-        TR aktuell: {new Date(selectedCard["TR_Neu"]).toLocaleDateString('de-DE')}
-      </Typography>
-    )}
-  </Box>
-)}
-
-
-  </Box>
-</Box>
-            {selectedCard["Bild"] && (
-              <Box sx={{ mb: 2 }}>
-                <img 
-                  src={selectedCard["Bild"]} 
-                  alt="Karten-Bild"
-                  style={{ maxWidth: '300px', width: '100%', height: 'auto', borderRadius: '8px' }}
-                />
-              </Box>
-            )}
-          </Box>         
-        )}
-
-
-        {/* Tab 1: Status & Checkliste */}
-        {editTabValue === 1 && (
-          <Box sx={{ p: 3 }}>
-            {/* Status Section */}
-            <Box sx={{ mb: 4 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6">Statushistorie</Typography>
-                <Button 
-                  variant="outlined" 
-                  size="small"
-                  onClick={() => addStatusEntry(selectedCard)}
-                >
-                  🕓 Neuer Eintrag
-                </Button>
-              </Box>
-
-              <Box sx={{ maxHeight: '300px', overflow: 'auto', mb: 3 }}>
-                {(selectedCard.StatusHistory || []).map((entry: any, idx: number) => (
-                  <Box key={idx} sx={{ mb: 3, border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow>
-                          <TableCell sx={{ fontWeight: 600 }}>
-                            {entry.date || 'Datum'}
-                          </TableCell>
-                          <TableCell colSpan={2}>
-                            <TextField
-                            size="small"
-                            fullWidth
-                            multiline
-                            minRows={1}
-                            maxRows={3}
-                            placeholder="Statusmeldung"
-                            value={entry.message?.text || ""}
-                            onChange={(e) => {
-                              if (!entry.message) entry.message = { text: '', escalation: false };
-                              entry.message.text = e.target.value;
-                              updateStatusSummary(selectedCard);
-                              setRows([...rows]);
-                            }}
-                          
-                            />
-                          </TableCell>
-                        </TableRow>
-                      </TableHead>
-                      <TableBody>
-                        {['qualitaet', 'kosten', 'termine'].map(key => {
-                          const labels = { qualitaet: 'Qualität', kosten: 'Kosten', termine: 'Termine' };
-                          const val = entry[key] || { text: '', escalation: false };
-                          
-                          return (
-                            <TableRow key={key}>
-                              <TableCell>{labels[key as keyof typeof labels]}</TableCell>
-                              <TableCell>
-                               <TextField
-                                size="small"
-                                fullWidth
-                                multiline
-                                minRows={1}
-                                maxRows={4}
-                                value={val.text || ""}
-                                onChange={(e) => {
-                                  if (!entry[key]) entry[key] = { text: '', escalation: false };
-                                  entry[key].text = e.target.value;
-                                  updateStatusSummary(selectedCard);
-                                  setRows([...rows]);
-                                }}
-                                sx={{
-                                  '& .MuiInputBase-root': {
-                                    alignItems: 'flex-start'
-                                  }
-                                }}
-                              />
-
-                              </TableCell>
-                              <TableCell>
-                                <FormControlLabel
-                                  control={
-                                    <Checkbox
-                                      size="small"
-                                      checked={val.escalation || false}
-                                      onChange={(e) => {
-                                        if (!entry[key]) entry[key] = { text: '', escalation: false };
-                                        entry[key].escalation = e.target.checked;
-                                        updateStatusSummary(selectedCard);
-                                        setRows([...rows]);
-                                      }}
-                                    />
-                                  }
-                                  label="Eskalation"
-                                />
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-
-            {/* Checkliste Section */}
-            <Box>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                Checkliste für Phase: {stage}
-              </Typography>
-
-              {tasks.length === 0 ? (
-                <Typography sx={{ color: 'text.secondary', fontStyle: 'italic' }}>
-                  Keine Checkliste für diese Phase.
-                </Typography>
-              ) : (
-                <List>
-                  {tasks.map((task, i) => (
-                    <ListItem key={i} sx={{ px: 0 }}>
-                      <FormControlLabel
-                        control={
-                          <Checkbox
-                            checked={!!stageChecklist[task]}
-                            onChange={(e) => {
-                            if (!selectedCard.ChecklistDone) {
-                            selectedCard.ChecklistDone = {};
-                           }
-                            if (!selectedCard.ChecklistDone[stage]) {
-                            selectedCard.ChecklistDone[stage] = {};
-                            }
-  
-                            selectedCard.ChecklistDone[stage][task] = e.target.checked;
-                            setRows([...rows]);
-                            }}
-                          />
-                        }
-                        label={task}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-            </Box>
-          </Box>
-        )}
-
-        {/* Tab 2: Team */}
-        {editTabValue === 2 && (
-          <Box sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 3 }}>
-              Team-Mitglieder
-            </Typography>
-
-        {/* Team-Mitglieder Liste - KOMPAKT UND SCHÖN */}
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
-            Team-Mitglieder
-          </Typography>
-          
-          {(selectedCard.Team || []).map((member: any, idx: number) => (
-            <Box key={idx} sx={{ 
-              display: 'flex', 
-              alignItems: 'center',
-              gap: 2, 
-              mb: 1.5,
-              p: 1.5,
-              border: 1,
-              borderColor: 'divider',
-              borderRadius: 1,
-              backgroundColor: 'background.paper'
-            }}>
-              
-              {/* BENUTZER AUSWAHL */}
-              <FormControl size="small" sx={{ minWidth: 200, flex: 1 }}>
-                <InputLabel>Team-Mitglied</InputLabel>
-                <Select
-                  value={member.userId || ""}
-                  onChange={(e) => {
-                    const selectedUser = users.find(u => u.id === e.target.value);
-                    
-                    if (selectedUser) {
-                      selectedCard.Team[idx] = {
-                        ...selectedCard.Team[idx],
-                        userId: selectedUser.id,
-                        name: selectedUser.name,
-                        email: selectedUser.email
-                      };
-                    } else {
-                      selectedCard.Team[idx] = {
-                        ...selectedCard.Team[idx],
-                        userId: "",
-                        name: "",
-                        email: ""
-                      };
-                    }
-                    setRows([...rows]);
-                  }}
-                >
-                  <MenuItem value="">
-                    <em>Kein Benutzer ausgewählt</em>
-                  </MenuItem>
-                  {users.map(user => (
-                    <MenuItem key={user.id} value={user.id}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{
-                          width: 8, height: 8, borderRadius: '50%',
-                          backgroundColor: user.isActive === false ? '#ff9800' : '#14c38e'
-                        }} />
-                        <Box>
-                          <Typography variant="body2">{user.name}</Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {user.email}
-                          </Typography>
-                        </Box>
-                      </Box>
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              
-              {/* EMAIL ANZEIGE - NUR WENN AUSGEWÄHLT */}
-              {member.email && (
-                <Typography variant="caption" sx={{ 
-                  color: 'text.secondary',
-                  flex: 1,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
-                }}>
-                  {member.email}
-                </Typography>
-              )}
-              
-              {/* ROLLE */}
-              <TextField
-                size="small"
-                label="Rolle"
-                value={member.role || ""}
-                onChange={(e) => {
-                  selectedCard.Team[idx].role = e.target.value;
-                  setRows([...rows]);
-                }}
-                sx={{ minWidth: 120, maxWidth: 150 }}
-                placeholder="z.B. Dev, Design..."
-              />
-              
-              {/* MÜLLEIMER - GANZ RECHTS */}
-              <IconButton 
-                color="error"
-                size="small"
-                onClick={() => {
-                  selectedCard.Team.splice(idx, 1);
-                  setRows([...rows]);
-                }}
-                title="Mitglied entfernen"
-                sx={{ 
-                  flexShrink: 0,
-                  '&:hover': { backgroundColor: 'error.light', color: 'white' }
-                }}
-              >
-                🗑️
-              </IconButton>
-            </Box>
-          ))}
-          
-        <Button 
-          variant="outlined" 
-          onClick={() => {
-            if (!selectedCard.Team) selectedCard.Team = [];
-            selectedCard.Team.push({ 
-              userId: '',    // ← Neue Struktur!
-              name: '', 
-              email: '', 
-              role: '' 
-            });
-            setRows([...rows]);
-          }}
-          sx={{ mt: 1 }}
-        >
-          + Team-Mitglied hinzufügen
-        </Button>
-        </Box>
-
-
-            {/* Team-Statistiken */}
-            {selectedCard.Team && selectedCard.Team.length > 0 && (
-              <Box sx={{ mt: 3, p: 2, backgroundColor: 'action.hover', borderRadius: 1 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Team-Übersicht:
-                </Typography>
-                <Typography variant="body2">
-                  {selectedCard.Team.length} Mitglieder
-                </Typography>
-                <Typography variant="body2">
-                  Rollen: {Array.from(new Set(selectedCard.Team.map((m: any) => m.role).filter(Boolean))).join(', ')}
-                </Typography>
-              </Box>
-            )}
-          </Box>
-        )}
-      </DialogContent>
-
-      <DialogActions sx={{ borderTop: 1, borderColor: 'divider', p: 2 }}>
-        <Button 
-          variant="outlined"
-          onClick={() => {
-            if (window.confirm(`Soll die Karte "${selectedCard["Nummer"]} ${selectedCard["Teil"]}" wirklich archiviert werden?`)) {
-              selectedCard["Archived"] = "1";
-              selectedCard["ArchivedDate"] = new Date().toLocaleDateString('de-DE'); // ← NEU
-              setRows([...rows]);
-              setEditModalOpen(false);
-              
-              // Speichere sofort
-              setTimeout(() => saveCards(), 500);
-            }
-          }}
-        >
-          Archivieren
-        </Button>
-        <Button 
-          variant="outlined" 
-          color="error"
-          onClick={() => {
-            if (window.confirm(`Soll die Karte "${selectedCard["Nummer"]} – ${selectedCard["Teil"]}" wirklich gelöscht werden?`)) {
-              if (window.confirm('Bist Du sicher, dass diese Karte dauerhaft gelöscht werden soll?')) {
-                const idx = rows.findIndex(r => idFor(r) === idFor(selectedCard));
-                if (idx >= 0) {
-                  rows.splice(idx, 1);
-                  setRows([...rows]);
-                  setEditModalOpen(false);
-                }
-              }
-            }
-          }}
-        >
-          Löschen
-        </Button>
-        <Button variant="contained" onClick={() => setEditModalOpen(false)}>
-          Schließen
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
-
-// ARCHIV-MODAL FUNKTION (nach renderEditModal):
-const renderArchiveModal = () => {
-  return (
-    <Dialog 
-      open={archiveOpen} 
-      onClose={() => setArchiveOpen(false)}
-      maxWidth="lg"
-      fullWidth
-    >
-      <DialogTitle sx={{ 
-        borderBottom: '1px solid var(--line)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between'
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <span>🗃️</span>
-          Archiv
-        </Box>
-        <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
-          {archivedCards.length} archivierte Karten
-        </Typography>
-      </DialogTitle>
-      
-      <DialogContent sx={{ p: 0 }}>
-        {archivedCards.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center' }}>
-            <Typography variant="h6" sx={{ color: 'var(--muted)', mb: 1 }}>
-              📭 Archiv ist leer
-            </Typography>
-            <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
-              Archivierte Karten werden hier angezeigt
-            </Typography>
-          </Box>
-        ) : (
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Nummer</TableCell>
-                <TableCell>Teil</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Verantwortlich</TableCell>
-                <TableCell>Archiviert am</TableCell>
-                <TableCell align="right">Aktionen</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {archivedCards.map((card, index) => (
-                <TableRow key={index}>
-                  <TableCell>{card.Nummer}</TableCell>
-                  <TableCell>{card.Teil}</TableCell>
-                  <TableCell>{card["Status Kurz"]}</TableCell>
-                  <TableCell>{card.Verantwortlich}</TableCell>
-                  <TableCell>
-                    {card.ArchivedDate || 'Unbekannt'}
-                  </TableCell>
-                  <TableCell align="right">
-                    <Button 
-                      size="small" 
-                      variant="outlined"
-                      onClick={() => restoreCard(card)}
-                      sx={{ mr: 1 }}
-                    >
-                      ↩️ Wiederherstellen
-                    </Button>
-                    <Button 
-                      size="small" 
-                      variant="outlined" 
-                      color="error"
-                      onClick={() => deleteCardPermanently(card)}
-                    >
-                      🗑️ Endgültig löschen
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </DialogContent>
-      
-      <DialogActions>
-        <Button onClick={() => setArchiveOpen(false)}>
-          Schließen
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
-
-
-// Neue Karte Dialog
-const renderNewCardModal = () => {
-  const [newCard, setNewCard] = useState({
-    "Nummer": "",
-    "Teil": "",
-    "Board Stage": cols[0]?.name || "",
-    "Status Kurz": "",
-    "Verantwortlich": "",
-    "Due Date": "",
-    "Ampel": "grün",
-    "Swimlane": lanes[0] || "Allgemein",
-    "UID": `uid_${Date.now()}`,
-      // ✅ NEUE TR-FELDER
-  "TR_Datum": "", // Erstes TR-Datum (unveränderlich nach Eingabe)
-  "TR_Neu": "", // Aktuelles TR-Datum
-  "TR_History": [] // Historie aller TR-Neu Einträge
-  });
-
-
-
-  const handleSave = () => {
-    if (!newCard.Nummer.trim() || !newCard.Teil.trim()) {
-      alert('Nummer und Teil sind Pflichtfelder!');
-      return;
-    }
-
-    // Prüfe ob Nummer bereits existiert
-    const exists = rows.some(r => r.Nummer === newCard.Nummer);
-    if (exists) {
-      alert('Diese Nummer existiert bereits!');
-      return;
-    }
-
-    // Füge neue Karte hinzu
-    setRows([...rows, { ...newCard }]);
-    setNewCardOpen(false);
-    
-    // Reset form
-    setNewCard({
-      "Nummer": "",
-      "Teil": "",
-      "Board Stage": cols[0]?.name || "",
-      "Status Kurz": "",
-      "Verantwortlich": "",
-      "Due Date": "",
-      "Ampel": "grün",
-      "Swimlane": lanes[0] || "Allgemein",
-      "UID": `uid_${Date.now()}`
-    });
-  };
-
-  return (
-    <Dialog 
-      open={newCardOpen} 
-      onClose={() => setNewCardOpen(false)}
-      maxWidth="sm"
-      fullWidth
-    >
-      <DialogTitle>
-        ➕ Neue Karte erstellen
-      </DialogTitle>
-      
-      <DialogContent sx={{ pt: 2 }}>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {/* Nummer */}
-          <TextField
-            label="Nummer *"
-            value={newCard.Nummer}
-            onChange={(e) => setNewCard({...newCard, Nummer: e.target.value})}
-            fullWidth
-            required
-          />
-          
-          {/* Teil */}
-          <TextField
-            label="Teil *"
-            value={newCard.Teil}
-            onChange={(e) => setNewCard({...newCard, Teil: e.target.value})}
-            fullWidth
-            required
-          />
-          
-          {/* Spalte */}
-          <FormControl fullWidth>
-            <InputLabel>Spalte</InputLabel>
-            <Select
-              value={newCard["Board Stage"]}
-              onChange={(e) => setNewCard({...newCard, "Board Stage": e.target.value})}
-            >
-              {cols.map(col => (
-                <MenuItem key={col.id} value={col.name}>
-                  {col.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          
-          {/* Verantwortlich */}
-          <FormControl fullWidth required>
-  <InputLabel>Verantwortlich *</InputLabel>
-  <Select
-    value={newCard.Verantwortlich}
-    onChange={(e) => setNewCard({...newCard, Verantwortlich: e.target.value})}
-    displayEmpty
-  >
-    <MenuItem value="">
-      <em>Bitte Benutzer auswählen...</em>
-    </MenuItem>
-    {users.length === 0 ? (
-      <MenuItem disabled>
-        <em>Keine Benutzer verfügbar</em>
-      </MenuItem>
-    ) : (
-      users.map(user => (
-        <MenuItem key={user.id} value={user.name}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
-            {/* Status-Indikator */}
-            <Box sx={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              backgroundColor: user.isActive === false ? '#ff9800' : '#14c38e',
-              flexShrink: 0
-            }} />
-            
-            <Box sx={{ flex: 1 }}>
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {user.name}
-              </Typography>
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                {user.email}
-                {user.company && ` • ${user.company}`}
-                {user.role && ` • ${user.role}`}
-              </Typography>
-            </Box>
-            
-            {/* Inaktiv-Badge */}
-            {user.isActive === false && (
-              <Chip 
-                label="Inaktiv" 
-                size="small" 
-                color="warning"
-                sx={{ fontSize: '10px', height: 16 }}
-              />
-            )}
-          </Box>
-        </MenuItem>
-      ))
-    )}
-  </Select>
-  <Typography variant="caption" sx={{ color: 'text.secondary', mt: 0.5 }}>
-    {users.length === 0 
-      ? "Keine Benutzer gefunden. Benutzer werden aus der profiles-Tabelle geladen."
-      : `${users.length} Benutzer verfügbar (${users.filter(u => u.isActive !== false).length} aktiv)`
-    }
-  </Typography>
-</FormControl>
-          
-          {/* Swimlane */}
-          <FormControl fullWidth>
-            <InputLabel>Projekt/Kategorie</InputLabel>
-            <Select
-              value={newCard.Swimlane}
-              onChange={(e) => setNewCard({...newCard, Swimlane: e.target.value})}
-            >
-              {lanes.map(lane => (
-                <MenuItem key={lane} value={lane}>
-                  {lane}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          
-          {/* Due Date */}
-          <TextField
-            label="Fälligkeitsdatum"
-            type="date"
-            value={newCard["Due Date"]}
-            onChange={(e) => setNewCard({...newCard, "Due Date": e.target.value})}
-            InputLabelProps={{ shrink: true }}
-            fullWidth
-          />
-          
-          {/* Status */}
-          <TextField
-            label="Status"
-            value={newCard["Status Kurz"]}
-            onChange={(e) => setNewCard({...newCard, "Status Kurz": e.target.value})}
-            fullWidth
-            multiline
-            rows={2}
-          />
-        </Box>
-      </DialogContent>
-      
-      <DialogActions>
-        <Button onClick={() => setNewCardOpen(false)}>
-          Abbrechen
-        </Button>
-        <Button 
-          variant="contained" 
-          onClick={handleSave}
-          sx={{ 
-            backgroundColor: '#14c38e',
-            '&:hover': { backgroundColor: '#0ea770' }
-          }}
-        >
-          Karte erstellen
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
 
 // ✅ KORRIGIERTE TR-NEU ÄNDERUNGS-HANDLER (ersetze die bisherige Funktion)
 const handleTRNeuChange = (card: any, newDate: string) => {
@@ -3457,7 +1792,7 @@ return (
       color: 'var(--ink)'
     }}>
       {/* Header mit Toolbar */}
-      <Box sx={{ 
+      <Box sx={{
         position: 'sticky',
         top: 0,
         zIndex: 5,
@@ -3465,49 +1800,13 @@ return (
         borderBottom: '1px solid var(--line)',
         p: 2
       }}>
-       {/* Board Title mit Settings */}
-<Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
-  <Typography variant="h5">
-    Multiprojektboard
-  </Typography>
-  <IconButton 
-    size="small"
-    onClick={() => setSettingsOpen(true)}
-    sx={{ 
-      width: 32, 
-      height: 32,
-      border: '1px solid var(--line)',
-      backgroundColor: 'transparent',
-      '&:hover': {
-        backgroundColor: 'rgba(255,255,255,0.1)'
-      }
-    }}
-    title="Einstellungen"
-  >
-    ⚙️
-  </IconButton>
-</Box>
-
-          <Button 
-  variant="outlined" 
-  onClick={async () => {
-    await loadArchivedCards();
-    setArchiveOpen(true);
-  }}
-  sx={{ mr: 1 }}
-  startIcon={<span>🗃️</span>}
->
-  Archiv ({archivedCards.length > 0 ? archivedCards.length : '?'})
-</Button>
-
-
         {/* Toolbar */}
-        <Box sx={{ 
+        <Box sx={{
           display: 'grid',
           gridTemplateColumns: '1fr auto auto auto auto auto auto auto auto auto auto',
           gap: 1.5,
           alignItems: 'center',
-          mt: 2
+          mt: 0
         }}>
           {/* Suchfeld */}
           <TextField
@@ -3576,35 +1875,41 @@ return (
       </Box>
 
           
-          {/* KPI-BUTTON MIT BADGE */}
-          <Badge 
-            badgeContent={rows.filter(card => {
-              const trDate = card["TR_Neu"] || card["TR_Datum"];
-              if (!trDate) return false;
-              const tr = new Date(trDate);
-              return tr < new Date() && card["Archived"] !== "1";
-            }).length} 
-            color="error"
-            sx={{ ml: 1 }}
-          >
-            <IconButton
-              onClick={() => setKpiPopupOpen(true)}
-              sx={{ 
-                color: 'primary.main',
-                backgroundColor: 'primary.light',
-                '&:hover': { backgroundColor: 'primary.main', color: 'white' },
-                border: '1px solid var(--line)'
-              }}
-              title="TR-KPIs anzeigen"
-            >
-              <Assessment />
-            </IconButton>
-          </Badge>
       {/* Board Content */}
       <Box sx={{ flex: 1, overflow: 'auto' }}>
-        {viewMode === 'columns' && renderColumns()}
-        {viewMode === 'swim' && renderSwimlanes()}
-        {viewMode === 'lane' && renderSwimlanesByLane()}
+        {viewMode === 'columns' && (
+          <KanbanColumnsView
+            rows={rows}
+            cols={cols}
+            density={density}
+            searchTerm={searchTerm}
+            onDragEnd={onDragEnd}
+            inferStage={inferStage}
+            archiveColumn={archiveColumn}
+            renderCard={renderCard}
+          />
+        )}
+        {viewMode === 'swim' && (
+          <KanbanSwimlaneView
+            rows={rows}
+            cols={cols}
+            searchTerm={searchTerm}
+            onDragEnd={onDragEnd}
+            inferStage={inferStage}
+            renderCard={renderCard}
+          />
+        )}
+        {viewMode === 'lane' && (
+          <KanbanLaneView
+            rows={rows}
+            cols={cols}
+            lanes={lanes}
+            searchTerm={searchTerm}
+            onDragEnd={onDragEnd}
+            inferStage={inferStage}
+            renderCard={renderCard}
+          />
+        )}
       </Box>
 {/* Einstellungen Modal */}
 <Dialog 
@@ -3624,7 +1929,32 @@ return (
   
   <DialogContent sx={{ p: 3 }}>
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      
+
+      <Box>
+        <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
+          Allgemein
+        </Typography>
+        <TextField
+          label="Board-Name"
+          value={boardName}
+          onChange={(e) => setBoardName(e.target.value)}
+          fullWidth
+          required
+          error={!!boardMeta && !boardName.trim()}
+          helperText={!!boardMeta && !boardName.trim() ? 'Board-Name darf nicht leer sein.' : ' '}
+          sx={{ mb: 2 }}
+        />
+        <TextField
+          label="Beschreibung"
+          value={boardDescription}
+          onChange={(e) => setBoardDescription(e.target.value)}
+          fullWidth
+          multiline
+          minRows={2}
+          placeholder="Beschreibe das Board..."
+        />
+      </Box>
+
       {/* Spalten Konfiguration */}
       <Box>
         <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
@@ -3665,7 +1995,12 @@ return (
           <Button 
             variant="outlined" 
             size="small"
-            onClick={() => setCols([...cols, { name: `Neue Spalte ${cols.length + 1}` }])}
+            onClick={() =>
+              setCols([
+                ...cols,
+                { id: `new-${Date.now()}`, name: `Neue Spalte ${cols.length + 1}`, done: false },
+              ])
+            }
             sx={{ alignSelf: 'flex-start' }}
           >
             + Spalte hinzufügen
@@ -3881,8 +2216,43 @@ return (
   </DialogActions>
 </Dialog>
 
-      {/* Edit Modal */}
-      {renderEditModal()}
+      <EditCardDialog
+        selectedCard={selectedCard}
+        editModalOpen={editModalOpen}
+        setEditModalOpen={setEditModalOpen}
+        editTabValue={editTabValue}
+        setEditTabValue={setEditTabValue}
+        rows={rows}
+        setRows={setRows}
+        users={users}
+        lanes={lanes}
+        checklistTemplates={checklistTemplates}
+        inferStage={inferStage}
+        addStatusEntry={addStatusEntry}
+        updateStatusSummary={updateStatusSummary}
+        handleTRNeuChange={handleTRNeuChange}
+        saveCards={saveCards}
+        idFor={idFor}
+        setSelectedCard={setSelectedCard}
+      />
+
+      <NewCardDialog
+        newCardOpen={newCardOpen}
+        setNewCardOpen={setNewCardOpen}
+        cols={cols}
+        lanes={lanes}
+        rows={rows}
+        setRows={setRows}
+        users={users}
+      />
+
+      <ArchiveDialog
+        archiveOpen={archiveOpen}
+        setArchiveOpen={setArchiveOpen}
+        archivedCards={archivedCards}
+        restoreCard={restoreCard}
+        deleteCardPermanently={deleteCardPermanently}
+      />
 
       {/* CSS Variables für dein ursprüngliches Design */}
       <style jsx global>{`
@@ -3931,17 +2301,14 @@ return (
           border-color: var(--alertBorder) !important;
         }
       `}</style>
-              {/* Dialoge */}
-        {renderEditModal()}
-        {renderNewCardModal()}
-        {renderArchiveModal()}
-
 {/* SCHRITT 4: TRKPIPopup hinzufügen */}
-    <TRKPIPopup 
-      open={kpiPopupOpen} 
-      onClose={() => setKpiPopupOpen(false)} 
-      cards={rows} 
-    />  
+    <TRKPIPopup
+      open={kpiPopupOpen}
+      onClose={() => setKpiPopupOpen(false)}
+      cards={rows}
+    />
     </Box>
   );
-};
+});
+
+export default OriginalKanbanBoard;
