@@ -8,6 +8,10 @@ import {
   Card,
   CardContent,
   Chip,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   FormControl,
   Grid,
@@ -20,25 +24,18 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import AddIcon from '@mui/icons-material/Add';
-import DeleteIcon from '@mui/icons-material/Delete';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { createClient } from '@supabase/supabase-js';
 import { isSuperuserEmail } from '@/constants/superuser';
+import { ClientProfile, fetchClientProfiles } from '@/lib/clientProfiles';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
 );
-
-interface Profile {
-  id: string;
-  email: string;
-  full_name: string | null;
-  company: string | null;
-  is_active: boolean;
-}
 
 interface Department {
   id: string;
@@ -65,18 +62,41 @@ interface Topic {
   position: number;
 }
 
-interface Escalation {
+interface KanbanCardRow {
   id: string;
+  card_id: string;
+  card_data: Record<string, unknown>;
+  project_number?: string | null;
+  project_name?: string | null;
+}
+
+interface EscalationRecord {
+  id?: string;
   board_id: string;
+  card_id: string;
   category: 'LK' | 'SK';
   project_code: string | null;
   project_name: string | null;
   reason: string | null;
+  measure: string | null;
   department_id: string | null;
   responsible_id: string | null;
   target_date: string | null;
   completion_steps: number;
-  created_at?: string;
+}
+
+interface EscalationView extends EscalationRecord {
+  title: string;
+  stage?: string | null;
+}
+
+interface EscalationDraft {
+  reason: string;
+  measure: string;
+  department_id: string | null;
+  responsible_id: string | null;
+  target_date: string | null;
+  completion_steps: number;
 }
 
 interface BoardManagementPanelProps {
@@ -160,7 +180,7 @@ function CompletionDial({
   );
 }
 
-function mergeMemberProfiles(members: Member[], profiles: Profile[]): (Member & { profile?: Profile })[] {
+function mergeMemberProfiles(members: Member[], profiles: ClientProfile[]): (Member & { profile?: ClientProfile })[] {
   const profileMap = new Map(profiles.map(profile => [profile.id, profile]));
   return members.map(member => ({
     ...member,
@@ -168,21 +188,77 @@ function mergeMemberProfiles(members: Member[], profiles: Profile[]): (Member & 
   }));
 }
 
+const stringOrNull = (value: unknown): string | null => {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text.length ? text : null;
+};
+
+function buildEscalationViews(
+  boardId: string,
+  cards: KanbanCardRow[],
+  records: EscalationRecord[],
+): EscalationView[] {
+  const recordByCard = new Map(records.filter(record => record.card_id).map(record => [record.card_id, record]));
+
+  return cards
+    .map(card => {
+      const rawData = (card.card_data ?? {}) as Record<string, unknown>;
+      const rawCategory = stringOrNull(rawData['Eskalation']);
+      const category = rawCategory?.toUpperCase();
+
+      if (category !== 'LK' && category !== 'SK') {
+        return null;
+      }
+
+      const record = recordByCard.get(card.card_id);
+
+      const projectCode = stringOrNull(rawData['Nummer']) ?? stringOrNull(card.project_number);
+      const projectName = stringOrNull(rawData['Teil']) ?? stringOrNull(card.project_name);
+      const stage = stringOrNull(rawData['Board Stage']);
+      const fallbackReason = stringOrNull(rawData['Grund']);
+      const fallbackMeasure = stringOrNull(rawData['Maßnahme']) ?? stringOrNull(rawData['Massnahme']);
+      const completion = Math.max(0, Math.min(4, record?.completion_steps ?? 0));
+
+      const view: EscalationView = {
+        id: record?.id,
+        board_id: record?.board_id ?? boardId,
+        card_id: card.card_id,
+        category: (category as 'LK' | 'SK'),
+        project_code: record?.project_code ?? projectCode,
+        project_name: record?.project_name ?? projectName,
+        reason: record?.reason ?? fallbackReason ?? null,
+        measure: record?.measure ?? fallbackMeasure ?? null,
+        department_id: record?.department_id ?? null,
+        responsible_id: record?.responsible_id ?? null,
+        target_date: record?.target_date ?? null,
+        completion_steps: completion,
+        title: [projectCode, projectName].filter(Boolean).join(' • ') || card.card_id,
+        stage,
+      };
+
+      return view;
+    })
+    .filter((entry): entry is EscalationView => entry !== null);
+}
+
 export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }: BoardManagementPanelProps) {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profiles, setProfiles] = useState<ClientProfile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
-  const [members, setMembers] = useState<(Member & { profile?: Profile })[]>([]);
+  const [members, setMembers] = useState<(Member & { profile?: ClientProfile })[]>([]);
   const [memberSelect, setMemberSelect] = useState('');
 
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date()));
   const [attendance, setAttendance] = useState<Record<string, AttendanceRecord | undefined>>({});
 
   const [topics, setTopics] = useState<Topic[]>([]);
-
-  const [escalations, setEscalations] = useState<Escalation[]>([]);
+  const [escalations, setEscalations] = useState<EscalationView[]>([]);
+  const [escalationDialogOpen, setEscalationDialogOpen] = useState(false);
+  const [editingEscalation, setEditingEscalation] = useState<EscalationView | null>(null);
+  const [escalationDraft, setEscalationDraft] = useState<EscalationDraft | null>(null);
 
   const availableProfiles = useMemo(() => {
     const memberIds = new Set(members.map(member => member.profile_id));
@@ -197,6 +273,14 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     LK: escalations.filter(entry => entry.category === 'LK'),
     SK: escalations.filter(entry => entry.category === 'SK'),
   }), [escalations]);
+
+  const profileById = useMemo(() => {
+    const map = new Map<string, ClientProfile>();
+    profiles.forEach(profile => {
+      map.set(profile.id, profile);
+    });
+    return map;
+  }, [profiles]);
 
   const attendanceFor = (profileId: string): string => {
     const record = attendance[profileId];
@@ -213,28 +297,45 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const loadBaseData = async () => {
     try {
       setLoading(true);
-      const [profilesResult, departmentsResult, membersResult, topicsResult, escalationsResult] = await Promise.all([
-        supabase.from('profiles').select('*').order('full_name', { ascending: true }),
+      const profilePromise = fetchClientProfiles();
+
+      const [
+        departmentsResult,
+        membersResult,
+        topicsResult,
+        escalationsResult,
+        cardsResult,
+      ] = await Promise.all([
         supabase.from('departments').select('*').order('name'),
         supabase.from('board_members').select('*').eq('board_id', boardId).order('created_at'),
         supabase.from('board_top_topics').select('*').eq('board_id', boardId).order('position'),
-        supabase.from('board_escalations').select('*').eq('board_id', boardId).order('created_at'),
+        supabase.from('board_escalations').select('*').eq('board_id', boardId),
+        supabase
+          .from('kanban_cards')
+          .select('id, card_id, card_data, project_number, project_name')
+          .eq('board_id', boardId),
       ]);
 
-      if (profilesResult.error) throw new Error(profilesResult.error.message);
+      const profileRows = await profilePromise;
+
       if (departmentsResult.error) throw new Error(departmentsResult.error.message);
       if (membersResult.error) throw new Error(membersResult.error.message);
       if (topicsResult.error) throw new Error(topicsResult.error.message);
       if (escalationsResult.error) throw new Error(escalationsResult.error.message);
+      if (cardsResult.error) throw new Error(cardsResult.error.message);
 
-      const profileRows = (profilesResult.data as Profile[]) ?? [];
+      const departmentRows = (departmentsResult.data as Department[]) ?? [];
       const memberRows = mergeMemberProfiles((membersResult.data as Member[]) ?? [], profileRows);
+      const topicRows = (topicsResult.data as Topic[]) ?? [];
+      const escalationRecords = (escalationsResult.data as EscalationRecord[]) ?? [];
+      const cardRows = (cardsResult.data as KanbanCardRow[]) ?? [];
+      const escalationViews = buildEscalationViews(boardId, cardRows, escalationRecords);
 
       setProfiles(profileRows);
-      setDepartments((departmentsResult.data as Department[]) ?? []);
+      setDepartments(departmentRows);
       setMembers(memberRows);
-      setTopics((topicsResult.data as Topic[]) ?? []);
-      setEscalations((escalationsResult.data as Escalation[]) ?? []);
+      setTopics(topicRows);
+      setEscalations(escalationViews);
     } catch (error) {
       handleError(error, 'Fehler beim Laden der Board-Daten');
     } finally {
@@ -389,66 +490,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     }
   };
 
-  const addEscalation = async (category: 'LK' | 'SK') => {
-    try {
-      const { data, error } = await supabase
-        .from('board_escalations')
-        .insert({
-          board_id: boardId,
-          category,
-          project_code: '',
-          project_name: '',
-          completion_steps: 0,
-        })
-        .select()
-        .single();
-
-      if (error) throw new Error(error.message);
-
-      if (data) {
-        setEscalations(prev => [...prev, data as Escalation]);
-      }
-    } catch (error) {
-      handleError(error, 'Fehler beim Hinzufügen einer Eskalation');
-    }
-  };
-
-  const updateEscalation = async (escalationId: string, payload: Partial<Escalation>) => {
-    try {
-      const { error } = await supabase
-        .from('board_escalations')
-        .update(payload)
-        .eq('id', escalationId);
-
-      if (error) throw new Error(error.message);
-
-      setEscalations(prev =>
-        prev.map(entry => (entry.id === escalationId ? { ...entry, ...payload } : entry)),
-      );
-    } catch (error) {
-      handleError(error, 'Fehler beim Aktualisieren der Eskalation');
-    }
-  };
-
-  const deleteEscalation = async (escalationId: string) => {
-    try {
-      const { error } = await supabase
-        .from('board_escalations')
-        .delete()
-        .eq('id', escalationId);
-
-      if (error) throw new Error(error.message);
-
-      setEscalations(prev => prev.filter(entry => entry.id !== escalationId));
-    } catch (error) {
-      handleError(error, 'Fehler beim Löschen der Eskalation');
-    }
-  };
-
-  const cycleCompletion = async (escalation: Escalation) => {
-    const next = (escalation.completion_steps ?? 0) >= 4 ? 0 : (escalation.completion_steps ?? 0) + 1;
-    await updateEscalation(escalation.id, { completion_steps: next });
-  };
 
   const departmentName = (departmentId: string | null) =>
     departments.find(entry => entry.id === departmentId)?.name ?? '';
@@ -458,120 +499,92 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const responsibleOptions = (departmentId: string | null) => {
     const name = departmentName(departmentId);
-    return profiles.filter(profile => profile.company === name && profile.is_active);
+    return profiles.filter(profile => {
+      const matchesDepartment = name ? profile.company === name : true;
+      const active = profile.is_active || isSuperuserEmail(profile.email);
+      return matchesDepartment && active;
+    });
   };
 
-  const renderEscalationRow = (escalation: Escalation) => {
-    const responsible = profiles.find(profile => profile.id === escalation.responsible_id);
-    return (
-      <Grid container spacing={2} key={escalation.id} sx={{ mb: 2 }}>
-        <Grid item xs={12} md={3}>
-          <TextField
-            label="Projektnummer"
-            value={escalation.project_code ?? ''}
-            onChange={(event) => updateEscalation(escalation.id, { project_code: event.target.value })}
-            fullWidth
-            disabled={!canEdit}
-            size="small"
-            sx={{ mb: 1 }}
-          />
-          <TextField
-            label="Projektname"
-            value={escalation.project_name ?? ''}
-            onChange={(event) => updateEscalation(escalation.id, { project_name: event.target.value })}
-            fullWidth
-            disabled={!canEdit}
-            size="small"
-          />
-        </Grid>
-        <Grid item xs={12} md={3}>
-          <TextField
-            label="Grund"
-            value={escalation.reason ?? ''}
-            onChange={(event) => updateEscalation(escalation.id, { reason: event.target.value })}
-            fullWidth
-            disabled={!canEdit}
-            multiline
-            minRows={3}
-          />
-        </Grid>
-        <Grid item xs={12} md={2}>
-          <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-            <InputLabel>Abteilung</InputLabel>
-            <Select
-              value={departmentName(escalation.department_id)}
-              label="Abteilung"
-              disabled={!canEdit}
-              onChange={(event) => updateEscalation(escalation.id, {
-                department_id: departmentIdByName(event.target.value),
-                responsible_id: null,
-              })}
-            >
-              <MenuItem value="">
-                <em>Keine</em>
-              </MenuItem>
-              {departments.map(department => (
-                <MenuItem key={department.id} value={department.name}>
-                  {department.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl fullWidth size="small">
-            <InputLabel>Verantwortung</InputLabel>
-            <Select
-              value={escalation.responsible_id ?? ''}
-              label="Verantwortung"
-              disabled={!canEdit}
-              onChange={(event) => updateEscalation(escalation.id, { responsible_id: event.target.value || null })}
-            >
-              <MenuItem value="">
-                <em>Keine</em>
-              </MenuItem>
-              {responsibleOptions(escalation.department_id).map(option => (
-                <MenuItem key={option.id} value={option.id}>
-                  {option.full_name || option.email}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} md={2}>
-          <TextField
-            label="Zieltermin"
-            type="date"
-            value={escalation.target_date ?? ''}
-            onChange={(event) => updateEscalation(escalation.id, { target_date: event.target.value })}
-            fullWidth
-            disabled={!canEdit}
-            InputLabelProps={{ shrink: true }}
-            size="small"
-            sx={{ mb: 2 }}
-          />
-          <Tooltip title="Kuchendiagramm Fortschritt">
-            <Box>
-              <CompletionDial
-                steps={escalation.completion_steps ?? 0}
-                onClick={() => cycleCompletion(escalation)}
-                disabled={!canEdit}
-              />
-            </Box>
-          </Tooltip>
-        </Grid>
-        <Grid item xs={12} md={2}>
-          <Stack direction="row" spacing={1} justifyContent="flex-end">
-            {responsible && (
-              <Chip label={responsible.full_name || responsible.email} size="small" />
-            )}
-            {canEdit && (
-              <IconButton color="error" onClick={() => deleteEscalation(escalation.id)}>
-                <DeleteIcon />
-              </IconButton>
-            )}
-          </Stack>
-        </Grid>
-      </Grid>
-    );
+  const openEscalationEditor = (entry: EscalationView) => {
+    setEditingEscalation(entry);
+    setEscalationDraft({
+      reason: entry.reason ?? '',
+      measure: entry.measure ?? '',
+      department_id: entry.department_id ?? null,
+      responsible_id: entry.responsible_id ?? null,
+      target_date: entry.target_date ?? null,
+      completion_steps: entry.completion_steps ?? 0,
+    });
+    setEscalationDialogOpen(true);
+  };
+
+  const closeEscalationEditor = () => {
+    setEscalationDialogOpen(false);
+    setEditingEscalation(null);
+    setEscalationDraft(null);
+  };
+
+  const updateEscalationDraft = (changes: Partial<EscalationDraft>) => {
+    setEscalationDraft(prev => (prev ? { ...prev, ...changes } : prev));
+  };
+
+  const saveEscalation = async () => {
+    if (!editingEscalation || !escalationDraft) return;
+
+    try {
+      const payload = {
+        board_id: boardId,
+        card_id: editingEscalation.card_id,
+        category: editingEscalation.category,
+        project_code: editingEscalation.project_code,
+        project_name: editingEscalation.project_name,
+        reason: stringOrNull(escalationDraft.reason),
+        measure: stringOrNull(escalationDraft.measure),
+        department_id: escalationDraft.department_id,
+        responsible_id: escalationDraft.responsible_id,
+        target_date: escalationDraft.target_date,
+        completion_steps: Math.max(0, Math.min(4, escalationDraft.completion_steps ?? 0)),
+      };
+
+      const { data, error } = await supabase
+        .from('board_escalations')
+        .upsert(payload, { onConflict: 'board_id,card_id' })
+        .select()
+        .maybeSingle();
+
+      if (error) throw new Error(error.message);
+
+      setEscalations(prev =>
+        prev.map(entry =>
+          entry.card_id === editingEscalation.card_id
+            ? {
+                ...entry,
+                id: (data as EscalationRecord | null)?.id ?? entry.id,
+                reason: payload.reason ?? null,
+                measure: payload.measure ?? null,
+                department_id: payload.department_id ?? null,
+                responsible_id: payload.responsible_id ?? null,
+                target_date: payload.target_date ?? null,
+                completion_steps: payload.completion_steps ?? 0,
+              }
+            : entry,
+        ),
+      );
+
+      setMessage('✅ Eskalation gespeichert');
+      setTimeout(() => setMessage(''), 4000);
+      closeEscalationEditor();
+    } catch (error) {
+      handleError(error, 'Fehler beim Speichern der Eskalation');
+    }
+  };
+
+  const cycleDraftCompletion = () => {
+    if (!escalationDraft) return;
+    const current = escalationDraft.completion_steps ?? 0;
+    const next = current >= 4 ? 0 : current + 1;
+    updateEscalationDraft({ completion_steps: next });
   };
 
   if (!memberCanSee) {
@@ -710,91 +723,251 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
       <Card>
         <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
-            <Typography variant="h6">⭐ Top-Themen</Typography>
-            {canEdit && (
-              <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={addTopic}
-                disabled={topics.length >= 5}
-              >
-                weiteres Thema
-              </Button>
-            )}
-          </Stack>
-          <Stack spacing={2} sx={{ mt: 2 }}>
-            {topics.map(topic => (
-              <Stack direction="row" spacing={1} key={topic.id} alignItems="center">
-                <TextField
-                  fullWidth
-                  value={topic.title ?? ''}
-                  placeholder="Top Thema"
-                  onChange={(event) =>
-                    setTopics(prev =>
-                      prev.map(entry =>
-                        entry.id === topic.id ? { ...entry, title: event.target.value } : entry,
-                      ),
-                    )
-                  }
-                  onBlur={(event) => updateTopic(topic.id, event.target.value)}
-                  disabled={!canEdit}
-                />
-                {canEdit && (
-                  <IconButton color="error" onClick={() => deleteTopic(topic.id)}>
-                    <DeleteIcon />
-                  </IconButton>
-                )}
-              </Stack>
-            ))}
-            {topics.length === 0 && (
+          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} flexWrap="wrap">
+            <Box>
+              <Typography variant="h6">🚨 Projekte in Eskalation</Typography>
               <Typography variant="body2" color="text.secondary">
-                Noch keine Top-Themen erfasst.
+                Es werden automatisch alle Karten angezeigt, die im Board als LK oder SK markiert sind.
               </Typography>
-            )}
+            </Box>
           </Stack>
+
+          <Divider sx={{ my: 2 }} />
+
+          {(['LK', 'SK'] as const).map(category => {
+            const entries = filteredEscalations[category];
+            return (
+              <Box key={category} sx={{ mb: category === 'LK' ? 3 : 0 }}>
+                <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                  {category} Eskalationen
+                </Typography>
+
+                {entries.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {category === 'LK'
+                      ? 'Keine LK Eskalationen vorhanden.'
+                      : 'Keine SK Eskalationen vorhanden.'}
+                  </Typography>
+                ) : (
+                  <Stack spacing={2} sx={{ mb: 2 }}>
+                    {entries.map(entry => {
+                      const responsible = entry.responsible_id ? profileById.get(entry.responsible_id) : undefined;
+                      const department = departmentName(entry.department_id);
+                      const targetLabel = entry.target_date
+                        ? new Date(entry.target_date).toLocaleDateString('de-DE')
+                        : 'Kein Termin';
+
+                      return (
+                        <Box
+                          key={entry.card_id}
+                          sx={{
+                            border: '1px solid',
+                            borderColor: 'divider',
+                            borderRadius: 2,
+                            p: 2,
+                          }}
+                        >
+                          <Stack
+                            direction={{ xs: 'column', md: 'row' }}
+                            spacing={2}
+                            justifyContent="space-between"
+                            alignItems={{ xs: 'flex-start', md: 'center' }}
+                          >
+                            <Box>
+                              <Typography variant="subtitle2">
+                                {entry.project_code || entry.project_name
+                                  ? `${entry.project_code ?? ''}${entry.project_code && entry.project_name ? ' – ' : ''}${entry.project_name ?? ''}`
+                                  : entry.title}
+                              </Typography>
+                              {entry.stage && (
+                                <Typography variant="body2" color="text.secondary">
+                                  Phase: {entry.stage}
+                                </Typography>
+                              )}
+                            </Box>
+                            <Stack direction="row" spacing={2} alignItems="center">
+                              <Tooltip title="Fortschritt (Bearbeitung im Popup)">
+                                <Box>
+                                  <CompletionDial steps={entry.completion_steps ?? 0} onClick={() => {}} disabled />
+                                </Box>
+                              </Tooltip>
+                              <Button
+                                variant="outlined"
+                                onClick={() => openEscalationEditor(entry)}
+                                disabled={!canEdit}
+                              >
+                                Bearbeiten
+                              </Button>
+                            </Stack>
+                          </Stack>
+
+                          <Grid container spacing={2} sx={{ mt: 1 }}>
+                            <Grid item xs={12} md={6}>
+                              <Typography variant="caption" color="text.secondary">
+                                Grund
+                              </Typography>
+                              <Typography variant="body2">
+                                {entry.reason || 'Kein Grund hinterlegt.'}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} md={6}>
+                              <Typography variant="caption" color="text.secondary">
+                                Maßnahme
+                              </Typography>
+                              <Typography variant="body2">
+                                {entry.measure || 'Keine Maßnahme hinterlegt.'}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                              <Typography variant="caption" color="text.secondary">
+                                Abteilung
+                              </Typography>
+                              <Typography variant="body2">
+                                {department || 'Keine Abteilung zugewiesen.'}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                              <Typography variant="caption" color="text.secondary">
+                                Verantwortung
+                              </Typography>
+                              <Typography variant="body2">
+                                {responsible
+                                  ? `${responsible.full_name || responsible.email}${responsible.company ? ` • ${responsible.company}` : ''}`
+                                  : 'Keine Verantwortung zugewiesen.'}
+                              </Typography>
+                            </Grid>
+                            <Grid item xs={12} md={4}>
+                              <Typography variant="caption" color="text.secondary">
+                                Zieltermin
+                              </Typography>
+                              <Typography variant="body2">
+                                {targetLabel}
+                              </Typography>
+                            </Grid>
+                          </Grid>
+                        </Box>
+                      );
+                    })}
+                  </Stack>
+                )}
+
+                {category === 'LK' && <Divider sx={{ my: 2 }} />}
+              </Box>
+            );
+          })}
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
-            <Typography variant="h6">🚨 Projekte in Eskalation</Typography>
-            <Stack direction="row" spacing={1}>
-              {canEdit && (
-                <>
-                  <Button variant="outlined" startIcon={<AddIcon />} onClick={() => addEscalation('LK')}>
-                    LK hinzufügen
-                  </Button>
-                  <Button variant="outlined" startIcon={<AddIcon />} onClick={() => addEscalation('SK')}>
-                    SK hinzufügen
-                  </Button>
-                </>
-              )}
+
+
+      <Dialog open={escalationDialogOpen} onClose={closeEscalationEditor} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Eskalation bearbeiten
+          {editingEscalation && (
+            <Typography variant="body2" color="text.secondary">
+              {editingEscalation.project_code || editingEscalation.project_name
+                ? `${editingEscalation.project_code ?? ''}${editingEscalation.project_code && editingEscalation.project_name ? ' – ' : ''}${editingEscalation.project_name ?? ''}`
+                : editingEscalation.title}
+            </Typography>
+          )}
+        </DialogTitle>
+        <DialogContent dividers>
+          {escalationDraft ? (
+            <Stack spacing={2}>
+              <TextField
+                label="Grund"
+                value={escalationDraft.reason}
+                onChange={(event) => updateEscalationDraft({ reason: event.target.value })}
+                fullWidth
+                multiline
+                minRows={3}
+                disabled={!canEdit}
+              />
+              <TextField
+                label="Maßnahme"
+                value={escalationDraft.measure}
+                onChange={(event) => updateEscalationDraft({ measure: event.target.value })}
+                fullWidth
+                multiline
+                minRows={3}
+                disabled={!canEdit}
+              />
+              <FormControl fullWidth size="small" disabled={!canEdit}>
+                <InputLabel>Abteilung</InputLabel>
+                <Select
+                  value={escalationDraft.department_id ?? ''}
+                  label="Abteilung"
+                  onChange={(event) =>
+                    updateEscalationDraft({
+                      department_id: event.target.value ? String(event.target.value) : null,
+                      responsible_id: null,
+                    })
+                  }
+                >
+                  <MenuItem value="">
+                    <em>Keine</em>
+                  </MenuItem>
+                  {departments.map(department => (
+                    <MenuItem key={department.id} value={department.id}>
+                      {department.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth size="small" disabled={!canEdit}>
+                <InputLabel>Verantwortung</InputLabel>
+                <Select
+                  value={escalationDraft.responsible_id ?? ''}
+                  label="Verantwortung"
+                  onChange={(event) =>
+                    updateEscalationDraft({
+                      responsible_id: event.target.value ? String(event.target.value) : null,
+                    })
+                  }
+                >
+                  <MenuItem value="">
+                    <em>Keine</em>
+                  </MenuItem>
+                  {responsibleOptions(escalationDraft.department_id ?? null).map(option => (
+                    <MenuItem key={option.id} value={option.id}>
+                      {option.full_name || option.email}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Zieltermin"
+                type="date"
+                value={escalationDraft.target_date ?? ''}
+                onChange={(event) => updateEscalationDraft({ target_date: event.target.value || null })}
+                fullWidth
+                disabled={!canEdit}
+                InputLabelProps={{ shrink: true }}
+              />
+              <Stack direction="row" spacing={2} alignItems="center">
+                <Tooltip title="Fortschritt">
+                  <Box>
+                    <CompletionDial
+                      steps={escalationDraft.completion_steps ?? 0}
+                      onClick={cycleDraftCompletion}
+                      disabled={!canEdit}
+                    />
+                  </Box>
+                </Tooltip>
+                <Typography variant="body2">{escalationDraft.completion_steps ?? 0} / 4 Schritte</Typography>
+              </Stack>
             </Stack>
-          </Stack>
-
-          <Divider sx={{ my: 2 }} />
-
-          <Typography variant="subtitle1" sx={{ mb: 1 }}>LK</Typography>
-          {filteredEscalations.LK.length === 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Keine LK Eskalationen vorhanden.
-            </Typography>
+          ) : (
+            <Typography variant="body2">Keine Eskalation ausgewählt.</Typography>
           )}
-          {filteredEscalations.LK.map(renderEscalationRow)}
-
-          <Divider sx={{ my: 2 }} />
-
-          <Typography variant="subtitle1" sx={{ mb: 1 }}>SK</Typography>
-          {filteredEscalations.SK.length === 0 && (
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Keine SK Eskalationen vorhanden.
-            </Typography>
-          )}
-          {filteredEscalations.SK.map(renderEscalationRow)}
-        </CardContent>
-      </Card>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeEscalationEditor}>Abbrechen</Button>
+          <Button onClick={saveEscalation} variant="contained" disabled={!canEdit}>
+            Speichern
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

@@ -38,6 +38,8 @@ import { KanbanCard } from './original/KanbanCard';
 import { KanbanColumnsView, KanbanLaneView, KanbanSwimlaneView } from './original/KanbanViews';
 import { ArchiveDialog, EditCardDialog, NewCardDialog } from './original/KanbanDialogs';
 import { nullableDate, toBoolean } from '@/utils/booleans';
+import { fetchClientProfiles } from '@/lib/clientProfiles';
+import { isSuperuserEmail } from '@/constants/superuser';
 
 const getErrorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 // import { useAuth } from '../../contexts/AuthContext';
@@ -165,100 +167,37 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
 // ✅ KORRIGIERTE BENUTZER-LADUNG - BASIEREND AUF DEINER PROFILES STRUKTUR
 const loadUsers = async () => {
   try {
-    console.log('👥 Lade Benutzer aus Supabase profiles...');
-    
-    // Strategie 1: Auth-Users (meist nicht verfügbar)
-    try {
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      if (authUsers && authUsers.users && authUsers.users.length > 0) {
-        console.log('✅ Auth-Benutzer gefunden:', authUsers.users.length);
-        const userList = authUsers.users.map(user => ({
-          id: user.id,
-          email: user.email,
-          name: user.user_metadata?.name || user.email?.split('@')[0] || 'Unbekannt'
-        }));
-        setUsers(userList);
-        return true;
-      }
-    } catch (authError) {
-      console.log('⚠️ Auth-Admin nicht verfügbar');
-    }
-    
-    // Strategie 2: Profiles Tabelle - MIT KORREKTEN SPALTENNAMEN
-    console.log('🔍 Lade aus profiles Tabelle...');
-    const { data: profileUsers, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, avatar_url, bio, company, role, is_active')
-      .eq('is_active', true) // Nur aktive Benutzer
-      .order('full_name');
-    
-    console.log('📊 Profiles Ergebnis:', {
-      error: profileError,
-      dataLength: profileUsers?.length,
-      data: profileUsers
-    });
-    
-    if (profileError) {
-      console.error('❌ Profiles Fehler:', profileError);
-    } else if (profileUsers && profileUsers.length > 0) {
-      console.log('✅ Profile-Benutzer gefunden:', profileUsers.length);
-      
-      const userList = profileUsers.map(user => ({
-        id: user.id,
-        email: user.email,
-        name: user.full_name || user.email?.split('@')[0] || 'Unbekannt',
-        full_name: user.full_name || '',
-        department: user.company ?? null,
-        company: user.company || '',
-        role: user.role || 'user',
-        avatar: user.avatar_url || '',
-        bio: user.bio || ''
-      })).filter(user => user.id && user.email); // Nur gültige Benutzer
-      
-      console.log('✅ Verarbeitete Benutzer:', userList);
-      setUsers(userList);
+    const profiles = await fetchClientProfiles();
+
+    if (profiles.length) {
+      const normalized = profiles.map(profile => {
+        const email = profile.email ?? '';
+        const fallbackName = email ? email.split('@')[0] : 'Unbekannt';
+        return {
+          id: profile.id,
+          email,
+          name: profile.full_name || fallbackName || 'Unbekannt',
+          full_name: profile.full_name || '',
+          department: profile.company ?? null,
+          company: profile.company || '',
+          role: profile.role || 'user',
+          isActive: profile.is_active,
+        };
+      });
+
+      const visibleUsers = normalized.filter(user => user.isActive || isSuperuserEmail(user.email));
+      setUsers(visibleUsers);
       return true;
     }
-    
-    // Strategie 3: Alle Benutzer (auch inaktive) falls keine aktiven gefunden
-    console.log('🔍 Versuche alle Benutzer (auch inaktive)...');
-    const { data: allUsers, error: allError } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, avatar_url, bio, company, role, is_active')
-      .order('full_name');
-    
-    if (allUsers && allUsers.length > 0) {
-      console.log('✅ Alle Profile-Benutzer gefunden:', allUsers.length);
-      
-      const userList = allUsers.map(user => ({
-        id: user.id,
-        email: user.email,
-        name: user.full_name || user.email?.split('@')[0] || 'Unbekannt',
-        full_name: user.full_name || '',
-        department: user.company ?? null,
-        company: user.company || '',
-        role: user.role || 'user',
-        avatar: user.avatar_url || '',
-        bio: user.bio || '',
-        isActive: user.is_active
-      })).filter(user => user.id && user.email);
-      
-      console.log('✅ Alle verarbeiteten Benutzer:', userList);
-      setUsers(userList);
-      return true;
-    }
-    
-    console.log('⚠️ Keine Benutzer in profiles gefunden, verwende Fallback');
+
     createFallbackUsers();
     return false;
-    
   } catch (error) {
     console.error('❌ Fehler beim Laden der Benutzer:', error);
     createFallbackUsers();
     return false;
   }
 };
-
 // ✅ ERWEITERTE FALLBACK-BENUTZER (basierend auf deiner Struktur)
 const createFallbackUsers = () => {
   console.log('🔄 Erstelle Fallback-Benutzer...');
@@ -370,49 +309,6 @@ useEffect(() => {
     initializeBoard();
   }
 }, [boardId]);
-
-// ✅ ZUSÄTZLICH: Button zum manuellen Laden der Benutzer (für Debugging)
-const handleLoadUsers = async () => {
-  console.log('🔄 Manuelles Laden der Benutzer...');
-  const success = await loadUsers();
-  if (success) {
-    alert(`✅ ${users.length} Benutzer erfolgreich geladen!`);
-  } else {
-    alert('⚠️ Fallback-Benutzer wurden erstellt. Prüfe die Datenbank-Konfiguration.');
-  }
-
-    const createFallbackUsers = () => {
-    console.log('🔄 Erstelle Fallback-Benutzer...');
-    const fallbackUsers = [
-    { id: 'fallback-1', email: 'max.mustermann@firma.de', name: 'Max Mustermann', full_name: 'Max Mustermann', department: 'Fallback' },
-    { id: 'fallback-2', email: 'anna.klein@firma.de', name: 'Anna Klein', full_name: 'Anna Klein', department: 'Fallback' },
-    { id: 'fallback-3', email: 'tom.schmidt@firma.de', name: 'Tom Schmidt', full_name: 'Tom Schmidt', department: 'Fallback' }
-  ];
-  setUsers(fallbackUsers);
-};
-
-// ✅ HIER die Debug-Funktion einfügen:
-  const debugSupabase = async () => {
-    try {
-      console.log('🔍 Debug: Prüfe Supabase Tabellen...');
-      
-      const { data: cards, error: cardsError } = await supabase
-        .from('kanban_cards')
-        .select('*')
-        .eq('board_id', boardId)
-        .limit(5);
-      
-      if (cardsError) {
-        console.error('❌ kanban_cards Tabelle Fehler:', cardsError);
-      } else {
-        console.log('✅ kanban_cards Tabelle OK, gefunden:', cards?.length || 0, 'Karten');
-      }
-      
-    } catch (error) {
-      console.error('❌ Debug Fehler:', error);
-    }
-  };
-}
 
 // Auto-Update Checklisten Templates wenn Spalten sich ändern
 useEffect(() => {

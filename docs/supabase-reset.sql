@@ -206,10 +206,12 @@ create trigger set_board_top_topics_updated_at
 create table public.board_escalations (
   id                uuid primary key default gen_random_uuid(),
   board_id          uuid not null references public.kanban_boards(id) on delete cascade,
+  card_id           text not null,
   category          text not null check (category in ('LK', 'SK')),
   project_code      text,
   project_name      text,
   reason            text,
+  measure           text,
   department_id     uuid references public.departments(id) on delete set null,
   responsible_id    uuid references public.profiles(id) on delete set null,
   target_date       date,
@@ -219,6 +221,7 @@ create table public.board_escalations (
 );
 
 create index board_escalations_board_category_idx on public.board_escalations (board_id, category);
+create unique index board_escalations_board_card_id_idx on public.board_escalations (board_id, card_id);
 
 create trigger set_board_escalations_updated_at
   before update on public.board_escalations
