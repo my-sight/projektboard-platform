@@ -28,14 +28,10 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { createClient } from '@supabase/supabase-js';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { ClientProfile, fetchClientProfiles } from '@/lib/clientProfiles';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 
 interface Department {
   id: string;
@@ -243,6 +239,16 @@ function buildEscalationViews(
 }
 
 export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }: BoardManagementPanelProps) {
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+
+  if (!supabase) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <SupabaseConfigNotice />
+      </Box>
+    );
+  }
+
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 

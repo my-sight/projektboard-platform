@@ -1,14 +1,21 @@
-import { createClient, User } from '@supabase/supabase-js';
+import type { SupabaseClient, User } from '@supabase/supabase-js';
 import { Board, BoardColumn, Card } from '@/types';
+import { getSupabaseBrowserClient } from './supabaseBrowser';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+function getSupabase(): SupabaseClient {
+  const client = getSupabaseBrowserClient();
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+  if (!client) {
+    throw new Error('Supabase ist nicht konfiguriert.');
+  }
+
+  return client;
+}
 
 export const boardService = {
   async getBoards(): Promise<Board[]> {
     try {
+      const supabase = getSupabase();
       console.log('Loading boards...');
       
       const { data: boardsData, error: boardsError } = await supabase
@@ -77,6 +84,7 @@ export const boardService = {
 
   async getBoard(boardId: string): Promise<Board> {
     try {
+      const supabase = getSupabase();
       console.log('Loading board:', boardId);
       
       const { data: boardData, error: boardError } = await supabase
@@ -135,6 +143,7 @@ export const boardService = {
 
   async createBoard(name: string, description?: string): Promise<Board> {
     try {
+      const supabase = getSupabase();
       console.log('Creating board:', { name, description });
       
       const { data: boardData, error: boardError } = await supabase
@@ -192,6 +201,7 @@ export const boardService = {
 
   async moveCard(cardId: string, columnId: string, position: number): Promise<void> {
     try {
+      const supabase = getSupabase();
       const { error } = await supabase
         .from('cards')
         .update({
@@ -213,6 +223,7 @@ export const boardService = {
 
   async updateCard(cardId: string, updates: Partial<Card>): Promise<void> {
     try {
+      const supabase = getSupabase();
       const { error } = await supabase
         .from('cards')
         .update({
@@ -233,6 +244,7 @@ export const boardService = {
 
   async createCard(card: Omit<Card, 'id' | 'created_at' | 'updated_at'>): Promise<Card> {
     try {
+      const supabase = getSupabase();
       const { data, error } = await supabase
         .from('cards')
         .insert([card])
@@ -255,6 +267,7 @@ export const boardService = {
 export const authService = {
   async getCurrentUser(): Promise<User | null> {
     try {
+      const supabase = getSupabase();
       const { data: { user } } = await supabase.auth.getUser();
       return user as User | null;
     } catch (error) {
@@ -265,6 +278,7 @@ export const authService = {
 
   async signOut(): Promise<void> {
     try {
+      const supabase = getSupabase();
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
     } catch (error) {

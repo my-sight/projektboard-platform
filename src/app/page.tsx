@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -22,16 +22,11 @@ import {
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
 import { useTheme } from '@/theme/ThemeRegistry';
 import { useAuth } from '../contexts/AuthContext';
-import { createClient } from '@supabase/supabase-js';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import BoardManagementPanel from '@/components/board/BoardManagementPanel';
 import { isSuperuserEmail } from '@/constants/superuser';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
+import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 interface Board {
   id: string;
   name: string;
@@ -44,6 +39,7 @@ interface Board {
 }
 
 export default function HomePage() {
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'management' | 'board'>('list');
   const { isDark, toggleTheme } = useTheme();
@@ -70,13 +66,17 @@ export default function HomePage() {
 
   // Auth-Check
   useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
     if (!loading && !user) {
       window.location.href = '/login';
     }
-  }, [user, loading]);
+  }, [loading, supabase, user]);
 
   const loadProfile = useCallback(async () => {
-    if (!user) return;
+    if (!user || !supabase) return;
 
     try {
       const superuser = isSuperuserEmail(user.email ?? null);
@@ -99,9 +99,13 @@ export default function HomePage() {
       setIsSuperuser(superuser);
       setIsAdmin(superuser);
     }
-  }, [user]);
+  }, [supabase, user]);
 
   const loadBoards = useCallback(async () => {
+    if (!supabase) {
+      setMessage('❌ Supabase-Konfiguration fehlt.');
+      return;
+    }
     try {
       let boardsData: Board[] | null = null;
 
@@ -168,7 +172,7 @@ export default function HomePage() {
       console.error('Fehler beim Laden der Boards:', error);
       setMessage('❌ Fehler beim Laden der Boards');
     }
-  }, [isAdmin, user]);
+  }, [isAdmin, supabase, user]);
 
   useEffect(() => {
     if (!user) {
@@ -228,6 +232,11 @@ export default function HomePage() {
   }, []);
 
   const createBoard = async () => {
+    if (!supabase) {
+      setMessage('❌ Supabase-Konfiguration fehlt.');
+      return;
+    }
+
     if (!newBoardName.trim()) return;
 
     if (!isAdmin) {
@@ -268,6 +277,11 @@ export default function HomePage() {
   };
 
   const deleteBoard = async () => {
+    if (!supabase) {
+      setMessage('❌ Supabase-Konfiguration fehlt.');
+      return;
+    }
+
     if (!boardToDelete) return;
 
     if (!isAdmin) {
@@ -301,6 +315,14 @@ export default function HomePage() {
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
         <Typography variant="h6">🔄 Wird geladen...</Typography>
       </Box>
+    );
+  }
+
+  if (!supabase) {
+    return (
+      <Container maxWidth="sm" sx={{ py: 8 }}>
+        <SupabaseConfigNotice />
+      </Container>
     );
   }
 

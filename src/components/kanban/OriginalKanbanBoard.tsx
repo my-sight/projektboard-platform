@@ -33,7 +33,8 @@ import {
 } from '@mui/material';
 import { DropResult } from '@hello-pangea/dnd';
 import { Assessment, Close } from '@mui/icons-material';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { KanbanCard } from './original/KanbanCard';
 import { KanbanColumnsView, KanbanLaneView, KanbanSwimlaneView } from './original/KanbanViews';
 import { ArchiveDialog, EditCardDialog, NewCardDialog } from './original/KanbanDialogs';
@@ -45,11 +46,6 @@ const getErrorMessage = (error: unknown) => (error instanceof Error ? error.mess
 // import { useAuth } from '../../contexts/AuthContext';
 // import { AuthProvider } from '../../contexts/AuthContext';
 // import { LoginForm } from '../auth/LoginForm';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 export interface OriginalKanbanBoardHandle {
   openSettings: () => void;
@@ -96,6 +92,15 @@ const DEFAULT_CHECKLISTS = {
 const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanbanBoardProps>(
 function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }: OriginalKanbanBoardProps, ref) {
   // State für Benutzer
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+
+  if (!supabase) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <SupabaseConfigNotice />
+      </Box>
+    );
+  }
 
   const [viewMode, setViewMode] = useState<'columns' | 'swim' | 'lane'>('columns');
   const [density, setDensity] = useState<'compact' | 'xcompact' | 'large'>('compact');

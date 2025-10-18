@@ -34,13 +34,9 @@ import {
   IconButton
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
-import { createClient } from '@supabase/supabase-js';
 import { isSuperuserEmail } from '@/constants/superuser';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-);
+import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 
 interface UserProfile {
   id: string;
@@ -61,6 +57,16 @@ interface Department {
 }
 
 export default function UserManagement() {
+  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+
+  if (!supabase) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <SupabaseConfigNotice />
+      </Box>
+    );
+  }
+
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [loading, setLoading] = useState(true);
