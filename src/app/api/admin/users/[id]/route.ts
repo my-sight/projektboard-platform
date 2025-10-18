@@ -1,10 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveAdminSupabaseClient } from '@/lib/supabaseServer';
+import { SUPERUSER_EMAIL } from '@/constants/superuser';
+
+async function isTargetSuperuser(
+  supabase: Awaited<ReturnType<typeof resolveAdminSupabaseClient>>['client'],
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('email')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message ?? 'Konnte Benutzerprofil nicht laden.');
+  }
+
+  if (!data) {
+    return false;
+  }
+
+  return (data.email ?? '').toLowerCase() === SUPERUSER_EMAIL;
+}
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   const { client: supabase } = await resolveAdminSupabaseClient();
 
   try {
+    if (await isTargetSuperuser(supabase, params.id)) {
+      return NextResponse.json(
+        { error: 'Der Superuser kann nicht bearbeitet werden.' },
+        { status: 403 },
+      );
+    }
+
     const payload = await request.json();
     const updates: Record<string, unknown> = {};
 
@@ -74,6 +103,13 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
   const userId = params.id;
 
   try {
+    if (await isTargetSuperuser(supabase, userId)) {
+      return NextResponse.json(
+        { error: 'Der Superuser kann nicht gelöscht werden.' },
+        { status: 403 },
+      );
+    }
+
     const { error: authError } = await supabase.auth.admin.deleteUser(userId);
 
     if (authError && authError.message && !authError.message.toLowerCase().includes('user not found')) {

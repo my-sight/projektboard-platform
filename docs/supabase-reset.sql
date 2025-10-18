@@ -39,6 +39,10 @@ drop table if exists public.team_members cascade;
 drop table if exists public.teams cascade;
 
 -- main domain tables
+drop table if exists public.board_escalations cascade;
+drop table if exists public.board_top_topics cascade;
+drop table if exists public.board_attendance cascade;
+drop table if exists public.board_members cascade;
 drop table if exists public.kanban_cards cascade;
 drop table if exists public.kanban_board_settings cascade;
 drop table if exists public.kanban_boards cascade;
@@ -158,6 +162,69 @@ create trigger set_board_settings_updated_at
   for each row
   execute function public.set_updated_at();
 
+create table public.board_members (
+  id          uuid primary key default gen_random_uuid(),
+  board_id    uuid not null references public.kanban_boards(id) on delete cascade,
+  profile_id  uuid not null references public.profiles(id) on delete cascade,
+  created_at  timestamptz not null default timezone('utc', now())
+);
+
+create unique index board_members_unique on public.board_members (board_id, profile_id);
+
+create table public.board_attendance (
+  id           uuid primary key default gen_random_uuid(),
+  board_id     uuid not null references public.kanban_boards(id) on delete cascade,
+  profile_id   uuid not null references public.profiles(id) on delete cascade,
+  week_start   date not null,
+  status       text not null default 'present',
+  created_at   timestamptz not null default timezone('utc', now()),
+  updated_at   timestamptz not null default timezone('utc', now()),
+  constraint board_attendance_unique unique (board_id, profile_id, week_start)
+);
+
+create trigger set_board_attendance_updated_at
+  before update on public.board_attendance
+  for each row
+  execute function public.set_updated_at();
+
+create table public.board_top_topics (
+  id          uuid primary key default gen_random_uuid(),
+  board_id    uuid not null references public.kanban_boards(id) on delete cascade,
+  title       text not null default '',
+  position    integer not null default 0,
+  created_at  timestamptz not null default timezone('utc', now()),
+  updated_at  timestamptz not null default timezone('utc', now())
+);
+
+create index board_top_topics_board_position_idx on public.board_top_topics (board_id, position);
+
+create trigger set_board_top_topics_updated_at
+  before update on public.board_top_topics
+  for each row
+  execute function public.set_updated_at();
+
+create table public.board_escalations (
+  id                uuid primary key default gen_random_uuid(),
+  board_id          uuid not null references public.kanban_boards(id) on delete cascade,
+  category          text not null check (category in ('LK', 'SK')),
+  project_code      text,
+  project_name      text,
+  reason            text,
+  department_id     uuid references public.departments(id) on delete set null,
+  responsible_id    uuid references public.profiles(id) on delete set null,
+  target_date       date,
+  completion_steps  integer not null default 0 check (completion_steps between 0 and 4),
+  created_at        timestamptz not null default timezone('utc', now()),
+  updated_at        timestamptz not null default timezone('utc', now())
+);
+
+create index board_escalations_board_category_idx on public.board_escalations (board_id, category);
+
+create trigger set_board_escalations_updated_at
+  before update on public.board_escalations
+  for each row
+  execute function public.set_updated_at();
+
 create table public.kanban_cards (
   id             uuid primary key default gen_random_uuid(),
   board_id       uuid not null references public.kanban_boards(id) on delete cascade,
@@ -188,6 +255,10 @@ alter table public.profiles enable row level security;
 alter table public.kanban_boards enable row level security;
 alter table public.kanban_board_settings enable row level security;
 alter table public.kanban_cards enable row level security;
+alter table public.board_members enable row level security;
+alter table public.board_attendance enable row level security;
+alter table public.board_top_topics enable row level security;
+alter table public.board_escalations enable row level security;
 
 -- Departments: allow everyone signed-in to read; mutations handled via service role.
 create policy "Authenticated users can read departments"
@@ -284,6 +355,51 @@ create policy "Board owners manage board cards"
         and b.owner_id = auth.uid()
     )
   );
+
+-- Board management helpers
+create policy "Authenticated users can read board members"
+  on public.board_members
+  for select
+  using (auth.role() = 'authenticated');
+
+create policy "Authenticated users manage board members"
+  on public.board_members
+  for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "Authenticated users can read attendance"
+  on public.board_attendance
+  for select
+  using (auth.role() = 'authenticated');
+
+create policy "Authenticated users manage attendance"
+  on public.board_attendance
+  for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "Authenticated users can read top topics"
+  on public.board_top_topics
+  for select
+  using (auth.role() = 'authenticated');
+
+create policy "Authenticated users manage top topics"
+  on public.board_top_topics
+  for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "Authenticated users can read escalations"
+  on public.board_escalations
+  for select
+  using (auth.role() = 'authenticated');
+
+create policy "Authenticated users manage escalations"
+  on public.board_escalations
+  for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
 
 -- ---------------------------------------------------------------------------
 -- Helper function used by the frontend to list every public board

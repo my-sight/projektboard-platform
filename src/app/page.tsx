@@ -1,27 +1,31 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Button, 
-  Container,
-  Grid,
-  Card,
-  CardContent,
-  CardActions,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
+import {
   Alert,
+  Badge,
+  Box,
+  Button,
+  Card,
+  CardActions,
+  CardContent,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  IconButton,
+  TextField,
+  Typography,
 } from '@mui/material';
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
 import { useTheme } from '@/theme/ThemeRegistry';
 import { useAuth } from '../contexts/AuthContext';
 import { createClient } from '@supabase/supabase-js';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import BoardManagementPanel from '@/components/board/BoardManagementPanel';
+import { isSuperuserEmail } from '@/constants/superuser';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -40,7 +44,8 @@ interface Board {
 }
 
 export default function HomePage() {
-  const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
+  const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'management' | 'board'>('list');
   const { isDark, toggleTheme } = useTheme();
   const { user, loading, signOut } = useAuth();
   const boardRef = useRef<OriginalKanbanBoardHandle>(null);
@@ -48,6 +53,7 @@ export default function HomePage() {
   // Board Management States
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isSuperuser, setIsSuperuser] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newBoardName, setNewBoardName] = useState('');
   const [newBoardDescription, setNewBoardDescription] = useState('');
@@ -55,9 +61,11 @@ export default function HomePage() {
   const [boardToDelete, setBoardToDelete] = useState<Board | null>(null);
   const [message, setMessage] = useState('');
   const [archivedCount, setArchivedCount] = useState<number | null>(null);
+  const [kpiCount, setKpiCount] = useState(0);
 
   useEffect(() => {
     setArchivedCount(null);
+    setKpiCount(0);
   }, [selectedBoard]);
 
   // Auth-Check
@@ -71,6 +79,7 @@ export default function HomePage() {
     if (!user) return;
 
     try {
+      const superuser = isSuperuserEmail(user.email ?? null);
       const { data, error } = await supabase
         .from('profiles')
         .select('role')
@@ -81,10 +90,14 @@ export default function HomePage() {
         throw error;
       }
 
-      setIsAdmin(String(data?.role || '').toLowerCase() === 'admin');
+      const role = String(data?.role || '').toLowerCase();
+      setIsSuperuser(superuser);
+      setIsAdmin(superuser || role === 'admin');
     } catch (error) {
       console.error('Fehler beim Laden des Profils:', error);
-      setIsAdmin(false);
+      const superuser = isSuperuserEmail(user.email ?? null);
+      setIsSuperuser(superuser);
+      setIsAdmin(superuser);
     }
   }, [user]);
 
@@ -160,6 +173,9 @@ export default function HomePage() {
   useEffect(() => {
     if (!user) {
       setIsAdmin(false);
+      setIsSuperuser(false);
+      setSelectedBoard(null);
+      setViewMode('list');
       return;
     }
 
@@ -189,6 +205,18 @@ export default function HomePage() {
               }
             : board,
         ),
+      );
+
+      setSelectedBoard((prev) =>
+        prev && prev.id === id
+          ? {
+              ...prev,
+              ...(name !== undefined ? { name: name ?? prev.name } : {}),
+              ...(description !== undefined
+                ? { description: description ?? prev.description }
+                : {}),
+            }
+          : prev,
       );
     };
 
@@ -285,33 +313,45 @@ export default function HomePage() {
   }
 
   // Board-Ansicht
-  if (selectedBoard) {
-    const currentBoard = boards.find(b => b.id === selectedBoard);
+  if (selectedBoard && viewMode === 'board') {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-        {/* Header */}
-        <Box sx={{ 
-          p: 2, 
-          borderBottom: 1,
-          borderColor: 'divider',
-          backgroundColor: 'background.paper',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
+        <Box
+          sx={{
+            p: 2,
+            borderBottom: 1,
+            borderColor: 'divider',
+            backgroundColor: 'background.paper',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 2,
+            flexWrap: 'wrap',
+          }}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Button 
-              variant="outlined" 
-              onClick={() => setSelectedBoard(null)}
-            >
-              ← Zurück
+            <Button variant="outlined" onClick={() => setViewMode('management')}>
+              ← Management
             </Button>
-            <Typography variant="h6">
-              {currentBoard?.name || 'Board'}
-            </Typography>
+            <Typography variant="h6">{selectedBoard.name || 'Board'}</Typography>
           </Box>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            <Badge badgeContent={kpiCount} color="error" overlap="circular">
+              <IconButton
+                onClick={() => boardRef.current?.openKpis()}
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  width: 36,
+                  height: 36,
+                  '&:hover': { backgroundColor: 'action.hover' },
+                }}
+                title="KPI-Übersicht öffnen"
+              >
+                <AssessmentIcon fontSize="small" />
+              </IconButton>
+            </Badge>
             <Button
               variant="outlined"
               onClick={() => boardRef.current?.openArchive()}
@@ -327,26 +367,12 @@ export default function HomePage() {
                 borderColor: 'divider',
                 width: 36,
                 height: 36,
-                '&:hover': { backgroundColor: 'action.hover' }
+                '&:hover': { backgroundColor: 'action.hover' },
               }}
               title="Board-Einstellungen"
             >
               ⚙️
             </IconButton>
-            <Button
-              variant="outlined"
-              onClick={() => window.location.href = '/admin'}
-              sx={{
-                color: '#9c27b0',
-                borderColor: '#9c27b0',
-                '&:hover': {
-                  backgroundColor: '#f3e5f5',
-                  borderColor: '#7b1fa2'
-                }
-              }}
-            >
-              👥 Admin
-            </Button>
             <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
               👋 {user.email}
             </Typography>
@@ -357,18 +383,89 @@ export default function HomePage() {
               🚪 Abmelden
             </Button>
           </Box>
-
         </Box>
 
-        {/* Board */}
         <Box sx={{ flex: 1 }}>
           <OriginalKanbanBoard
             ref={boardRef}
-            boardId={selectedBoard}
+            boardId={selectedBoard.id}
             onArchiveCountChange={(count) => setArchivedCount(count)}
+            onKpiCountChange={(count) => setKpiCount(count)}
           />
         </Box>
       </Box>
+    );
+  }
+
+  if (selectedBoard && viewMode === 'management') {
+    return (
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 2,
+            mb: 3,
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+            <Button variant="outlined" onClick={() => { setSelectedBoard(null); setViewMode('list'); }}>
+              ← Übersicht
+            </Button>
+            <Box>
+              <Typography variant="h5">{selectedBoard.name}</Typography>
+              {selectedBoard.description && (
+                <Typography variant="body2" color="text.secondary">
+                  {selectedBoard.description}
+                </Typography>
+              )}
+            </Box>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              onClick={() => setViewMode('board')}
+              sx={{ backgroundColor: '#14c38e', '&:hover': { backgroundColor: '#0ea770' } }}
+            >
+              📋 Zum Board
+            </Button>
+            {isAdmin && (
+              <Button
+                variant="outlined"
+                onClick={() => (window.location.href = '/admin')}
+                sx={{
+                  color: '#9c27b0',
+                  borderColor: '#9c27b0',
+                  '&:hover': {
+                    backgroundColor: '#f3e5f5',
+                    borderColor: '#7b1fa2',
+                  },
+                }}
+              >
+                👥 Admin
+              </Button>
+            )}
+            <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+              👋 {user.email}
+            </Typography>
+            <IconButton onClick={toggleTheme} color="primary">
+              {isDark ? '☀️' : '🌙'}
+            </IconButton>
+            <Button variant="outlined" onClick={signOut} color="error">
+              🚪 Abmelden
+            </Button>
+          </Box>
+        </Box>
+
+        <BoardManagementPanel
+          boardId={selectedBoard.id}
+          canEdit={isAdmin || isSuperuser}
+          memberCanSee={true}
+        />
+      </Container>
     );
   }
 
@@ -376,31 +473,31 @@ export default function HomePage() {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-  <Button 
-    variant="outlined" 
-    onClick={() => window.location.href = '/admin'}
-    sx={{ 
-      color: '#9c27b0', 
-      borderColor: '#9c27b0',
-      '&:hover': {
-        backgroundColor: '#f3e5f5',
-        borderColor: '#7b1fa2'
-      }
-    }}
-  >
-    👥 Admin
-  </Button>
-  <Typography variant="body2">
-    👋 {user.email}
-  </Typography>
-  <IconButton onClick={toggleTheme} color="primary">
-    {isDark ? '☀️' : '🌙'}
-  </IconButton>
-  <Button variant="outlined" onClick={signOut} color="error">
-    🚪 Abmelden
-  </Button>
-</Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+        {isAdmin && (
+          <Button
+            variant="outlined"
+            onClick={() => (window.location.href = '/admin')}
+            sx={{
+              color: '#9c27b0',
+              borderColor: '#9c27b0',
+              '&:hover': {
+                backgroundColor: '#f3e5f5',
+                borderColor: '#7b1fa2',
+              },
+            }}
+          >
+            👥 Admin
+          </Button>
+        )}
+        <Typography variant="body2">👋 {user.email}</Typography>
+        <IconButton onClick={toggleTheme} color="primary">
+          {isDark ? '☀️' : '🌙'}
+        </IconButton>
+        <Button variant="outlined" onClick={signOut} color="error">
+          🚪 Abmelden
+        </Button>
+      </Box>
       {/* Message */}
       {message && (
         <Alert severity={message.startsWith('✅') ? 'success' : 'error'} sx={{ mb: 3 }}>
@@ -450,10 +547,13 @@ export default function HomePage() {
                 </Typography>
               </CardContent>
               <CardActions sx={{ justifyContent: 'space-between' }}>
-                <Button 
-                  size="small" 
+                <Button
+                  size="small"
                   variant="contained"
-                  onClick={() => setSelectedBoard(board.id)}
+                  onClick={() => {
+                    setSelectedBoard(board);
+                    setViewMode('management');
+                  }}
                   sx={{ backgroundColor: '#14c38e', '&:hover': { backgroundColor: '#0ea770' } }}
                 >
                   📋 Öffnen

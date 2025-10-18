@@ -35,6 +35,7 @@ import {
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { createClient } from '@supabase/supabase-js';
+import { isSuperuserEmail } from '@/constants/superuser';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -76,6 +77,21 @@ export default function UserManagement() {
   const [newDepartmentName, setNewDepartmentName] = useState('');
 
   const postJson = useMemo(() => ({ 'Content-Type': 'application/json' }), []);
+
+  const isProtectedUser = (userId: string): boolean => {
+    const profile = users.find(entry => entry.id === userId);
+    return isSuperuserEmail(profile?.email);
+  };
+
+  const guardSuperuser = (userId: string): boolean => {
+    if (isProtectedUser(userId)) {
+      setMessage('❌ Der Superuser kann nicht bearbeitet werden.');
+      setTimeout(() => setMessage(''), 4000);
+      return true;
+    }
+
+    return false;
+  };
 
   useEffect(() => {
     loadData();
@@ -176,10 +192,18 @@ export default function UserManagement() {
   };
 
   const updateUserRole = async (userId: string, newRole: string) => {
+    if (guardSuperuser(userId)) {
+      return;
+    }
+
     await mutateUser(userId, { role: newRole }, 'Benutzerrolle erfolgreich aktualisiert!');
   };
 
   const updateUserDepartment = async (userId: string, departmentName: string) => {
+    if (guardSuperuser(userId)) {
+      return;
+    }
+
     await mutateUser(
       userId,
       { company: departmentName || null },
@@ -188,6 +212,10 @@ export default function UserManagement() {
   };
 
   const updateUserName = async (userId: string, fullName: string) => {
+    if (guardSuperuser(userId)) {
+      return;
+    }
+
     const trimmed = fullName.trim();
     if (!trimmed) {
       const fallbackName = users.find(profile => profile.id === userId)?.full_name || '';
@@ -205,6 +233,10 @@ export default function UserManagement() {
   };
 
   const toggleUserActive = async (userId: string, currentState: boolean) => {
+    if (guardSuperuser(userId)) {
+      return;
+    }
+
     await mutateUser(
       userId,
       { is_active: !currentState },
@@ -213,6 +245,10 @@ export default function UserManagement() {
   };
 
   const deleteUser = async (userId: string) => {
+    if (guardSuperuser(userId)) {
+      return;
+    }
+
     if (!window.confirm('Benutzer wirklich löschen? Dies kann nicht rückgängig gemacht werden.')) {
       return;
     }
@@ -492,8 +528,10 @@ export default function UserManagement() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {users.map((userProfile) => (
-                  <TableRow key={userProfile.id}>
+                {users.map((userProfile) => {
+                  const protectedUser = isProtectedUser(userProfile.id);
+                  return (
+                    <TableRow key={userProfile.id}>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                         <Avatar src={userProfile.avatar_url} sx={{ width: 32, height: 32 }}>
@@ -506,11 +544,15 @@ export default function UserManagement() {
                             onBlur={(e) => updateUserName(userProfile.id, e.target.value)}
                             size="small"
                             placeholder="Name eingeben"
+                            disabled={protectedUser}
                           />
                           {userProfile.company && (
                             <Typography variant="caption" color="text.secondary">
                               {userProfile.company}
                             </Typography>
+                          )}
+                          {protectedUser && (
+                            <Chip label="Superuser" size="small" color="secondary" />
                           )}
                         </Box>
                       </Box>
@@ -522,6 +564,7 @@ export default function UserManagement() {
                           displayEmpty
                           value={userProfile.company || ''}
                           onChange={(e) => updateUserDepartment(userProfile.id, e.target.value)}
+                          disabled={protectedUser}
                         >
                           <MenuItem value="">
                             <em>Keine</em>
@@ -539,6 +582,7 @@ export default function UserManagement() {
                         <Select
                           value={userProfile.role}
                           onChange={(e) => updateUserRole(userProfile.id, e.target.value)}
+                          disabled={protectedUser}
                         >
                           <MenuItem value="user">User</MenuItem>
                           <MenuItem value="admin">Admin</MenuItem>
@@ -553,6 +597,7 @@ export default function UserManagement() {
                           onChange={() => toggleUserActive(userProfile.id, userProfile.is_active)}
                           inputProps={{ 'aria-label': 'Benutzerstatus umschalten' }}
                           size="small"
+                          disabled={protectedUser}
                         />
                         <Chip
                           label={userProfile.is_active ? 'Aktiv' : 'Inaktiv'}
@@ -571,14 +616,16 @@ export default function UserManagement() {
                             color="error"
                             onClick={() => deleteUser(userProfile.id)}
                             size="small"
+                            disabled={protectedUser}
                           >
                             <DeleteIcon fontSize="small" />
                           </IconButton>
                         </span>
                       </Tooltip>
                     </TableCell>
-                  </TableRow>
-                ))}
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>

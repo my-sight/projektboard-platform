@@ -2,25 +2,29 @@
 
 import { useEffect, useRef, useState } from 'react';
 import {
+  Badge,
   Box,
-  Typography,
   Button,
+  Card,
+  CardActions,
+  CardContent,
   Container,
   Grid,
-  Card,
-  CardContent,
-  CardActions,
-  IconButton
+  IconButton,
+  Typography,
 } from '@mui/material';
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
+import AssessmentIcon from '@mui/icons-material/Assessment';
 
 export default function HomePage() {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
   const boardRef = useRef<OriginalKanbanBoardHandle>(null);
   const [archivedCount, setArchivedCount] = useState<number | null>(null);
+  const [kpiCount, setKpiCount] = useState(0);
 
   useEffect(() => {
     setArchivedCount(null);
+    setKpiCount(0);
   }, [selectedBoard]);
 
   // Beispiel-Boards
@@ -74,6 +78,21 @@ export default function HomePage() {
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Badge badgeContent={kpiCount} color="error">
+              <IconButton
+                onClick={() => boardRef.current?.openKpis()}
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'var(--line)',
+                  width: 36,
+                  height: 36,
+                  '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' }
+                }}
+                title="KPI-Übersicht"
+              >
+                <AssessmentIcon fontSize="small" />
+              </IconButton>
+            </Badge>
             <Button
               variant="outlined"
               onClick={() => boardRef.current?.openArchive()}
@@ -103,6 +122,7 @@ export default function HomePage() {
             ref={boardRef}
             boardId={selectedBoard}
             onArchiveCountChange={(count) => setArchivedCount(count)}
+            onKpiCountChange={(count) => setKpiCount(count)}
           />
         </Box>
       </Box>

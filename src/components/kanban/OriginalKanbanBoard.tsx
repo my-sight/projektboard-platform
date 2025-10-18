@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { 
   Box, 
   Typography, 
@@ -52,11 +52,13 @@ const supabase = createClient(
 export interface OriginalKanbanBoardHandle {
   openSettings: () => void;
   openArchive: () => Promise<void>;
+  openKpis: () => void;
 }
 
 interface OriginalKanbanBoardProps {
   boardId: string;
   onArchiveCountChange?: (count: number) => void;
+  onKpiCountChange?: (count: number) => void;
 }
 
 // Deine ursprünglichen Spalten
@@ -90,7 +92,7 @@ const DEFAULT_CHECKLISTS = {
 };
 
 const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanbanBoardProps>(
-function OriginalKanbanBoard({ boardId, onArchiveCountChange }: OriginalKanbanBoardProps, ref) {
+function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }: OriginalKanbanBoardProps, ref) {
   // State für Benutzer
 
   const [viewMode, setViewMode] = useState<'columns' | 'swim' | 'lane'>('columns');
@@ -132,7 +134,20 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange }: OriginalKanbanBo
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [newCardOpen, setNewCardOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [kpiPopupOpen, setKpiPopupOpen] = useState(false); 
+  const [kpiPopupOpen, setKpiPopupOpen] = useState(false);
+
+  const kpiBadgeCount = useMemo(() => {
+    return rows.filter(card => {
+      const trDate = card['TR_Neu'] || card['TR_Datum'];
+      if (!trDate) return false;
+      const tr = new Date(trDate);
+      return tr < new Date() && card['Archived'] !== '1';
+    }).length;
+  }, [rows]);
+
+  useEffect(() => {
+    onKpiCountChange?.(kpiBadgeCount);
+  }, [kpiBadgeCount, onKpiCountChange]);
 
  // Checklisten Templates State - SPALTENSPEZIFISCH
   const [checklistTemplates, setChecklistTemplates] = useState(() => {
@@ -719,6 +734,7 @@ useImperativeHandle(ref, () => ({
     await loadArchivedCards();
     setArchiveOpen(true);
   },
+  openKpis: () => setKpiPopupOpen(true),
 }), [loadArchivedCards]);
 
 // 3. KARTE AUS ARCHIV WIEDERHERSTELLEN:
@@ -1958,30 +1974,6 @@ return (
       </Box>
 
           
-          {/* KPI-BUTTON MIT BADGE */}
-          <Badge 
-            badgeContent={rows.filter(card => {
-              const trDate = card["TR_Neu"] || card["TR_Datum"];
-              if (!trDate) return false;
-              const tr = new Date(trDate);
-              return tr < new Date() && card["Archived"] !== "1";
-            }).length} 
-            color="error"
-            sx={{ ml: 1 }}
-          >
-            <IconButton
-              onClick={() => setKpiPopupOpen(true)}
-              sx={{ 
-                color: 'primary.main',
-                backgroundColor: 'primary.light',
-                '&:hover': { backgroundColor: 'primary.main', color: 'white' },
-                border: '1px solid var(--line)'
-              }}
-              title="TR-KPIs anzeigen"
-            >
-              <Assessment />
-            </IconButton>
-          </Badge>
       {/* Board Content */}
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         {viewMode === 'columns' && (
