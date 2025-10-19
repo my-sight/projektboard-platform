@@ -8,6 +8,7 @@ import {
   Card,
   CardContent,
   Chip,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
@@ -20,6 +21,11 @@ import {
   MenuItem,
   Select,
   Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
   TextField,
   Tooltip,
   Typography,
@@ -34,6 +40,15 @@ import { isSuperuserEmail } from '@/constants/superuser';
 import { ClientProfile, fetchClientProfiles } from '@/lib/clientProfiles';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 interface Department {
   id: string;
@@ -295,7 +310,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const [attendanceByWeek, setAttendanceByWeek] = useState<
     Record<string, Record<string, AttendanceRecord | undefined>>
   >({});
-  const [attendanceDialogOpen, setAttendanceDialogOpen] = useState(false);
   const [attendanceDraft, setAttendanceDraft] = useState<Record<string, boolean>>({});
   const [attendanceSaving, setAttendanceSaving] = useState(false);
 
@@ -304,6 +318,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const [escalationDialogOpen, setEscalationDialogOpen] = useState(false);
   const [editingEscalation, setEditingEscalation] = useState<EscalationView | null>(null);
   const [escalationDraft, setEscalationDraft] = useState<EscalationDraft | null>(null);
+  const [stageChartData, setStageChartData] = useState<{ stage: string; count: number }[]>([]);
 
   const selectedWeekDate = useMemo(() => {
     if (!selectedWeek) {
@@ -319,36 +334,27 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     return startOfWeek(parsed);
   }, [selectedWeek]);
 
-  const selectedWeekAttendance = useMemo(
-    () => attendanceByWeek[selectedWeek] ?? {},
-    [attendanceByWeek, selectedWeek],
-  );
-
   const selectedWeekInputValue = useMemo(
     () => formatWeekInputValue(selectedWeekDate),
     [selectedWeekDate],
   );
 
-  const historyEntries = useMemo(
-    () =>
-      Object.entries(attendanceByWeek)
-        .map(([week, records]) => {
-          const baseDate = startOfWeek(new Date(`${week}T00:00:00`));
-          const statuses = members.map(member => {
-            const record = records[member.profile_id];
-            const status = record?.status === 'absent' ? 'absent' : 'present';
-            return { member, status } as const;
-          });
-          const absent = statuses.filter(entry => entry.status === 'absent');
-          return {
-            week,
-            date: baseDate,
-            statuses,
-            absent,
-          };
-        })
-        .sort((a, b) => b.date.getTime() - a.date.getTime()),
-    [attendanceByWeek, members],
+  const sortedWeekEntries = useMemo(() => {
+    const entries = Object.keys(attendanceByWeek).map(week => ({
+      week,
+      date: startOfWeek(new Date(`${week}T00:00:00`)),
+    }));
+
+    if (!entries.some(entry => entry.week === selectedWeek)) {
+      entries.push({ week: selectedWeek, date: selectedWeekDate });
+    }
+
+    return entries.sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [attendanceByWeek, selectedWeek, selectedWeekDate]);
+
+  const historyWeeks = useMemo(
+    () => sortedWeekEntries.filter(entry => entry.week !== selectedWeek).slice(0, 12),
+    [sortedWeekEntries, selectedWeek],
   );
 
   const availableProfiles = useMemo(() => {
@@ -373,37 +379,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     return map;
   }, [profiles]);
 
-  const attendanceStatus = (profileId: string): 'present' | 'absent' => {
-    const record = selectedWeekAttendance[profileId];
-    return record?.status === 'absent' ? 'absent' : 'present';
-  };
-
-  const buildAttendanceDraft = (
-    records: Record<string, AttendanceRecord | undefined> = selectedWeekAttendance,
-  ) => {
-    const draft: Record<string, boolean> = {};
-    members.forEach(member => {
-      const record = records[member.profile_id];
-      draft[member.profile_id] = record?.status !== 'absent';
-    });
-    return draft;
-  };
-
-  const openAttendanceDialog = () => {
-    setAttendanceDraft(buildAttendanceDraft());
-    setAttendanceDialogOpen(true);
-  };
-
-  const closeAttendanceDialog = () => {
-    if (attendanceSaving) return;
-    setAttendanceDialogOpen(false);
-  };
-
   const toggleAttendanceDraft = (profileId: string) => {
     setAttendanceDraft(prev => ({ ...prev, [profileId]: !(prev[profileId] ?? true) }));
   };
 
-  const selectWeek = (week: string, openDialog = false) => {
+  const selectWeek = (week: string) => {
     if (!week) return;
 
     const parsed = new Date(`${week}T00:00:00`);
@@ -414,10 +394,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
     const normalized = isoDate(startOfWeek(parsed));
     setSelectedWeek(normalized);
-
-    if (openDialog) {
-      setAttendanceDialogOpen(true);
-    }
   };
 
   const handleWeekInputChange = (value: string) => {
@@ -429,9 +405,14 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   };
 
   useEffect(() => {
-    if (!attendanceDialogOpen) return;
-    setAttendanceDraft(buildAttendanceDraft());
-  }, [attendanceDialogOpen, members, selectedWeekAttendance]);
+    const records = attendanceByWeek[selectedWeek] ?? {};
+    const draft: Record<string, boolean> = {};
+    members.forEach(member => {
+      const record = records[member.profile_id];
+      draft[member.profile_id] = record?.status !== 'absent';
+    });
+    setAttendanceDraft(draft);
+  }, [attendanceByWeek, members, selectedWeek]);
 
   const handleError = (error: unknown, fallback: string) => {
     console.error(fallback, error);
@@ -476,12 +457,25 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       const escalationRecords = (escalationsResult.data as EscalationRecord[]) ?? [];
       const cardRows = (cardsResult.data as KanbanCardRow[]) ?? [];
       const escalationViews = buildEscalationViews(boardId, cardRows, escalationRecords);
+      const stageCounts = cardRows.reduce((map, row) => {
+        const raw = (row.card_data ?? {}) as Record<string, unknown>;
+        const stage =
+          stringOrNull(raw['Board Stage']) ??
+          stringOrNull(raw['stage'] as string | undefined) ??
+          'Unbekannt';
+        map.set(stage, (map.get(stage) ?? 0) + 1);
+        return map;
+      }, new Map<string, number>());
+      const chartData = Array.from(stageCounts.entries())
+        .map(([stage, count]) => ({ stage, count }))
+        .sort((a, b) => a.stage.localeCompare(b.stage, 'de', { numeric: true, sensitivity: 'base' }));
 
       setProfiles(profileRows);
       setDepartments(departmentRows);
       setMembers(memberRows);
       setTopics(topicRows);
       setEscalations(escalationViews);
+      setStageChartData(chartData);
     } catch (error) {
       handleError(error, 'Fehler beim Laden der Board-Daten');
     } finally {
@@ -538,7 +532,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const saveAttendance = async () => {
     if (!canEdit || members.length === 0) {
-      setAttendanceDialogOpen(false);
       return;
     }
 
@@ -551,16 +544,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         status: (attendanceDraft[member.profile_id] ?? true) ? 'present' : 'absent',
       }));
 
-      if (payload.length === 0) {
-        setAttendanceByWeek(prev => {
-          const next = { ...prev };
-          delete next[selectedWeek];
-          return next;
-        });
-        setAttendanceDialogOpen(false);
-        return;
-      }
-
       const { error } = await supabase
         .from('board_attendance')
         .upsert(payload, { onConflict: 'board_id,profile_id,week_start' });
@@ -568,7 +551,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       if (error) throw new Error(error.message);
 
       await loadAttendanceHistory();
-      setAttendanceDialogOpen(false);
       setMessage('✅ Anwesenheit gespeichert');
       setTimeout(() => setMessage(''), 4000);
     } catch (error) {
@@ -849,127 +831,23 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       </Card>
 
 
-      <Dialog open={attendanceDialogOpen} onClose={closeAttendanceDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>Anwesenheit verwalten</DialogTitle>
-        <DialogContent dividers>
-          {members.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              Es sind keine Mitglieder hinterlegt.
-            </Typography>
-          ) : (
-            <Stack spacing={3}>
-              <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
-                <IconButton onClick={() => adjustWeek(-1)} size="small">
-                  <ArrowBackIcon />
-                </IconButton>
-                <Box textAlign="center">
-                  <Typography variant="subtitle1">
-                    Woche {isoWeekNumber(selectedWeekDate)}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {weekRangeLabel(selectedWeekDate)}
-                  </Typography>
-                </Box>
-                <IconButton onClick={() => adjustWeek(1)} size="small">
-                  <ArrowForwardIcon />
-                </IconButton>
-              </Stack>
-
-              <Typography variant="body2" color="text.secondary">
-                Klicke auf den Status, um zwischen Anwesend und Abwesend zu wechseln. Standard ist Anwesend.
-              </Typography>
-
-              <Stack spacing={1.5}>
-                {members.map(member => {
-                  const present = attendanceDraft[member.profile_id] ?? true;
-                  const profile = member.profile;
-                  const label = profile?.full_name || profile?.email || 'Unbekannt';
-                  const clickable = canEdit && !attendanceSaving;
-                  return (
-                    <Box
-                      key={member.id}
-                      sx={{
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 2,
-                        p: 1.5,
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        gap: 2,
-                      }}
-                    >
-                      <Box>
-                        <Typography variant="subtitle2">{label}</Typography>
-                        {profile?.company && (
-                          <Typography variant="body2" color="text.secondary">
-                            {profile.company}
-                          </Typography>
-                        )}
-                      </Box>
-                      <Chip
-                        icon={present ? <CheckIcon /> : <CloseIcon />}
-                        label={present ? 'Anwesend' : 'Abwesend'}
-                        color={present ? 'success' : 'default'}
-                        variant={present ? 'filled' : 'outlined'}
-                        onClick={clickable ? () => toggleAttendanceDraft(member.profile_id) : undefined}
-                        clickable={clickable}
-                        sx={{ minWidth: 140 }}
-                      />
-                    </Box>
-                  );
-                })}
-              </Stack>
-            </Stack>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeAttendanceDialog} disabled={attendanceSaving}>
-            Schließen
-          </Button>
-          <Button
-            onClick={saveAttendance}
-            variant="contained"
-            disabled={!canEdit || attendanceSaving || members.length === 0}
-          >
-            Speichern
-          </Button>
-        </DialogActions>
-      </Dialog>
-
       <Card>
         <CardContent>
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={2}
-            alignItems={{ sm: 'center' }}
-            justifyContent="space-between"
-          >
-            <Box>
-              <Typography variant="h6">🗓️ Anwesenheit</Typography>
-              <Typography variant="body2" color="text.secondary">
-                Woche {isoWeekNumber(selectedWeekDate)} ({weekRangeLabel(selectedWeekDate)})
-              </Typography>
-            </Box>
-            <Stack direction="row" spacing={1} alignItems="center">
-              <IconButton onClick={() => adjustWeek(-1)}>
-                <ArrowBackIcon />
-              </IconButton>
-              <IconButton onClick={() => adjustWeek(1)}>
-                <ArrowForwardIcon />
-              </IconButton>
-            </Stack>
-          </Stack>
-
-          <Stack spacing={3} sx={{ mt: 2 }}>
+          <Stack spacing={2}>
             <Stack
               direction={{ xs: 'column', md: 'row' }}
               spacing={2}
               alignItems={{ md: 'center' }}
               justifyContent="space-between"
             >
+              <Box>
+                <Typography variant="h6">🗓️ Anwesenheit</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  KW {isoWeekNumber(selectedWeekDate)} · {weekRangeLabel(selectedWeekDate)}
+                </Typography>
+              </Box>
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                <IconButton onClick={() => adjustWeek(-1)}>
+                <IconButton onClick={() => adjustWeek(-1)} aria-label="Vorherige Woche">
                   <ArrowBackIcon />
                 </IconButton>
                 <TextField
@@ -981,164 +859,150 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                   InputLabelProps={{ shrink: true }}
                   sx={{ minWidth: 180 }}
                 />
-                <IconButton onClick={() => adjustWeek(1)}>
+                <IconButton onClick={() => adjustWeek(1)} aria-label="Nächste Woche">
                   <ArrowForwardIcon />
                 </IconButton>
-              </Stack>
-
-              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} alignItems={{ sm: 'center' }}>
                 <Button
                   variant="contained"
-                  onClick={openAttendanceDialog}
-                  disabled={members.length === 0}
+                  onClick={saveAttendance}
+                  disabled={!canEdit || attendanceSaving || members.length === 0}
                 >
-                  Anwesenheit verwalten
+                  Diese Woche speichern
                 </Button>
               </Stack>
             </Stack>
 
-            <Typography variant="body2" color="text.secondary">
-              Anwesenheit wird pro Woche gespeichert. Standard ist „Anwesend“ – Abwesenheiten lassen
-              sich im Dialog erfassen oder nachträglich korrigieren.
-            </Typography>
-
-            <Grid container spacing={3} alignItems="stretch">
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle1" sx={{ mb: 1.5 }}>
-                  Mitgliederstatus (KW {isoWeekNumber(selectedWeekDate)})
-                </Typography>
-                {members.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    Füge Mitglieder hinzu, um Anwesenheiten zu dokumentieren.
-                  </Typography>
-                ) : (
-                  <Stack spacing={1.5}>
-                    {members.map(member => {
+            <Box sx={{ overflowX: 'auto' }}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell sx={{ minWidth: 220 }}>Mitglied</TableCell>
+                    <TableCell align="center" sx={{ minWidth: 160 }}>
+                      <Stack spacing={0.5} alignItems="center">
+                        <Typography variant="subtitle2">
+                          KW {isoWeekNumber(selectedWeekDate)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {weekRangeLabel(selectedWeekDate)}
+                        </Typography>
+                      </Stack>
+                    </TableCell>
+                    {historyWeeks.map(history => (
+                      <TableCell key={history.week} align="center" sx={{ minWidth: 140 }}>
+                        <Stack spacing={0.5} alignItems="center">
+                          <Button
+                            size="small"
+                            variant={history.week === selectedWeek ? 'contained' : 'text'}
+                            onClick={() => selectWeek(history.week)}
+                          >
+                            KW {isoWeekNumber(history.date)}
+                          </Button>
+                          <Typography variant="caption" color="text.secondary">
+                            {weekRangeLabel(history.date)}
+                          </Typography>
+                        </Stack>
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {members.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={historyWeeks.length + 2}>
+                        <Typography variant="body2" color="text.secondary">
+                          Füge Mitglieder hinzu, um Anwesenheiten zu dokumentieren.
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    members.map(member => {
                       const profile = member.profile;
                       const label = profile?.full_name || profile?.email || 'Unbekannt';
                       const department = profile?.company;
-                      const status = attendanceStatus(member.profile_id);
-                      const present = status === 'present';
+                      const present = attendanceDraft[member.profile_id] ?? true;
                       return (
-                        <Box
-                          key={member.id}
-                          sx={{
-                            border: '1px solid',
-                            borderColor: present ? 'divider' : 'error.light',
-                            borderRadius: 2,
-                            p: 1.5,
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                            gap: 2,
-                          }}
-                        >
-                          <Box>
-                            <Typography variant="subtitle2">{label}</Typography>
-                            {department && (
-                              <Typography variant="body2" color="text.secondary">
-                                {department}
-                              </Typography>
-                            )}
-                          </Box>
-                          <Chip
-                            icon={present ? <CheckIcon /> : <CloseIcon />}
-                            label={present ? 'Anwesend' : 'Abwesend'}
-                            color={present ? 'success' : 'error'}
-                            variant={present ? 'filled' : 'outlined'}
-                          />
-                        </Box>
-                      );
-                    })}
-                  </Stack>
-                )}
-              </Grid>
-              <Grid item xs={12} md={6}>
-                <Typography variant="subtitle1" sx={{ mb: 1.5 }}>
-                  Historie (letzte Wochen)
-                </Typography>
-                <Box sx={{ maxHeight: 300, overflowY: 'auto', pr: 1 }}>
-                  {historyEntries.length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">
-                      Noch keine Anwesenheitsdaten gespeichert.
-                    </Typography>
-                  ) : (
-                    <Stack spacing={1.5}>
-                      {historyEntries.map(history => {
-                        const isSelected = history.week === selectedWeek;
-                        const absentList = history.absent;
-                        const presentCount = history.statuses.length - absentList.length;
-                        return (
-                          <Box
-                            key={history.week}
-                            sx={{
-                              border: '1px solid',
-                              borderColor: isSelected ? 'primary.main' : 'divider',
-                              borderRadius: 2,
-                              p: 1.5,
-                              backgroundColor: isSelected ? 'action.hover' : 'background.paper',
-                            }}
-                          >
-                            <Stack
-                              direction={{ xs: 'column', sm: 'row' }}
-                              spacing={1}
-                              justifyContent="space-between"
-                              alignItems={{ sm: 'center' }}
-                            >
-                              <Box>
-                                <Typography variant="subtitle2">
-                                  KW {isoWeekNumber(history.date)} ({weekRangeLabel(history.date)})
+                        <TableRow key={member.id} hover>
+                          <TableCell>
+                            <Stack spacing={0.25}>
+                              <Typography variant="subtitle2">{label}</Typography>
+                              {department && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {department}
                                 </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                  {presentCount} anwesend · {absentList.length} abwesend
-                                </Typography>
-                              </Box>
-                              <Stack direction="row" spacing={1}>
-                                <Button
-                                  size="small"
-                                  variant={isSelected ? 'contained' : 'outlined'}
-                                  onClick={() => selectWeek(history.week)}
-                                >
-                                  {isSelected ? 'Ausgewählt' : 'Auswählen'}
-                                </Button>
-                                <Button
-                                  size="small"
-                                  onClick={() => selectWeek(history.week, true)}
-                                  disabled={!canEdit}
-                                >
-                                  Bearbeiten
-                                </Button>
-                              </Stack>
+                              )}
                             </Stack>
-                            {absentList.length === 0 ? (
-                              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                                Alle Mitglieder waren anwesend.
-                              </Typography>
-                            ) : (
-                              <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
-                                {absentList.map(absentMember => {
-                                  const profile = absentMember.member.profile;
-                                  const name = profile?.full_name || profile?.email || 'Unbekannt';
-                                  return (
-                                    <Chip
-                                      key={`${history.week}-${absentMember.member.id}`}
-                                      label={name}
-                                      color="error"
-                                      size="small"
-                                    />
-                                  );
-                                })}
-                              </Stack>
-                            )}
-                          </Box>
-                        );
-                      })}
-                    </Stack>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Tooltip title={present ? 'Anwesend' : 'Abwesend'}>
+                              <span>
+                                <Checkbox
+                                  checked={present}
+                                  onChange={() => toggleAttendanceDraft(member.profile_id)}
+                                  disabled={!canEdit || attendanceSaving}
+                                  icon={<CloseIcon color="error" />}
+                                  checkedIcon={<CheckIcon color="success" />}
+                                  sx={{ '& .MuiSvgIcon-root': { fontSize: 28 } }}
+                                />
+                              </span>
+                            </Tooltip>
+                          </TableCell>
+                          {historyWeeks.map(history => {
+                            const record = attendanceByWeek[history.week]?.[member.profile_id];
+                            if (!record) {
+                              return (
+                                <TableCell key={history.week} align="center">
+                                  <Typography variant="caption" color="text.secondary">
+                                    —
+                                  </Typography>
+                                </TableCell>
+                              );
+                            }
+                            const wasPresent = record.status !== 'absent';
+                            return (
+                              <TableCell key={history.week} align="center">
+                                {wasPresent ? (
+                                  <CheckIcon color="success" fontSize="small" />
+                                ) : (
+                                  <CloseIcon color="error" fontSize="small" />
+                                )}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      );
+                    })
                   )}
-                </Box>
-              </Grid>
-            </Grid>
+                </TableBody>
+              </Table>
+            </Box>
           </Stack>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            📈 Projekte pro Phase
+          </Typography>
+          {stageChartData.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Es liegen keine Projektdaten mit Phaseninformationen vor.
+            </Typography>
+          ) : (
+            <Box sx={{ width: '100%', height: 260 }}>
+              <ResponsiveContainer>
+                <LineChart data={stageChartData} margin={{ top: 16, right: 24, bottom: 8, left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="stage" angle={-15} textAnchor="end" height={60} interval={0} />
+                  <YAxis allowDecimals={false} />
+                  <RechartsTooltip
+                    formatter={(value: number | string) => [`${value} Projekte`, 'Anzahl']}
+                  />
+                  <Line type="monotone" dataKey="count" stroke="#1976d2" strokeWidth={2} dot />
+                </LineChart>
+              </ResponsiveContainer>
+            </Box>
+          )}
         </CardContent>
       </Card>
 

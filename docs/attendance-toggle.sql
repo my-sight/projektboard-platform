@@ -42,3 +42,15 @@ group by board_id, week_start
 order by board_id, week_start desc;
 
 grant select on public.board_attendance_weeks to authenticated;
+
+-- Matrix-View für die neue Anwesenheitstabelle im Management-Panel
+create or replace view public.board_attendance_matrix as
+select
+  ba.board_id,
+  ba.week_start,
+  jsonb_object_agg(ba.profile_id::text, jsonb_build_object('status', ba.status)) as statuses
+from public.board_attendance ba
+group by ba.board_id, ba.week_start
+order by ba.board_id, ba.week_start desc;
+
+grant select on public.board_attendance_matrix to authenticated;
