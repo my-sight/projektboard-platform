@@ -118,6 +118,17 @@ interface BoardManagementPanelProps {
   memberCanSee: boolean;
 }
 
+const DEFAULT_STAGE_NAMES = [
+  'Werkzeug beim Werkzeugmacher',
+  'Werkzeugtransport',
+  'Werkzeug in Dillenburg',
+  'Werkzeug in Polen',
+  'Musterung',
+  'Teileversand',
+  'Teile vor Ort',
+  'Fertig',
+];
+
 function startOfWeek(date: Date): Date {
   const copy = new Date(date);
   const day = copy.getDay();
@@ -128,7 +139,69 @@ function startOfWeek(date: Date): Date {
 }
 
 function isoDate(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeWeekValue(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return isoDate(startOfWeek(parsed));
+}
+
+function expandWeekRange(values: (string | null | undefined)[], ensureWeek?: string): string[] {
+  const normalized = values
+    .map(normalizeWeekValue)
+    .filter((value): value is string => Boolean(value));
+
+  const ensured = normalizeWeekValue(ensureWeek);
+
+  if (ensured) {
+    normalized.push(ensured);
+  }
+
+  if (normalized.length === 0) {
+    const current = isoDate(startOfWeek(new Date()));
+    return [current];
+  }
+
+  const uniqueSorted = Array.from(new Set(normalized)).sort(
+    (a, b) => new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime(),
+  );
+
+  const firstDate = startOfWeek(new Date(`${uniqueSorted[0]}T00:00:00`));
+  const currentWeek = startOfWeek(new Date());
+  const ensuredDate = ensured ? startOfWeek(new Date(`${ensured}T00:00:00`)) : null;
+  const lastCandidate = startOfWeek(
+    new Date(`${uniqueSorted[uniqueSorted.length - 1]}T00:00:00`),
+  );
+
+  const lastDate = new Date(
+    Math.max(
+      lastCandidate.getTime(),
+      currentWeek.getTime(),
+      ensuredDate?.getTime() ?? -Infinity,
+    ),
+  );
+
+  const result: string[] = [];
+  for (let cursor = new Date(firstDate); cursor.getTime() <= lastDate.getTime(); ) {
+    result.push(isoDate(cursor));
+    cursor.setDate(cursor.getDate() + 7);
+    cursor.setHours(0, 0, 0, 0);
+  }
+
+  return result;
 }
 
 function weekRangeLabel(weekStart: Date): string {
@@ -239,6 +312,26 @@ const stringOrNull = (value: unknown): string | null => {
   return text.length ? text : null;
 };
 
+function extractStageOrder(settings: unknown): string[] {
+  if (!settings || typeof settings !== 'object') {
+    return [];
+  }
+
+  const maybeCols = (settings as { cols?: Array<{ name?: string }> }).cols;
+
+  if (!Array.isArray(maybeCols)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      maybeCols
+        .map(col => (col && typeof col === 'object' ? stringOrNull((col as any).name) : null))
+        .filter((name): name is string => Boolean(name)),
+    ),
+  );
+}
+
 function buildEscalationViews(
   boardId: string,
   cards: KanbanCardRow[],
@@ -307,6 +400,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const [memberSelect, setMemberSelect] = useState('');
 
   const [selectedWeek, setSelectedWeek] = useState<string>(() => isoDate(startOfWeek(new Date())));
+  const [orderedWeeks, setOrderedWeeks] = useState<string[]>(() =>
+    expandWeekRange([isoDate(startOfWeek(new Date()))]),
+  );
   const [attendanceByWeek, setAttendanceByWeek] = useState<
     Record<string, Record<string, AttendanceRecord | undefined>>
   >({});
@@ -340,7 +436,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   );
 
   const sortedWeekEntries = useMemo(() => {
-    const entries = Object.keys(attendanceByWeek).map(week => ({
+    const baseWeeks = orderedWeeks.length ? orderedWeeks : [selectedWeek];
+    const entries = baseWeeks.map(week => ({
       week,
       date: startOfWeek(new Date(`${week}T00:00:00`)),
     }));
@@ -350,10 +447,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     }
 
     return entries.sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [attendanceByWeek, selectedWeek, selectedWeekDate]);
+  }, [orderedWeeks, selectedWeek, selectedWeekDate]);
 
   const historyWeeks = useMemo(
-    () => sortedWeekEntries.filter(entry => entry.week !== selectedWeek).slice(0, 12),
+    () => sortedWeekEntries.filter(entry => entry.week !== selectedWeek),
     [sortedWeekEntries, selectedWeek],
   );
 
@@ -394,6 +491,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
     const normalized = isoDate(startOfWeek(parsed));
     setSelectedWeek(normalized);
+    setOrderedWeeks(prev => expandWeekRange([...prev, normalized], normalized));
   };
 
   const handleWeekInputChange = (value: string) => {
@@ -401,6 +499,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
     if (parsed) {
       setSelectedWeek(parsed);
+      setOrderedWeeks(prev => expandWeekRange([...prev, parsed], parsed));
     }
   };
 
@@ -421,9 +520,12 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     setTimeout(() => setMessage(''), 4000);
   };
 
-  const loadBaseData = async () => {
+  const loadBaseData = async (options?: { skipLoading?: boolean }): Promise<boolean> => {
+    const skipLoading = options?.skipLoading ?? false;
     try {
-      setLoading(true);
+      if (!skipLoading) {
+        setLoading(true);
+      }
       const profilePromise = fetchClientProfiles();
 
       const [
@@ -432,6 +534,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         topicsResult,
         escalationsResult,
         cardsResult,
+        settingsResult,
       ] = await Promise.all([
         supabase.from('departments').select('*').order('name'),
         supabase.from('board_members').select('*').eq('board_id', boardId).order('created_at'),
@@ -441,6 +544,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
           .from('kanban_cards')
           .select('id, card_id, card_data, project_number, project_name')
           .eq('board_id', boardId),
+        supabase
+          .from('kanban_board_settings')
+          .select('settings')
+          .eq('board_id', boardId)
+          .maybeSingle(),
       ]);
 
       const profileRows = await profilePromise;
@@ -450,6 +558,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       if (topicsResult.error) throw new Error(topicsResult.error.message);
       if (escalationsResult.error) throw new Error(escalationsResult.error.message);
       if (cardsResult.error) throw new Error(cardsResult.error.message);
+      if (settingsResult.error && settingsResult.error.code !== 'PGRST116') {
+        throw new Error(settingsResult.error.message);
+      }
 
       const departmentRows = (departmentsResult.data as Department[]) ?? [];
       const memberRows = mergeMemberProfiles((membersResult.data as Member[]) ?? [], profileRows);
@@ -457,6 +568,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       const escalationRecords = (escalationsResult.data as EscalationRecord[]) ?? [];
       const cardRows = (cardsResult.data as KanbanCardRow[]) ?? [];
       const escalationViews = buildEscalationViews(boardId, cardRows, escalationRecords);
+      const settingsRow = (settingsResult.data as { settings?: unknown } | null) ?? null;
+      const stageOrder = extractStageOrder(settingsRow?.settings);
+      const baseStages = stageOrder.length ? stageOrder : DEFAULT_STAGE_NAMES;
       const stageCounts = cardRows.reduce((map, row) => {
         const raw = (row.card_data ?? {}) as Record<string, unknown>;
         const stage =
@@ -466,9 +580,21 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         map.set(stage, (map.get(stage) ?? 0) + 1);
         return map;
       }, new Map<string, number>());
-      const chartData = Array.from(stageCounts.entries())
-        .map(([stage, count]) => ({ stage, count }))
-        .sort((a, b) => a.stage.localeCompare(b.stage, 'de', { numeric: true, sensitivity: 'base' }));
+      baseStages.forEach(stage => {
+        if (!stageCounts.has(stage)) {
+          stageCounts.set(stage, 0);
+        }
+      });
+      const additionalStages = Array.from(stageCounts.keys()).filter(
+        stage => !baseStages.includes(stage),
+      );
+      const stageList = [
+        ...baseStages,
+        ...additionalStages.sort((a, b) =>
+          a.localeCompare(b, 'de', { numeric: true, sensitivity: 'base' }),
+        ),
+      ];
+      const chartData = stageList.map(stage => ({ stage, count: stageCounts.get(stage) ?? 0 }));
 
       setProfiles(profileRows);
       setDepartments(departmentRows);
@@ -476,10 +602,14 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       setTopics(topicRows);
       setEscalations(escalationViews);
       setStageChartData(chartData);
+      return true;
     } catch (error) {
       handleError(error, 'Fehler beim Laden der Board-Daten');
+      return false;
     } finally {
-      setLoading(false);
+      if (!skipLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -503,12 +633,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       });
 
       setAttendanceByWeek(map);
+      const ordered = expandWeekRange(Object.keys(map), selectedWeek);
+      setOrderedWeeks(ordered);
 
-      if (!map[selectedWeek] && Object.keys(map).length > 0) {
-        const sortedWeeks = Object.keys(map).sort(
-          (a, b) => new Date(`${b}T00:00:00`).getTime() - new Date(`${a}T00:00:00`).getTime(),
-        );
-        setSelectedWeek(sortedWeeks[0]);
+      if (!ordered.includes(selectedWeek) && ordered.length > 0) {
+        setSelectedWeek(ordered[ordered.length - 1]);
       }
     } catch (error) {
       handleError(error, 'Fehler beim Laden der Anwesenheit');
@@ -524,10 +653,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   }, [boardId]);
 
   const adjustWeek = (offset: number) => {
+    if (!offset) return;
+
     const next = new Date(selectedWeekDate);
     next.setDate(next.getDate() + offset * 7);
     const normalized = isoDate(startOfWeek(next));
     setSelectedWeek(normalized);
+    setOrderedWeeks(prev => expandWeekRange([...prev, normalized], normalized));
   };
 
   const saveAttendance = async () => {
@@ -690,12 +822,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     if (!editingEscalation || !escalationDraft) return;
 
     try {
+      const currentEscalation = editingEscalation;
       const payload = {
         board_id: boardId,
-        card_id: editingEscalation.card_id,
-        category: editingEscalation.category,
-        project_code: editingEscalation.project_code,
-        project_name: editingEscalation.project_name,
+        card_id: currentEscalation.card_id,
+        category: currentEscalation.category,
+        project_code: currentEscalation.project_code,
+        project_name: currentEscalation.project_name,
         reason: stringOrNull(escalationDraft.reason),
         measure: stringOrNull(escalationDraft.measure),
         department_id: escalationDraft.department_id,
@@ -714,7 +847,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
       setEscalations(prev =>
         prev.map(entry =>
-          entry.card_id === editingEscalation.card_id
+          entry.card_id === currentEscalation.card_id
             ? {
                 ...entry,
                 id: (data as EscalationRecord | null)?.id ?? entry.id,
@@ -728,10 +861,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             : entry,
         ),
       );
-
-      setMessage('✅ Eskalation gespeichert');
-      setTimeout(() => setMessage(''), 4000);
       closeEscalationEditor();
+      const refreshed = await loadBaseData({ skipLoading: true });
+
+      if (refreshed) {
+        setMessage('✅ Eskalation gespeichert');
+        setTimeout(() => setMessage(''), 4000);
+      }
     } catch (error) {
       handleError(error, 'Fehler beim Speichern der Eskalation');
     }

@@ -54,3 +54,36 @@ group by ba.board_id, ba.week_start
 order by ba.board_id, ba.week_start desc;
 
 grant select on public.board_attendance_matrix to authenticated;
+
+-- Lückenlose Wochenliste je Board inkl. aktueller Kalenderwoche
+create or replace view public.board_attendance_week_series as
+with bounds as (
+  select
+    board_id,
+    min(week_start) as first_week,
+    greatest(max(week_start), date_trunc('week', current_date)::date) as last_week
+  from public.board_attendance
+  group by board_id
+),
+series as (
+  select
+    b.board_id,
+    generate_series(b.first_week, b.last_week, interval '7 days')::date as week_start
+  from bounds b
+  union
+  select
+    kb.id as board_id,
+    date_trunc('week', current_date)::date as week_start
+  from public.kanban_boards kb
+)
+select
+  s.board_id,
+  s.week_start,
+  coalesce(m.statuses, '{}'::jsonb) as statuses
+from series s
+left join public.board_attendance_matrix m
+  on m.board_id = s.board_id
+ and m.week_start = s.week_start
+order by s.board_id, s.week_start desc;
+
+grant select on public.board_attendance_week_series to authenticated;
