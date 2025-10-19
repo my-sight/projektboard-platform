@@ -118,6 +118,15 @@ interface BoardManagementPanelProps {
   memberCanSee: boolean;
 }
 
+const ESCALATION_SCHEMA_DOC_PATH = 'docs/patch-board-escalations-card-id.sql';
+const ESCALATION_SCHEMA_HELP =
+  `Bitte führe das SQL-Skript ${ESCALATION_SCHEMA_DOC_PATH} aus, um die fehlende Spalte "card_id" in "board_escalations" anzulegen.`;
+
+const isMissingEscalationColumnError = (message: string) => {
+  const normalized = message.toLowerCase();
+  return normalized.includes('board_escalations') && normalized.includes('card_id');
+};
+
 const DEFAULT_STAGE_NAMES = [
   'Werkzeug beim Werkzeugmacher',
   'Werkzeugtransport',
@@ -411,6 +420,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const [topics, setTopics] = useState<Topic[]>([]);
   const [escalations, setEscalations] = useState<EscalationView[]>([]);
+  const [escalationSchemaReady, setEscalationSchemaReady] = useState(true);
   const [escalationDialogOpen, setEscalationDialogOpen] = useState(false);
   const [editingEscalation, setEditingEscalation] = useState<EscalationView | null>(null);
   const [escalationDraft, setEscalationDraft] = useState<EscalationDraft | null>(null);
@@ -516,6 +526,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const handleError = (error: unknown, fallback: string) => {
     console.error(fallback, error);
     const message = error instanceof Error ? error.message : String(error);
+    if (isMissingEscalationColumnError(message)) {
+      setEscalationSchemaReady(false);
+      setMessage(`❌ ${fallback}: ${ESCALATION_SCHEMA_HELP}`);
+      setTimeout(() => setMessage(''), 10000);
+      return;
+    }
+
     setMessage(`❌ ${fallback}: ${message}`);
     setTimeout(() => setMessage(''), 4000);
   };
@@ -556,7 +573,15 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       if (departmentsResult.error) throw new Error(departmentsResult.error.message);
       if (membersResult.error) throw new Error(membersResult.error.message);
       if (topicsResult.error) throw new Error(topicsResult.error.message);
-      if (escalationsResult.error) throw new Error(escalationsResult.error.message);
+      let escalationSchemaMissing = false;
+      if (escalationsResult.error) {
+        const message = escalationsResult.error.message;
+        if (message && isMissingEscalationColumnError(message)) {
+          escalationSchemaMissing = true;
+        } else {
+          throw new Error(message ?? 'Unbekannter Fehler beim Laden der Eskalationen');
+        }
+      }
       if (cardsResult.error) throw new Error(cardsResult.error.message);
       if (settingsResult.error && settingsResult.error.code !== 'PGRST116') {
         throw new Error(settingsResult.error.message);
@@ -565,7 +590,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       const departmentRows = (departmentsResult.data as Department[]) ?? [];
       const memberRows = mergeMemberProfiles((membersResult.data as Member[]) ?? [], profileRows);
       const topicRows = (topicsResult.data as Topic[]) ?? [];
-      const escalationRecords = (escalationsResult.data as EscalationRecord[]) ?? [];
+      const escalationRecords = escalationSchemaMissing
+        ? []
+        : ((escalationsResult.data as EscalationRecord[]) ?? []);
       const cardRows = (cardsResult.data as KanbanCardRow[]) ?? [];
       const escalationViews = buildEscalationViews(boardId, cardRows, escalationRecords);
       const settingsRow = (settingsResult.data as { settings?: unknown } | null) ?? null;
@@ -601,6 +628,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       setMembers(memberRows);
       setTopics(topicRows);
       setEscalations(escalationViews);
+      setEscalationSchemaReady(!escalationSchemaMissing);
+      if (escalationSchemaMissing) {
+        setMessage(`⚠️ ${ESCALATION_SCHEMA_HELP}`);
+        setTimeout(() => setMessage(''), 10000);
+      }
       setStageChartData(chartData);
       return true;
     } catch (error) {
@@ -820,6 +852,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const saveEscalation = async () => {
     if (!editingEscalation || !escalationDraft) return;
+    if (!escalationSchemaReady) {
+      setMessage(`❌ Eskalationen können erst gespeichert werden, nachdem ${ESCALATION_SCHEMA_HELP}`);
+      setTimeout(() => setMessage(''), 10000);
+      return;
+    }
 
     try {
       const currentEscalation = editingEscalation;
@@ -1153,6 +1190,12 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             </Box>
           </Stack>
 
+          {!escalationSchemaReady && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              {ESCALATION_SCHEMA_HELP}
+            </Alert>
+          )}
+
           <Divider sx={{ my: 2 }} />
 
           {(['LK', 'SK'] as const).map(category => {
@@ -1215,7 +1258,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                               <Button
                                 variant="outlined"
                                 onClick={() => openEscalationEditor(entry)}
-                                disabled={!canEdit}
+                                disabled={!canEdit || !escalationSchemaReady}
                               >
                                 Bearbeiten
                               </Button>
