@@ -571,7 +571,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
           .maybeSingle(),
       ]);
 
-      const profileRows = await profilePromise;
+      const profileRows = (await profilePromise).filter(
+        profile => !isSuperuserEmail(profile.email),
+      );
 
       if (departmentsResult.error) throw new Error(departmentsResult.error.message);
       if (membersResult.error) throw new Error(membersResult.error.message);

@@ -174,11 +174,12 @@ const loadUsers = async () => {
   try {
     const profiles = await fetchClientProfiles();
 
-    if (profiles.length) {
-      const normalized = profiles.map(profile => {
+    const normalized = profiles
+      .filter(profile => !isSuperuserEmail(profile.email))
+      .filter(profile => profile.is_active)
+      .map(profile => {
         const email = profile.email ?? '';
         const fallbackName = email ? email.split('@')[0] : 'Unbekannt';
-        const isActive = profile.is_active ?? true;
 
         return {
           id: profile.id,
@@ -188,77 +189,17 @@ const loadUsers = async () => {
           department: profile.company ?? null,
           company: profile.company || '',
           role: profile.role || 'user',
-          isActive,
+          isActive: profile.is_active,
         };
       });
 
-      const visibleUsers = normalized.filter(user => {
-        if (isSuperuserEmail(user.email)) {
-          return false;
-        }
-
-        return user.isActive;
-      });
-      setUsers(visibleUsers);
-      return true;
-    }
-
-    createFallbackUsers();
-    return false;
+    setUsers(normalized);
+    return true;
   } catch (error) {
     console.error('❌ Fehler beim Laden der Benutzer:', error);
-    createFallbackUsers();
+    setUsers([]);
     return false;
   }
-};
-// ✅ ERWEITERTE FALLBACK-BENUTZER (basierend auf deiner Struktur)
-const createFallbackUsers = () => {
-  console.log('🔄 Erstelle Fallback-Benutzer...');
-  const fallbackUsers = [
-    {
-      id: 'fallback-1',
-      email: 'test@test.de',
-      name: 'Test User',
-      full_name: 'Test User',
-      department: 'Test Company',
-      company: 'Test Company',
-      role: 'user',
-      isActive: true
-    },
-    {
-      id: 'fallback-2',
-      email: 'michael@mysight.net',
-      name: 'Michael',
-      full_name: 'Michael',
-      department: 'MySight',
-      company: 'MySight',
-      role: 'admin',
-      isActive: true
-    },
-    {
-      id: 'fallback-3',
-      email: 'max.mustermann@firma.de',
-      name: 'Max Mustermann',
-      full_name: 'Max Mustermann',
-      department: 'Firma GmbH',
-      company: 'Firma GmbH',
-      role: 'user',
-      isActive: true
-    },
-    {
-      id: 'fallback-4',
-      email: 'anna.klein@firma.de',
-      name: 'Anna Klein',
-      full_name: 'Anna Klein',
-      department: 'Firma GmbH',
-      company: 'Firma GmbH',
-      role: 'user',
-      isActive: true
-    }
-  ];
-  const visibleFallbackUsers = fallbackUsers.filter(user => !isSuperuserEmail(user.email));
-  setUsers(visibleFallbackUsers);
-  console.log('✅ Fallback-Benutzer erstellt:', visibleFallbackUsers.length);
 };
 
 const loadBoardMeta = async () => {
