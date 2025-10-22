@@ -192,7 +192,13 @@ const loadUsers = async () => {
         };
       });
 
-      const visibleUsers = normalized.filter(user => user.isActive || isSuperuserEmail(user.email));
+      const visibleUsers = normalized.filter(user => {
+        if (isSuperuserEmail(user.email)) {
+          return false;
+        }
+
+        return user.isActive;
+      });
       setUsers(visibleUsers);
       return true;
     }
@@ -250,8 +256,9 @@ const createFallbackUsers = () => {
       isActive: true
     }
   ];
-  setUsers(fallbackUsers);
-  console.log('✅ Fallback-Benutzer erstellt:', fallbackUsers.length);
+  const visibleFallbackUsers = fallbackUsers.filter(user => !isSuperuserEmail(user.email));
+  setUsers(visibleFallbackUsers);
+  console.log('✅ Fallback-Benutzer erstellt:', visibleFallbackUsers.length);
 };
 
 const loadBoardMeta = async () => {

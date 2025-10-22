@@ -467,8 +467,12 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const availableProfiles = useMemo(() => {
     const memberIds = new Set(members.map(member => member.profile_id));
     return profiles.filter(profile => {
+      if (isSuperuserEmail(profile.email)) {
+        return false;
+      }
+
       const isActive = profile.is_active ?? true;
-      return (isActive || isSuperuserEmail(profile.email)) && !memberIds.has(profile.id);
+      return isActive && !memberIds.has(profile.id);
     });
   }, [members, profiles]);
 
@@ -820,10 +824,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const responsibleOptions = (departmentId: string | null) => {
     const name = departmentName(departmentId);
     return profiles.filter(profile => {
+      if (isSuperuserEmail(profile.email)) {
+        return false;
+      }
+
       const matchesDepartment = name ? profile.company === name : true;
       const isActive = profile.is_active ?? true;
-      const active = isActive || isSuperuserEmail(profile.email);
-      return matchesDepartment && active;
+      return matchesDepartment && isActive;
     });
   };
 
