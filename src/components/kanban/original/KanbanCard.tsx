@@ -28,6 +28,7 @@ export interface KanbanCardProps {
     department?: string | null;
     company?: string | null;
   }>;
+  canModify: boolean;
 }
 
 const statusKeys = ['message', 'qualitaet', 'kosten', 'termine'];
@@ -45,9 +46,11 @@ export function KanbanCard({
   inferStage,
   idFor,
   users,
+  canModify,
 }: KanbanCardProps) {
   const cardId = idFor(card);
   const stage = inferStage(card);
+  const isDragDisabled = !canModify;
 
   const usersById = useMemo(() => {
     const map = new Map<string, any>();
@@ -107,6 +110,9 @@ export function KanbanCard({
   const ampelColor = hasLKEscalation || hasSKEscalation ? '#ff5a5a' : '#14c38e';
 
   const updateCard = (updates: any) => {
+    if (!canModify) {
+      return;
+    }
     const cardIndex = rows.findIndex((c: any) => idFor(c) === cardId);
     if (cardIndex >= 0) {
       const newRows = [...rows];
@@ -120,6 +126,9 @@ export function KanbanCard({
   };
 
   const handleOpenEdit = () => {
+    if (!canModify) {
+      return;
+    }
     setSelectedCard(card);
     setEditModalOpen(true);
     setEditTabValue(1);
@@ -148,7 +157,7 @@ export function KanbanCard({
   };
 
   return (
-    <Draggable key={cardId} draggableId={cardId} index={index}>
+    <Draggable key={cardId} draggableId={cardId} index={index} isDragDisabled={isDragDisabled}>
       {(provided, snapshot) => (
         <Box
           ref={provided.innerRef}
@@ -156,6 +165,9 @@ export function KanbanCard({
           {...provided.dragHandleProps}
           className={`card ${hasLKEscalation ? 'esk-lk' : ''} ${hasSKEscalation ? 'esk-sk' : ''}`}
           onClick={(e) => {
+            if (!canModify) {
+              return;
+            }
             if (!(e.target as HTMLElement).closest('.controls')) {
               setSelectedCard(card);
               setEditModalOpen(true);
@@ -282,6 +294,7 @@ export function KanbanCard({
                       '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' },
                     }}
                     title="Groß/Normal umschalten"
+                    disabled={!canModify}
                     onClick={(e) => {
                       e.stopPropagation();
                       const newSize = currentSize === 'large' ? '' : 'large';
@@ -305,6 +318,7 @@ export function KanbanCard({
                       },
                     }}
                     title="Leitungskreis"
+                    disabled={!canModify}
                     onClick={(e) => {
                       e.stopPropagation();
                       const newEskalation = hasLKEscalation ? '' : 'LK';
@@ -332,6 +346,7 @@ export function KanbanCard({
                       },
                     }}
                     title="Strategiekreis"
+                    disabled={!canModify}
                     onClick={(e) => {
                       e.stopPropagation();
                       const newEskalation = hasSKEscalation ? '' : 'SK';
@@ -357,6 +372,7 @@ export function KanbanCard({
                       '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' },
                     }}
                     title="Bearbeiten"
+                    disabled={!canModify}
                     onClick={(e) => {
                       e.stopPropagation();
                       handleOpenEdit();

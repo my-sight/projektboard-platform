@@ -39,6 +39,7 @@ drop table if exists public.team_members cascade;
 drop table if exists public.teams cascade;
 
 -- main domain tables
+drop table if exists public.board_escalation_history cascade;
 drop table if exists public.board_escalations cascade;
 drop table if exists public.board_top_topics cascade;
 drop table if exists public.board_attendance cascade;
@@ -228,6 +229,21 @@ create trigger set_board_escalations_updated_at
   for each row
   execute function public.set_updated_at();
 
+create table public.board_escalation_history (
+  id             uuid primary key default gen_random_uuid(),
+  board_id       uuid not null references public.kanban_boards(id) on delete cascade,
+  card_id        text not null,
+  escalation_id  uuid references public.board_escalations(id) on delete cascade,
+  changed_by     uuid references public.profiles(id) on delete set null,
+  changes        jsonb not null default '{}'::jsonb,
+  changed_at     timestamptz not null default timezone('utc', now())
+);
+
+create index board_escalation_history_board_card_idx
+  on public.board_escalation_history (board_id, card_id, changed_at desc);
+create index board_escalation_history_escalation_idx
+  on public.board_escalation_history (escalation_id, changed_at desc);
+
 create table public.kanban_cards (
   id             uuid primary key default gen_random_uuid(),
   board_id       uuid not null references public.kanban_boards(id) on delete cascade,
@@ -262,6 +278,7 @@ alter table public.board_members enable row level security;
 alter table public.board_attendance enable row level security;
 alter table public.board_top_topics enable row level security;
 alter table public.board_escalations enable row level security;
+alter table public.board_escalation_history enable row level security;
 
 -- Departments: allow everyone signed-in to read; mutations handled via service role.
 create policy "Authenticated users can read departments"
@@ -402,6 +419,16 @@ create policy "Authenticated users manage escalations"
   on public.board_escalations
   for all
   using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+create policy "Authenticated users can read escalation history"
+  on public.board_escalation_history
+  for select
+  using (auth.role() = 'authenticated');
+
+create policy "Authenticated users can write escalation history"
+  on public.board_escalation_history
+  for insert
   with check (auth.role() = 'authenticated');
 
 -- Aggregierte Ansichten für die Anwesenheitsübersicht

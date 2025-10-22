@@ -18,6 +18,8 @@ import {
   Grid,
   IconButton,
   InputLabel,
+  List,
+  ListItem,
   MenuItem,
   Select,
   Stack,
@@ -112,6 +114,16 @@ interface EscalationDraft {
   completion_steps: number;
 }
 
+interface EscalationHistoryEntry {
+  id: string;
+  board_id: string;
+  card_id: string;
+  escalation_id: string | null;
+  changed_at: string;
+  changed_by: string | null;
+  changes?: Record<string, unknown> | null;
+}
+
 interface BoardManagementPanelProps {
   boardId: string;
   canEdit: boolean;
@@ -121,6 +133,9 @@ interface BoardManagementPanelProps {
 const ESCALATION_SCHEMA_DOC_PATH = 'docs/patch-board-escalations-card-id.sql';
 const ESCALATION_SCHEMA_HELP =
   `Bitte führe das SQL-Skript ${ESCALATION_SCHEMA_DOC_PATH} aus, um die fehlende Spalte "card_id" in "board_escalations" anzulegen.`;
+const ESCALATION_HISTORY_DOC_PATH = 'docs/board-escalation-history.sql';
+const ESCALATION_HISTORY_HELP =
+  `Bitte führe das SQL-Skript ${ESCALATION_HISTORY_DOC_PATH} aus, um die Historientabelle für Eskalationen anzulegen.`;
 
 const isMissingEscalationColumnError = (message: string) => {
   const normalized = message.toLowerCase();
@@ -417,6 +432,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   >({});
   const [attendanceDraft, setAttendanceDraft] = useState<Record<string, boolean>>({});
   const [attendanceSaving, setAttendanceSaving] = useState(false);
+  const [escalationHistory, setEscalationHistory] = useState<Record<string, EscalationHistoryEntry[]>>({});
+  const [escalationHistoryReady, setEscalationHistoryReady] = useState(true);
+  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
 
   const [topics, setTopics] = useState<Topic[]>([]);
   const [escalations, setEscalations] = useState<EscalationView[]>([]);
@@ -555,6 +573,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         escalationsResult,
         cardsResult,
         settingsResult,
+        historyResult,
       ] = await Promise.all([
         supabase.from('departments').select('*').order('name'),
         supabase.from('board_members').select('*').eq('board_id', boardId).order('created_at'),
@@ -569,6 +588,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
           .select('settings')
           .eq('board_id', boardId)
           .maybeSingle(),
+        supabase
+          .from('board_escalation_history')
+          .select('*')
+          .eq('board_id', boardId)
+          .order('changed_at', { ascending: false }),
       ]);
 
       const profileRows = (await profilePromise).filter(
@@ -590,6 +614,20 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       if (cardsResult.error) throw new Error(cardsResult.error.message);
       if (settingsResult.error && settingsResult.error.code !== 'PGRST116') {
         throw new Error(settingsResult.error.message);
+      }
+      let historyRows: EscalationHistoryEntry[] = [];
+      if (historyResult.error) {
+        const message = historyResult.error.message ?? '';
+        if (message.toLowerCase().includes('board_escalation_history')) {
+          setEscalationHistoryReady(false);
+          setMessage(`⚠️ ${ESCALATION_HISTORY_HELP}`);
+          setTimeout(() => setMessage(''), 10000);
+        } else {
+          throw new Error(historyResult.error.message);
+        }
+      } else {
+        setEscalationHistoryReady(true);
+        historyRows = (historyResult.data as EscalationHistoryEntry[] | null) ?? [];
       }
 
       const departmentRows = (departmentsResult.data as Department[]) ?? [];
@@ -638,6 +676,12 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         setMessage(`⚠️ ${ESCALATION_SCHEMA_HELP}`);
         setTimeout(() => setMessage(''), 10000);
       }
+      const historyMap: Record<string, EscalationHistoryEntry[]> = {};
+      historyRows.forEach(entry => {
+        const list = historyMap[entry.card_id] ?? [];
+        historyMap[entry.card_id] = [...list, entry];
+      });
+      setEscalationHistory(historyMap);
       setStageChartData(chartData);
       return true;
     } catch (error) {
@@ -836,6 +880,19 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     });
   };
 
+  const canEditEscalations = memberCanSee;
+
+  useEffect(() => {
+    supabase.auth
+      .getUser()
+      .then(result => {
+        setCurrentProfileId(result.data.user?.id ?? null);
+      })
+      .catch(() => {
+        setCurrentProfileId(null);
+      });
+  }, [supabase]);
+
   const openEscalationEditor = (entry: EscalationView) => {
     setEditingEscalation(entry);
     setEscalationDraft({
@@ -860,6 +917,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   };
 
   const saveEscalation = async () => {
+    if (!canEditEscalations) {
+      setMessage('❌ Keine Berechtigung zum Bearbeiten von Eskalationen.');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
     if (!editingEscalation || !escalationDraft) return;
     if (!escalationSchemaReady) {
       setMessage(`❌ Eskalationen können erst gespeichert werden, nachdem ${ESCALATION_SCHEMA_HELP}`);
@@ -907,6 +969,23 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             : entry,
         ),
       );
+      const escalationId = (data as EscalationRecord | null)?.id ?? currentEscalation.id ?? null;
+
+      if (escalationHistoryReady && currentProfileId && escalationId) {
+        const { error: historyError } = await supabase
+          .from('board_escalation_history')
+          .insert({
+            board_id: boardId,
+            card_id: currentEscalation.card_id,
+            escalation_id: escalationId,
+            changed_by: currentProfileId,
+            changes: payload,
+          });
+        if (historyError) {
+          console.error('⚠️ Fehler beim Schreiben der Eskalationshistorie', historyError);
+        }
+      }
+
       closeEscalationEditor();
       const refreshed = await loadBaseData({ skipLoading: true });
 
@@ -1267,7 +1346,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                               <Button
                                 variant="outlined"
                                 onClick={() => openEscalationEditor(entry)}
-                                disabled={!canEdit || !escalationSchemaReady}
+                                disabled={!canEditEscalations || !escalationSchemaReady}
                               >
                                 Bearbeiten
                               </Button>
@@ -1309,20 +1388,53 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                                   : 'Keine Verantwortung zugewiesen.'}
                               </Typography>
                             </Grid>
-                            <Grid item xs={12} md={4}>
-                              <Typography variant="caption" color="text.secondary">
-                                Zieltermin
-                              </Typography>
-                              <Typography variant="body2">
-                                {targetLabel}
-                              </Typography>
-                            </Grid>
+                          <Grid item xs={12} md={4}>
+                            <Typography variant="caption" color="text.secondary">
+                              Zieltermin
+                            </Typography>
+                            <Typography variant="body2">
+                              {targetLabel}
+                            </Typography>
                           </Grid>
-                        </Box>
-                      );
-                    })}
-                  </Stack>
-                )}
+                        </Grid>
+                        {(() => {
+                          const historyEntries = escalationHistory[entry.card_id] ?? [];
+                          if (!historyEntries.length) {
+                            return null;
+                          }
+                          const profileLookup = new Map(profiles.map(profile => [profile.id, profile]));
+                          return (
+                            <Box sx={{ mt: 1.5 }}>
+                              <Typography variant="caption" color="text.secondary">
+                                Historie
+                              </Typography>
+                              <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                                {historyEntries.slice(0, 5).map(history => {
+                                  const author = profileLookup.get(history.changed_by ?? '') ?? null;
+                                  const authorLabel = author
+                                    ? author.full_name || author.email || 'Unbekannt'
+                                    : 'Unbekannt';
+                                  const changedAt = new Date(history.changed_at);
+                                  return (
+                                    <Typography key={history.id} variant="body2">
+                                      {changedAt.toLocaleString('de-DE')} – {authorLabel}
+                                    </Typography>
+                                  );
+                                })}
+                                {historyEntries.length > 5 && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Weitere Einträge im Popup sichtbar.
+                                  </Typography>
+                                )}
+                              </Stack>
+                            </Box>
+                          );
+                        })()}
+                      </Box>
+                    );
+                  })}
+                </Stack>
+              )}
 
                 {category === 'LK' && <Divider sx={{ my: 2 }} />}
               </Box>
@@ -1354,7 +1466,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 fullWidth
                 multiline
                 minRows={3}
-                disabled={!canEdit}
+                disabled={!canEditEscalations}
               />
               <TextField
                 label="Maßnahme"
@@ -1363,9 +1475,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 fullWidth
                 multiline
                 minRows={3}
-                disabled={!canEdit}
+                disabled={!canEditEscalations}
               />
-              <FormControl fullWidth size="small" disabled={!canEdit}>
+              <FormControl fullWidth size="small" disabled={!canEditEscalations}>
                 <InputLabel>Abteilung</InputLabel>
                 <Select
                   value={escalationDraft.department_id ?? ''}
@@ -1387,7 +1499,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                   ))}
                 </Select>
               </FormControl>
-              <FormControl fullWidth size="small" disabled={!canEdit}>
+              <FormControl fullWidth size="small" disabled={!canEditEscalations}>
                 <InputLabel>Verantwortung</InputLabel>
                 <Select
                   value={escalationDraft.responsible_id ?? ''}
@@ -1414,7 +1526,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 value={escalationDraft.target_date ?? ''}
                 onChange={(event) => updateEscalationDraft({ target_date: event.target.value || null })}
                 fullWidth
-                disabled={!canEdit}
+                disabled={!canEditEscalations}
                 InputLabelProps={{ shrink: true }}
               />
               <Stack direction="row" spacing={2} alignItems="center">
@@ -1423,12 +1535,41 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                     <CompletionDial
                       steps={escalationDraft.completion_steps ?? 0}
                       onClick={cycleDraftCompletion}
-                      disabled={!canEdit}
+                      disabled={!canEditEscalations}
                     />
                   </Box>
                 </Tooltip>
                 <Typography variant="body2">{escalationDraft.completion_steps ?? 0} / 4 Schritte</Typography>
               </Stack>
+              {escalationHistoryReady && editingEscalation && (
+                (() => {
+                  const historyEntries = escalationHistory[editingEscalation.card_id] ?? [];
+                  if (!historyEntries.length) return null;
+                  const profileLookup = new Map(profiles.map(profile => [profile.id, profile]));
+                  return (
+                    <Box>
+                      <Divider sx={{ my: 1.5 }} />
+                      <Typography variant="subtitle2">Änderungshistorie</Typography>
+                      <List dense>
+                        {historyEntries.map(history => {
+                          const author = profileLookup.get(history.changed_by ?? '') ?? null;
+                          const authorLabel = author
+                            ? author.full_name || author.email || 'Unbekannt'
+                            : 'Unbekannt';
+                          const changedAt = new Date(history.changed_at);
+                          return (
+                            <ListItem key={history.id} sx={{ py: 0 }}>
+                              <Typography variant="body2">
+                                {changedAt.toLocaleString('de-DE')} – {authorLabel}
+                              </Typography>
+                            </ListItem>
+                          );
+                        })}
+                      </List>
+                    </Box>
+                  );
+                })()
+              )}
             </Stack>
           ) : (
             <Typography variant="body2">Keine Eskalation ausgewählt.</Typography>
@@ -1436,7 +1577,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         </DialogContent>
         <DialogActions>
           <Button onClick={closeEscalationEditor}>Abbrechen</Button>
-          <Button onClick={saveEscalation} variant="contained" disabled={!canEdit}>
+          <Button onClick={saveEscalation} variant="contained" disabled={!canEditEscalations}>
             Speichern
           </Button>
         </DialogActions>

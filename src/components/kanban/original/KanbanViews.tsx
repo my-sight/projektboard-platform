@@ -14,6 +14,7 @@ export interface KanbanColumnsViewProps {
   inferStage: (card: any) => string;
   archiveColumn: (columnName: string) => void;
   renderCard: (card: any, index: number) => ReactNode;
+  allowDrag: boolean;
 }
 
 export function KanbanColumnsView({
@@ -25,6 +26,7 @@ export function KanbanColumnsView({
   inferStage,
   archiveColumn,
   renderCard,
+  allowDrag,
 }: KanbanColumnsViewProps) {
   const filtered = rows.filter(
     (row) =>
@@ -37,8 +39,10 @@ export function KanbanColumnsView({
         )),
   );
 
+  const handleDragEnd = allowDrag ? onDragEnd : () => {};
+
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
+    <DragDropContext onDragEnd={handleDragEnd}>
       <Box
         sx={{
           display: 'flex',
@@ -110,6 +114,7 @@ export function KanbanColumnsView({
                     size="small"
                     title="Alle Karten archivieren"
                     onClick={() => archiveColumn(col.name)}
+                    disabled={!allowDrag}
                     sx={{
                       width: 22,
                       height: 22,
@@ -122,7 +127,7 @@ export function KanbanColumnsView({
                 )}
               </Box>
 
-              <Droppable droppableId={col.name}>
+              <Droppable droppableId={col.name} isDropDisabled={!allowDrag}>
                 {(provided, snapshot) => (
                   <Box
                     ref={provided.innerRef}
@@ -173,9 +178,10 @@ export interface KanbanSwimlaneViewProps {
   onDragEnd: (result: DropResult) => void;
   inferStage: (card: any) => string;
   renderCard: (card: any, index: number) => ReactNode;
+  allowDrag: boolean;
 }
 
-export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferStage, renderCard }: KanbanSwimlaneViewProps) {
+export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferStage, renderCard, allowDrag }: KanbanSwimlaneViewProps) {
   const filtered = rows.filter(
     (row) =>
       !row['Archived'] &&
@@ -196,8 +202,10 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
     ),
   );
 
+  const handleDragEnd = allowDrag ? onDragEnd : () => {};
+
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
+    <DragDropContext onDragEnd={handleDragEnd}>
       <Box
         sx={{
           display: 'grid',
@@ -281,7 +289,7 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
               );
 
               return (
-                <Droppable key={`${stage}-${resp}`} droppableId={`${stage}||${resp}`}>
+                <Droppable key={`${stage}-${resp}`} droppableId={`${stage}||${resp}`} isDropDisabled={!allowDrag}>
                   {(provided, snapshot) => (
                     <Box
                       ref={provided.innerRef}
@@ -319,9 +327,10 @@ export interface KanbanLaneViewProps {
   onDragEnd: (result: DropResult) => void;
   inferStage: (card: any) => string;
   renderCard: (card: any, index: number) => ReactNode;
+  allowDrag: boolean;
 }
 
-export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, inferStage, renderCard }: KanbanLaneViewProps) {
+export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, inferStage, renderCard, allowDrag }: KanbanLaneViewProps) {
   const filtered = rows.filter(
     (row) =>
       !row['Archived'] &&
@@ -336,8 +345,10 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
   const stages = cols.map((c) => c.name);
   const laneNames = lanes.length ? lanes : ['Allgemein'];
 
+  const handleDragEnd = allowDrag ? onDragEnd : () => {};
+
   return (
-    <DragDropContext onDragEnd={onDragEnd}>
+    <DragDropContext onDragEnd={handleDragEnd}>
       <Box
         sx={{
           display: 'grid',
@@ -415,7 +426,7 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
               );
 
               return (
-                <Droppable key={`${stage}-${laneName}`} droppableId={`${stage}||${laneName}`}>
+                <Droppable key={`${stage}-${laneName}`} droppableId={`${stage}||${laneName}`} isDropDisabled={!allowDrag}>
                   {(provided, snapshot) => (
                     <Box
                       ref={provided.innerRef}

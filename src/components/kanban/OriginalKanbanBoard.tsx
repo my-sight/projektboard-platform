@@ -110,6 +110,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
   const [cols, setCols] = useState(DEFAULT_COLS);
   const [lanes, setLanes] = useState<string[]>(['Projekt A', 'Projekt B', 'Projekt C']);
   const [users, setUsers] = useState<any[]>([]);
+  const [canModifyBoard, setCanModifyBoard] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archivedCards, setArchivedCards] = useState<any[]>([]);
   const [boardMeta, setBoardMeta] = useState<{
@@ -170,7 +171,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
   });
 
 // ✅ KORRIGIERTE BENUTZER-LADUNG - BASIEREND AUF DEINER PROFILES STRUKTUR
-const loadUsers = async () => {
+const loadUsers = async (): Promise<any[]> => {
   try {
     const profiles = await fetchClientProfiles();
 
@@ -188,17 +189,64 @@ const loadUsers = async () => {
           full_name: profile.full_name || '',
           department: profile.company ?? null,
           company: profile.company || '',
-          role: profile.role || 'user',
+          role: (profile.role || 'user') as string,
           isActive: profile.is_active,
         };
       });
 
     setUsers(normalized);
-    return true;
+    return normalized;
   } catch (error) {
     console.error('❌ Fehler beim Laden der Benutzer:', error);
     setUsers([]);
-    return false;
+    return [];
+  }
+};
+
+const resolvePermissions = async (loadedUsers: any[]) => {
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (error) {
+      console.error('❌ Fehler beim Abrufen des aktuellen Nutzers:', error);
+      setCanModifyBoard(false);
+      return;
+    }
+
+    const authUserId = data.user?.id ?? null;
+
+    if (!authUserId) {
+      setCanModifyBoard(false);
+      return;
+    }
+
+    const fallbackEmail = data.user?.email ?? '';
+    const currentUser = loadedUsers.find(user => user.id === authUserId);
+    const role = String(currentUser?.role ?? '').toLowerCase();
+    const email = currentUser?.email ?? fallbackEmail;
+    const elevated =
+      role === 'admin' ||
+      role === 'owner' ||
+      role === 'manager' ||
+      role === 'superuser' ||
+      isSuperuserEmail(email);
+
+    const { data: membershipData, error: membershipError } = await supabase
+      .from('board_members')
+      .select('id')
+      .eq('board_id', boardId)
+      .eq('profile_id', authUserId);
+
+    if (membershipError) {
+      console.error('⚠️ Fehler beim Prüfen der Board-Mitgliedschaft:', membershipError);
+      setCanModifyBoard(elevated);
+      return;
+    }
+
+    const isMember = (membershipData?.length ?? 0) > 0;
+    setCanModifyBoard(elevated || isMember);
+  } catch (permissionError) {
+    console.error('❌ Unerwarteter Fehler bei der Berechtigungsprüfung:', permissionError);
+    setCanModifyBoard(false);
   }
 };
 
@@ -241,8 +289,9 @@ useEffect(() => {
 
     // 1. ZUERST Benutzer laden (WICHTIG!)
     console.log('👥 Lade Benutzer...');
-    await loadUsers();
-    
+    const loadedUsers = await loadUsers();
+    await resolvePermissions(loadedUsers);
+
     // 2. Dann Einstellungen laden
     console.log('⚙️ Lade Einstellungen...');
     const settingsLoaded = await loadSettings();
@@ -264,6 +313,10 @@ useEffect(() => {
     initializeBoard();
   }
 }, [boardId]);
+
+useEffect(() => {
+  void resolvePermissions(users);
+}, [boardId, users]);
 
 // Auto-Update Checklisten Templates wenn Spalten sich ändern
 useEffect(() => {
@@ -464,6 +517,10 @@ const loadSettings = async () => {
 
 // EINFACHE LÖSUNG: DELETE + INSERT (funktioniert immer)
 const saveCards = async () => {
+  if (!canModifyBoard) {
+    console.warn('⚠️ Keine Berechtigung zum Speichern von Karten.');
+    return false;
+  }
   try {
     console.log('💾 Speichere Karten (DELETE + INSERT)...');
     console.log('🔥 DEBUG: rows.length =', rows.length);
@@ -1488,6 +1545,9 @@ const TRKPIPopup = ({ open, onClose, cards }: TRKPIPopupProps) => {
  // Drag & Drop Handler
 // KORRIGIERTE onDragEnd FUNKTION:
 const onDragEnd = (result: DropResult) => {
+  if (!canModifyBoard) {
+    return;
+  }
   const { destination, source, draggableId } = result;
   
   if (!destination) return;
@@ -1602,6 +1662,9 @@ const onDragEnd = (result: DropResult) => {
 
   // Toggle card collapse
   const toggleCollapse = (card: any) => {
+    if (!canModifyBoard) {
+      return;
+    }
     const wasCollapsed = String(card["Collapsed"] || "") === "1";
     card["Collapsed"] = wasCollapsed ? "" : "1";
     setRows([...rows]);
@@ -1609,6 +1672,9 @@ const onDragEnd = (result: DropResult) => {
 
   // Archive all cards in done columns
   const archiveColumn = (columnName: string) => {
+    if (!canModifyBoard) {
+      return;
+    }
     if (!window.confirm(`Alle Karten in "${columnName}" archivieren?`)) return;
     
     rows.forEach(r => {
@@ -1622,6 +1688,9 @@ const onDragEnd = (result: DropResult) => {
 
   // Add new status entry
   const addStatusEntry = (card: any) => {
+    if (!canModifyBoard) {
+      return;
+    }
     const now = new Date();
     const dateStr = now.toLocaleDateString('de-DE');
     const newEntry = {
@@ -1672,13 +1741,17 @@ const onDragEnd = (result: DropResult) => {
         inferStage={inferStage}
         idFor={idFor}
         users={users}
+        canModify={canModifyBoard}
       />
     ),
-    [density, idFor, inferStage, rows, saveCards, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users]
+    [canModifyBoard, density, idFor, inferStage, rows, saveCards, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users]
   );
 
 // ✅ KORRIGIERTE TR-NEU ÄNDERUNGS-HANDLER (ersetze die bisherige Funktion)
 const handleTRNeuChange = (card: any, newDate: string) => {
+  if (!canModifyBoard) {
+    return;
+  }
   console.log(`📅 TR-Neu Änderung für ${card.Nummer}:`, {
     alt: card["TR_Neu"],
     neu: newDate
@@ -1818,7 +1891,12 @@ return (
           >
             ⬜
           </Button>         
-          <Button variant="contained" size="small" onClick={() => setNewCardOpen(true)}>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={() => setNewCardOpen(true)}
+            disabled={!canModifyBoard}
+          >
             Neue Karte
           </Button>
         </Box>
@@ -1837,6 +1915,7 @@ return (
             inferStage={inferStage}
             archiveColumn={archiveColumn}
             renderCard={renderCard}
+            allowDrag={canModifyBoard}
           />
         )}
         {viewMode === 'swim' && (
@@ -1847,6 +1926,7 @@ return (
             onDragEnd={onDragEnd}
             inferStage={inferStage}
             renderCard={renderCard}
+            allowDrag={canModifyBoard}
           />
         )}
         {viewMode === 'lane' && (
@@ -1858,6 +1938,7 @@ return (
             onDragEnd={onDragEnd}
             inferStage={inferStage}
             renderCard={renderCard}
+            allowDrag={canModifyBoard}
           />
         )}
       </Box>
