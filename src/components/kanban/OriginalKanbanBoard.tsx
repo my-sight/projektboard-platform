@@ -178,6 +178,8 @@ const loadUsers = async () => {
       const normalized = profiles.map(profile => {
         const email = profile.email ?? '';
         const fallbackName = email ? email.split('@')[0] : 'Unbekannt';
+        const isActive = profile.is_active ?? true;
+
         return {
           id: profile.id,
           email,
@@ -186,7 +188,7 @@ const loadUsers = async () => {
           department: profile.company ?? null,
           company: profile.company || '',
           role: profile.role || 'user',
-          isActive: profile.is_active,
+          isActive,
         };
       });
 

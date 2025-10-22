@@ -56,6 +56,20 @@ interface Department {
   created_at?: string;
 }
 
+function normalizeUserProfile(profile: any): UserProfile {
+  return {
+    id: profile.id,
+    email: profile.email ?? '',
+    full_name: profile.full_name ?? '',
+    avatar_url: profile.avatar_url ?? undefined,
+    bio: profile.bio ?? undefined,
+    company: profile.company ?? null,
+    role: profile.role ?? 'user',
+    is_active: profile.is_active ?? true,
+    created_at: profile.created_at ?? '',
+  };
+}
+
 export default function UserManagement() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
 
@@ -124,9 +138,10 @@ export default function UserManagement() {
         setMessage(`❌ User-Fehler: ${usersError.message}`);
         setUsers([]);
       } else {
-        setUsers(usersData || []);
+        const normalizedUsers = ((usersData as any[]) ?? []).map(normalizeUserProfile);
+        setUsers(normalizedUsers);
         const mappedNames: Record<string, string> = {};
-        (usersData || []).forEach(profile => {
+        normalizedUsers.forEach(profile => {
           mappedNames[profile.id] = profile.full_name || '';
         });
         setEditableNames(mappedNames);
@@ -173,7 +188,17 @@ export default function UserManagement() {
       const { data } = await response.json();
 
       setUsers(prev =>
-        prev.map(profile => (profile.id === userId ? { ...profile, ...data } : profile)),
+        prev.map(profile => {
+          if (profile.id !== userId) {
+            return profile;
+          }
+
+          if (data) {
+            return normalizeUserProfile({ ...profile, ...data });
+          }
+
+          return normalizeUserProfile({ ...profile, ...payload });
+        }),
       );
 
       if ('full_name' in payload) {
@@ -238,15 +263,15 @@ export default function UserManagement() {
     setEditableNames(prev => ({ ...prev, [userId]: value }));
   };
 
-  const toggleUserActive = async (userId: string, currentState: boolean) => {
+  const toggleUserActive = async (userId: string, currentState: boolean | null | undefined) => {
     if (guardSuperuser(userId)) {
       return;
     }
 
     await mutateUser(
       userId,
-      { is_active: !currentState },
-      `Benutzer ${currentState ? 'deaktiviert' : 'reaktiviert'}!`,
+      { is_active: !(currentState ?? true) },
+      `Benutzer ${(currentState ?? true) ? 'deaktiviert' : 'reaktiviert'}!`,
     );
   };
 

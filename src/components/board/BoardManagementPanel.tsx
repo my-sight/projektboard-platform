@@ -466,11 +466,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const availableProfiles = useMemo(() => {
     const memberIds = new Set(members.map(member => member.profile_id));
-    return profiles.filter(
-      profile =>
-        (profile.is_active || isSuperuserEmail(profile.email)) &&
-        !memberIds.has(profile.id),
-    );
+    return profiles.filter(profile => {
+      const isActive = profile.is_active ?? true;
+      return (isActive || isSuperuserEmail(profile.email)) && !memberIds.has(profile.id);
+    });
   }, [members, profiles]);
 
   const filteredEscalations = useMemo(() => ({
@@ -822,7 +821,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     const name = departmentName(departmentId);
     return profiles.filter(profile => {
       const matchesDepartment = name ? profile.company === name : true;
-      const active = profile.is_active || isSuperuserEmail(profile.email);
+      const isActive = profile.is_active ?? true;
+      const active = isActive || isSuperuserEmail(profile.email);
       return matchesDepartment && active;
     });
   };
@@ -995,7 +995,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                   label={`${label}${detail}`}
                   onDelete={deletable ? () => removeMember(member.id) : undefined}
                   sx={{ mr: 1, mb: 1 }}
-                  color={member.profile?.is_active ? 'primary' : 'default'}
+                  color={(member.profile?.is_active ?? true) ? 'primary' : 'default'}
                 />
               );
             })}

@@ -8,8 +8,12 @@ export interface ClientProfile {
   created_at?: string | null;
 }
 
+interface RawClientProfile extends Omit<ClientProfile, 'is_active'> {
+  is_active: boolean | null;
+}
+
 interface ProfilesResponse {
-  data?: ClientProfile[];
+  data?: RawClientProfile[];
   error?: string;
 }
 
@@ -24,6 +28,11 @@ export async function fetchClientProfiles(): Promise<ClientProfile[]> {
   }
 
   const payload = (await response.json()) as ProfilesResponse;
-  return payload.data ?? [];
+  const rows = payload.data ?? [];
+
+  return rows.map(profile => ({
+    ...profile,
+    is_active: profile.is_active ?? true,
+  }));
 }
 
