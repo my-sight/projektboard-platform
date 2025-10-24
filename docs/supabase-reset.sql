@@ -376,6 +376,28 @@ create policy "Board owners manage board cards"
     )
   );
 
+create policy "Board members manage board cards"
+  on public.kanban_cards
+  for all
+  using (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.board_members bm
+      where bm.board_id = board_id
+        and bm.profile_id = auth.uid()
+    )
+  )
+  with check (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.board_members bm
+      where bm.board_id = board_id
+        and bm.profile_id = auth.uid()
+    )
+  );
+
 -- Board management helpers
 create policy "Authenticated users can read board members"
   on public.board_members

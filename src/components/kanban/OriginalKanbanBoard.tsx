@@ -47,6 +47,25 @@ const getErrorMessage = (error: unknown) => (error instanceof Error ? error.mess
 // import { AuthProvider } from '../../contexts/AuthContext';
 // import { LoginForm } from '../auth/LoginForm';
 
+const BOARD_MEMBER_POLICY_DOC = 'docs/board-members-card-policy.sql';
+
+const formatSupabaseActionError = (action: string, message?: string | null): string => {
+  if (!message) {
+    return `${action} fehlgeschlagen: Unbekannter Fehler.`;
+  }
+
+  const normalized = message.toLowerCase();
+  if (normalized.includes('row-level security')) {
+    return (
+      `${action} fehlgeschlagen: Supabase hat die Änderung wegen fehlender Berechtigungen blockiert. ` +
+      `Bitte stelle sicher, dass der Benutzer als Mitglied im Board eingetragen ist und ` +
+      `dass die Policy aus ${BOARD_MEMBER_POLICY_DOC} angewendet wurde.`
+    );
+  }
+
+  return `${action} fehlgeschlagen: ${message}`;
+};
+
 export interface OriginalKanbanBoardHandle {
   openSettings: () => void;
   openArchive: () => Promise<void>;
@@ -535,7 +554,7 @@ const saveCards = async () => {
     
     if (deleteError) {
       console.error('❌ Fehler beim Löschen:', deleteError);
-      alert(`Löschen fehlgeschlagen: ${deleteError.message}`);
+      alert(formatSupabaseActionError('Löschen', deleteError.message));
       return false;
     }
     
@@ -592,7 +611,7 @@ const saveCards = async () => {
 
     if (insertError) {
       console.error('❌ Fehler beim Einfügen:', insertError);
-      alert(`Einfügen fehlgeschlagen: ${insertError.message}`);
+      alert(formatSupabaseActionError('Einfügen', insertError.message));
       return false;
     }
 
