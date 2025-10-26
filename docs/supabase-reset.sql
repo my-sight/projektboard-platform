@@ -134,7 +134,7 @@ create table public.kanban_boards (
   id           uuid primary key default gen_random_uuid(),
   name         text not null,
   description  text,
-  settings     jsonb not null default '{}'::jsonb,
+  settings     jsonb not null default '{"boardType":"standard"}'::jsonb,
   visibility   text not null default 'public' check (visibility in ('public', 'private')),
   owner_id     uuid references auth.users(id) on delete set null,
   user_id      uuid references auth.users(id) on delete set null,
