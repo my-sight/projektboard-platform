@@ -555,84 +555,65 @@ const loadSettings = async () => {
 
 
 
-// EINFACHE LÖSUNG: DELETE + INSERT (funktioniert immer)
 const saveCards = async () => {
   if (!canModifyBoard) {
     console.warn('⚠️ Keine Berechtigung zum Speichern von Karten.');
     return false;
   }
+
   try {
-    console.log('💾 Speichere Karten (DELETE + INSERT)...');
+    console.log('💾 Speichere Karten über API...');
     console.log('🔥 DEBUG: rows.length =', rows.length);
     console.log('🔥 DEBUG: boardId =', boardId);
-    
-    // SCHRITT 1: Alle alten Karten für dieses Board löschen
-    console.log('🗑️ Lösche alte Karten...');
-    const { error: deleteError } = await supabase
-      .from('kanban_cards')
-      .delete()
-      .eq('board_id', boardId);
-    
-    if (deleteError) {
-      console.error('❌ Fehler beim Löschen:', deleteError);
-      alert(formatSupabaseActionError('Löschen', deleteError.message));
-      return false;
-    }
-    
-    console.log('✅ Alte Karten gelöscht');
-    
-    // Falls keine Karten vorhanden, fertig
-    if (rows.length === 0) {
-      console.log('ℹ️ Keine neuen Karten zu speichern');
-      return true;
-    }
-    
-    // SCHRITT 2: Neue Karten vorbereiten
+
     const cardsWithPositions: any[] = [];
     const stagePositions: Record<string, number> = {};
-    
+
     rows.forEach((card, globalIndex) => {
-      const stage = card["Board Stage"] || DEFAULT_COLS[0].name;
-      
+      const stage = card['Board Stage'] || DEFAULT_COLS[0].name;
+
       if (!stagePositions[stage]) {
         stagePositions[stage] = 0;
       }
-      
+
       const position = stagePositions[stage];
       stagePositions[stage]++;
-      
+
       card.position = position;
-      
+
       const cardToSave = {
         board_id: boardId,
         card_id: idFor(card),
         card_data: card,
-        stage: stage,
-        position: position,
-        project_number: card.Nummer || card["Nummer"] || null,
+        stage,
+        position,
+        project_number: card.Nummer || card['Nummer'] || null,
         project_name: card.Teil,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       };
-      
+
       console.log(`🔥 DEBUG: Karte ${globalIndex}:`, {
         nummer: card.Nummer,
-        stage: stage,
-        position: position
+        stage,
+        position,
       });
-      
+
       cardsWithPositions.push(cardToSave);
     });
 
-    console.log('💾 Füge neue Karten ein:', cardsWithPositions.length);
+    const response = await fetch(`/api/boards/${boardId}/cards`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ cards: cardsWithPositions }),
+    });
 
-    // SCHRITT 3: Neue Karten einfügen
-    const { error: insertError } = await supabase
-      .from('kanban_cards')
-      .insert(cardsWithPositions);
-
-    if (insertError) {
-      console.error('❌ Fehler beim Einfügen:', insertError);
-      alert(formatSupabaseActionError('Einfügen', insertError.message));
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      const message = payload?.error ?? `HTTP ${response.status}`;
+      console.error('❌ Fehler beim Speichern über API:', message);
+      alert(formatSupabaseActionError('Karten speichern', message));
       return false;
     }
 
@@ -640,7 +621,7 @@ const saveCards = async () => {
     return true;
   } catch (error) {
     console.error('❌ Unerwarteter Fehler:', error);
-    alert(`Unerwarteter Fehler: ${getErrorMessage(error)}`);
+    alert(formatSupabaseActionError('Karten speichern', getErrorMessage(error)));
     return false;
   }
 };
@@ -723,22 +704,28 @@ const deleteCardPermanently = async (card: any) => {
   }
   
   try {
-    // Entferne aus Supabase
-    const { error } = await supabase
-      .from('kanban_cards')
-      .delete()
-      .eq('board_id', boardId)
-      .eq('card_id', idFor(card));
-    
-    if (error) throw error;
-    
-    // Entferne aus lokaler Liste
+    const response = await fetch(
+      `/api/boards/${boardId}/cards?cardId=${encodeURIComponent(idFor(card))}`,
+      {
+        method: 'DELETE',
+      },
+    );
+
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string };
+      const message = payload?.error ?? `HTTP ${response.status}`;
+      console.error('❌ Fehler beim endgültigen Löschen:', message);
+      alert(formatSupabaseActionError('Karte löschen', message));
+      return;
+    }
+
     const updatedArchived = archivedCards.filter(c => idFor(c) !== idFor(card));
     updateArchivedState(updatedArchived);
-    
+
     console.log('🗑️ Karte endgültig gelöscht:', card.Nummer);
   } catch (error) {
     console.error('❌ Fehler beim endgültigen Löschen:', error);
+    alert(formatSupabaseActionError('Karte löschen', getErrorMessage(error)));
   }
 };
 

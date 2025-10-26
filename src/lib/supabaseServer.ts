@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import type { User } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -91,5 +92,22 @@ export async function resolveAdminSupabaseClient(): Promise<{ client: AnySupabas
     console.warn('Falling back to authenticated Supabase client – service role key missing.');
     const client = await createSessionClientFromCookies();
     return { client, isService: false };
+  }
+}
+
+export async function getServerSessionUser(): Promise<User | null> {
+  try {
+    const client = await createSessionClientFromCookies();
+    const { data, error } = await client.auth.getUser();
+
+    if (error) {
+      console.warn('Konnte aktuellen Supabase-User nicht laden:', error.message);
+      return null;
+    }
+
+    return data.user ?? null;
+  } catch (error) {
+    console.warn('Fehler beim Laden des aktuellen Supabase-Users:', error);
+    return null;
   }
 }
