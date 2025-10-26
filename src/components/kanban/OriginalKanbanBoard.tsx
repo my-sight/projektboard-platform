@@ -42,7 +42,20 @@ import { nullableDate, toBoolean } from '@/utils/booleans';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
 
-const getErrorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+  }
+
+  return String(error);
+};
 // import { useAuth } from '../../contexts/AuthContext';
 // import { AuthProvider } from '../../contexts/AuthContext';
 // import { LoginForm } from '../auth/LoginForm';
@@ -373,6 +386,11 @@ const [editTabValue, setEditTabValue] = useState(0);
 // 👇 HIER HINZUFÜGEN (nach Zeile 133):
 // Einstellungen in Supabase speichern - MIT DEBUGGING
 const saveSettings = async (options?: { skipMeta?: boolean }) => {
+  if (!canModifyBoard) {
+    console.warn('⚠️ Keine Berechtigung zum Speichern der Einstellungen.');
+    return false;
+  }
+
   try {
     console.log('🔄 Starte Speichern der Einstellungen...');
 
@@ -398,7 +416,8 @@ const saveSettings = async (options?: { skipMeta?: boolean }) => {
 
     if (error) {
       console.error('❌ Supabase Fehler:', error);
-      alert(`Fehler: ${getErrorMessage(error)}`);
+      const message = getErrorMessage(error);
+      alert(formatSupabaseActionError('Einstellungen speichern', message));
       return false;
     }
 
@@ -437,7 +456,8 @@ const saveSettings = async (options?: { skipMeta?: boolean }) => {
 
       if (boardError) {
         console.error('❌ Fehler beim Aktualisieren des Boards:', boardError);
-        alert(`Board-Update fehlgeschlagen: ${boardError.message}`);
+        const message = getErrorMessage(boardError);
+        alert(formatSupabaseActionError('Board-Details speichern', message));
         return false;
       }
 
@@ -484,7 +504,8 @@ const saveSettings = async (options?: { skipMeta?: boolean }) => {
     return true;
   } catch (error) {
     console.error('❌ Unerwarteter Fehler:', error);
-    alert(`Unerwarteter Fehler: ${getErrorMessage(error)}`);
+    const message = getErrorMessage(error);
+    alert(formatSupabaseActionError('Einstellungen speichern', message));
     return false;
   }
 };
