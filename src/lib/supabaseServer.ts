@@ -41,7 +41,12 @@ export function getServiceSupabaseClient(): AnySupabaseClient {
   });
 }
 
-async function createSessionClientFromCookies(): Promise<AnySupabaseClient> {
+interface SessionTokens {
+  accessToken?: string;
+  refreshToken?: string;
+}
+
+async function createSessionClientFromCookies(tokens: SessionTokens = {}): Promise<AnySupabaseClient> {
   const supabaseUrl = requireEnv('NEXT_PUBLIC_SUPABASE_URL');
   const anonKey = requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY');
   const client = createClient(supabaseUrl, anonKey, {
@@ -49,6 +54,21 @@ async function createSessionClientFromCookies(): Promise<AnySupabaseClient> {
       persistSession: false
     }
   });
+
+  const { accessToken, refreshToken } = tokens;
+
+  if (accessToken && refreshToken) {
+    const { error } = await client.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken
+    });
+
+    if (error) {
+      console.warn('Konnte Supabase-Session aus Header-Tokens nicht übernehmen:', error.message);
+    } else {
+      return client;
+    }
+  }
 
   try {
     const projectRef = getProjectRef(supabaseUrl);
@@ -85,19 +105,19 @@ async function createSessionClientFromCookies(): Promise<AnySupabaseClient> {
   return client;
 }
 
-export async function resolveAdminSupabaseClient(): Promise<{ client: AnySupabaseClient; isService: boolean }> {
+export async function resolveAdminSupabaseClient(tokens: SessionTokens = {}): Promise<{ client: AnySupabaseClient; isService: boolean }> {
   try {
     return { client: getServiceSupabaseClient(), isService: true };
   } catch (error) {
     console.warn('Falling back to authenticated Supabase client – service role key missing.');
-    const client = await createSessionClientFromCookies();
+    const client = await createSessionClientFromCookies(tokens);
     return { client, isService: false };
   }
 }
 
-export async function getServerSessionUser(): Promise<User | null> {
+export async function getServerSessionUser(tokens: SessionTokens = {}): Promise<User | null> {
   try {
-    const client = await createSessionClientFromCookies();
+    const client = await createSessionClientFromCookies(tokens);
     const { data, error } = await client.auth.getUser();
 
     if (error) {

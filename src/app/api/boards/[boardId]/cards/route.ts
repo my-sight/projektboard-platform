@@ -14,8 +14,19 @@ interface PersistedCard {
   updated_at?: string;
 }
 
-async function ensureBoardAccess(boardId: string) {
-  const user = await getServerSessionUser();
+interface SessionTokenHeaders {
+  accessToken?: string;
+  refreshToken?: string;
+}
+
+function readSessionTokens(request: NextRequest): SessionTokenHeaders {
+  const accessToken = request.headers.get('x-supabase-access-token') ?? undefined;
+  const refreshToken = request.headers.get('x-supabase-refresh-token') ?? undefined;
+  return { accessToken, refreshToken };
+}
+
+async function ensureBoardAccess(boardId: string, tokens: SessionTokenHeaders) {
+  const user = await getServerSessionUser(tokens);
 
   if (!user) {
     return {
@@ -24,7 +35,7 @@ async function ensureBoardAccess(boardId: string) {
   }
 
   const email = user.email ?? '';
-  const { client } = await resolveAdminSupabaseClient();
+  const { client } = await resolveAdminSupabaseClient(tokens);
 
   if (isSuperuserEmail(email)) {
     return { client, user } as const;
@@ -83,7 +94,8 @@ export async function POST(request: NextRequest, { params }: { params: { boardId
     return NextResponse.json({ error: 'Board-ID fehlt.' }, { status: 400 });
   }
 
-  const auth = await ensureBoardAccess(boardId);
+  const tokens = readSessionTokens(request);
+  const auth = await ensureBoardAccess(boardId, tokens);
   if ('response' in auth) {
     return auth.response;
   }
@@ -145,7 +157,8 @@ export async function DELETE(request: NextRequest, { params }: { params: { board
     return NextResponse.json({ error: 'cardId ist erforderlich.' }, { status: 400 });
   }
 
-  const auth = await ensureBoardAccess(boardId);
+  const tokens = readSessionTokens(request);
+  const auth = await ensureBoardAccess(boardId, tokens);
   if ('response' in auth) {
     return auth.response;
   }

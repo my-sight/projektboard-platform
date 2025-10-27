@@ -601,11 +601,31 @@ const saveCards = async () => {
       cardsWithPositions.push(cardToSave);
     });
 
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (supabase) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const accessToken = data.session?.access_token;
+        const refreshToken = data.session?.refresh_token;
+
+        if (accessToken) {
+          headers['x-supabase-access-token'] = accessToken;
+        }
+
+        if (refreshToken) {
+          headers['x-supabase-refresh-token'] = refreshToken;
+        }
+      } catch (sessionError) {
+        console.warn('⚠️ Supabase-Session konnte nicht geladen werden:', sessionError);
+      }
+    }
+
     const response = await fetch(`/api/boards/${boardId}/cards`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({ cards: cardsWithPositions }),
     });
 
@@ -704,10 +724,31 @@ const deleteCardPermanently = async (card: any) => {
   }
   
   try {
+    const headers: Record<string, string> = {};
+
+    if (supabase) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const accessToken = data.session?.access_token;
+        const refreshToken = data.session?.refresh_token;
+
+        if (accessToken) {
+          headers['x-supabase-access-token'] = accessToken;
+        }
+
+        if (refreshToken) {
+          headers['x-supabase-refresh-token'] = refreshToken;
+        }
+      } catch (sessionError) {
+        console.warn('⚠️ Supabase-Session konnte nicht geladen werden:', sessionError);
+      }
+    }
+
     const response = await fetch(
       `/api/boards/${boardId}/cards?cardId=${encodeURIComponent(idFor(card))}`,
       {
         method: 'DELETE',
+        headers,
       },
     );
 

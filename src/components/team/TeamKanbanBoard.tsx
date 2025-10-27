@@ -200,22 +200,42 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const [editingCard, setEditingCard] = useState<TeamBoardCard | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const persistAllCards = useCallback(
-    async (entries: TeamBoardCard[]) => {
-      const response = await fetch(`/api/boards/${boardId}/cards`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ cards: buildPersistPayload(boardId, entries) }),
-      });
+const persistAllCards = useCallback(
+  async (entries: TeamBoardCard[]) => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    if (supabase) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const accessToken = data.session?.access_token;
+        const refreshToken = data.session?.refresh_token;
+
+        if (accessToken) {
+          headers['x-supabase-access-token'] = accessToken;
+        }
+
+        if (refreshToken) {
+          headers['x-supabase-refresh-token'] = refreshToken;
+        }
+      } catch (error) {
+        console.warn('⚠️ Konnte Supabase-Session für Teamboard-Speicherung nicht laden:', error);
+      }
+    }
+
+    const response = await fetch(`/api/boards/${boardId}/cards`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ cards: buildPersistPayload(boardId, entries) }),
+    });
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
         throw new Error(payload?.error ?? `HTTP ${response.status}`);
       }
     },
-    [boardId],
+    [boardId, supabase],
   );
 
   useEffect(() => {
@@ -633,15 +653,20 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                 height: '100%',
               }}
             >
-              <Tooltip title={card.description} placement="top-start" arrow disableInteractive>
+              <Tooltip
+                title={card.description}
+                placement="top-start"
+                arrow
+                disableInteractive
+                enterDelay={1000}
+              >
                 <Typography
                   variant="subtitle2"
                   sx={{
                     fontWeight: 600,
-                    display: '-webkit-box',
+                    whiteSpace: 'nowrap',
                     overflow: 'hidden',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
+                    textOverflow: 'ellipsis',
                     textTransform: 'none',
                   }}
                 >
