@@ -7,6 +7,7 @@ import {
   Card,
   CardContent,
   Checkbox,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -79,6 +80,7 @@ const statusLabels: Record<TeamBoardStatus, string> = {
 };
 
 const CARD_HEIGHT = 92;
+const CARD_WIDTH = 260;
 
 const defaultDraft: TaskDraft = {
   description: '',
@@ -199,36 +201,40 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const [draft, setDraft] = useState<TaskDraft>(defaultDraft);
   const [editingCard, setEditingCard] = useState<TeamBoardCard | null>(null);
   const [saving, setSaving] = useState(false);
+  const [flowSaving, setFlowSaving] = useState(false);
+  const [boardSettings, setBoardSettings] = useState<Record<string, any>>({});
+  const [completedCount, setCompletedCount] = useState(0);
 
-const persistAllCards = useCallback(
-  async (entries: TeamBoardCard[]) => {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
+  const persistAllCards = useCallback(
+    async (entries: TeamBoardCard[]) => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
 
-    if (supabase) {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const accessToken = data.session?.access_token;
-        const refreshToken = data.session?.refresh_token;
+      if (supabase) {
+        try {
+          const { data } = await supabase.auth.getSession();
+          const accessToken = data.session?.access_token;
+          const refreshToken = data.session?.refresh_token;
 
-        if (accessToken) {
-          headers['x-supabase-access-token'] = accessToken;
+          if (accessToken) {
+            headers['x-supabase-access-token'] = accessToken;
+          }
+
+          if (refreshToken) {
+            headers['x-supabase-refresh-token'] = refreshToken;
+          }
+        } catch (error) {
+          console.warn('⚠️ Konnte Supabase-Session für Teamboard-Speicherung nicht laden:', error);
         }
-
-        if (refreshToken) {
-          headers['x-supabase-refresh-token'] = refreshToken;
-        }
-      } catch (error) {
-        console.warn('⚠️ Konnte Supabase-Session für Teamboard-Speicherung nicht laden:', error);
       }
-    }
 
-    const response = await fetch(`/api/boards/${boardId}/cards`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ cards: buildPersistPayload(boardId, entries) }),
-    });
+      const response = await fetch(`/api/boards/${boardId}/cards`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ cards: buildPersistPayload(boardId, entries) }),
+        credentials: 'include',
+      });
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
@@ -236,6 +242,62 @@ const persistAllCards = useCallback(
       }
     },
     [boardId, supabase],
+  );
+
+  const loadBoardSettings = useCallback(async () => {
+    if (!supabase) return;
+
+    const { data, error } = await supabase
+      .from('kanban_board_settings')
+      .select('settings')
+      .eq('board_id', boardId)
+      .is('user_id', null)
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+
+    const settings = (data?.settings as Record<string, any> | null) ?? {};
+    setBoardSettings(settings);
+
+    const rawCount = Number(
+      settings?.teamBoard && typeof settings.teamBoard.completedCount === 'number'
+        ? settings.teamBoard.completedCount
+        : 0,
+    );
+
+    setCompletedCount(Number.isFinite(rawCount) ? rawCount : 0);
+  }, [boardId, supabase]);
+
+  const persistCompletedCount = useCallback(
+    async (nextCount: number) => {
+      if (!supabase) return;
+
+      const nextSettings = {
+        ...boardSettings,
+        teamBoard: {
+          ...(boardSettings.teamBoard as Record<string, unknown> | undefined),
+          completedCount: nextCount,
+        },
+      };
+
+      const { error } = await supabase
+        .from('kanban_board_settings')
+        .upsert({
+          board_id: boardId,
+          user_id: null,
+          settings: nextSettings,
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      setBoardSettings(nextSettings);
+      setCompletedCount(nextCount);
+    },
+    [boardId, boardSettings, supabase],
   );
 
   useEffect(() => {
@@ -252,6 +314,7 @@ const persistAllCards = useCallback(
         const loadedProfiles = await fetchClientProfiles();
         if (!active) return;
 
+        await loadBoardSettings();
         await loadMembers(loadedProfiles);
         await loadCards();
         await evaluatePermissions(loadedProfiles);
@@ -272,7 +335,7 @@ const persistAllCards = useCallback(
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boardId, supabase]);
+  }, [boardId, supabase, loadBoardSettings]);
 
   const loadMembers = useCallback(
     async (availableProfiles: ClientProfile[]) => {
@@ -593,6 +656,39 @@ const persistAllCards = useCallback(
     });
   }, [cards, members]);
 
+  const doneCardsCount = useMemo(
+    () => cards.filter((card) => card.status === 'done').length,
+    [cards],
+  );
+
+  const handleCompleteFlow = useCallback(async () => {
+    if (!canModify || flowSaving) {
+      return;
+    }
+
+    const finishedCards = cards.filter((card) => card.status === 'done');
+
+    if (finishedCards.length === 0) {
+      return;
+    }
+
+    setFlowSaving(true);
+    setError(null);
+
+    try {
+      const remainingCards = cards.filter((card) => card.status !== 'done');
+      await persistAllCards(remainingCards);
+      await persistCompletedCount(completedCount + finishedCards.length);
+      setCards(remainingCards);
+    } catch (cause) {
+      console.error('❌ Fehler beim Abschließen des Flows', cause);
+      setError('Flow konnte nicht abgeschlossen werden.');
+      await loadCards();
+    } finally {
+      setFlowSaving(false);
+    }
+  }, [canModify, cards, completedCount, flowSaving, loadCards, persistAllCards, persistCompletedCount]);
+
   const renderCard = (card: TeamBoardCard, index: number) => {
     const dueDateLabel = card.dueDate ? new Date(card.dueDate).toLocaleDateString('de-DE') : null;
     const overdue = card.dueDate ? new Date(card.dueDate) < new Date(new Date().toDateString()) : false;
@@ -604,6 +700,9 @@ const persistAllCards = useCallback(
             {...provided.draggableProps}
             {...provided.dragHandleProps}
             sx={{
+              width: '100%',
+              maxWidth: CARD_WIDTH,
+              minWidth: { xs: '100%', sm: CARD_WIDTH },
               mb: 1.5,
               borderRadius: 2.5,
               boxShadow: snapshot.isDragging
@@ -754,6 +853,9 @@ const persistAllCards = useCallback(
                         ref={provided.innerRef}
                         {...provided.droppableProps}
                         sx={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'stretch',
                           minHeight: 220,
                           border: '1px solid',
                           borderColor: 'rgba(148, 163, 184, 0.22)',
@@ -819,7 +921,28 @@ const persistAllCards = useCallback(
                             {statusLabels.flow}
                           </Box>
                           <Box component="th" align="center" width="25%">
-                            {statusLabels.done}
+                            <Stack spacing={1} alignItems="center">
+                              <Box component="span">{statusLabels.done}</Box>
+                              <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
+                                <Chip
+                                  size="small"
+                                  color="primary"
+                                  variant="outlined"
+                                  label={`${completedCount} gesamt`}
+                                />
+                                {canModify && (
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    onClick={handleCompleteFlow}
+                                    disabled={flowSaving || doneCardsCount === 0}
+                                    sx={{ textTransform: 'none' }}
+                                  >
+                                    Flow abschließen
+                                  </Button>
+                                )}
+                              </Stack>
+                            </Stack>
                           </Box>
                         </Box>
                       </Box>
@@ -867,10 +990,13 @@ const persistAllCards = useCallback(
                                   <Box component="td" key={droppableId} width="25%">
                                     <Droppable droppableId={droppableId}>
                                       {(providedDroppable) => (
-                                        <Box
+                                      <Box
                                           ref={providedDroppable.innerRef}
                                           {...providedDroppable.droppableProps}
                                           sx={{
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'stretch',
                                             minHeight: 160,
                                             border: '1px solid',
                                             borderColor: 'rgba(148, 163, 184, 0.22)',
