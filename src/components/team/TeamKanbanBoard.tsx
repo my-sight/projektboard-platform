@@ -24,6 +24,7 @@ import {
   Typography,
 } from '@mui/material';
 import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { alpha } from '@mui/material/styles';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
 
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
@@ -76,6 +77,8 @@ const statusLabels: Record<TeamBoardStatus, string> = {
   flow: 'Flow',
   done: 'Fertig',
 };
+
+const CARD_HEIGHT = 92;
 
 const defaultDraft: TaskDraft = {
   description: '',
@@ -582,10 +585,28 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
             {...provided.dragHandleProps}
             sx={{
               mb: 1.5,
-              borderRadius: 2,
-              boxShadow: snapshot.isDragging ? 6 : 1,
+              borderRadius: 2.5,
+              boxShadow: snapshot.isDragging
+                ? '0 18px 30px rgba(15, 23, 42, 0.22)'
+                : '0 4px 14px rgba(15, 23, 42, 0.08)',
               position: 'relative',
               cursor: canModify ? 'grab' : 'default',
+              transition: 'transform 0.14s ease, box-shadow 0.14s ease',
+              border: '1px solid',
+              borderColor: card.important ? 'error.light' : 'rgba(148, 163, 184, 0.35)',
+              height: CARD_HEIGHT,
+              minHeight: CARD_HEIGHT,
+              maxHeight: CARD_HEIGHT,
+              display: 'flex',
+              flexDirection: 'column',
+              background: (theme) =>
+                snapshot.isDragging
+                  ? theme.palette.background.paper
+                  : 'linear-gradient(165deg, rgba(255,255,255,0.98) 0%, rgba(244,247,255,0.92) 100%)',
+              '&:hover': {
+                transform: snapshot.isDragging ? 'scale(1.02)' : 'translateY(-2px)',
+                boxShadow: '0 10px 22px rgba(15, 23, 42, 0.16)',
+              },
             }}
             onClick={() => openEditDialog(card)}
           >
@@ -602,21 +623,42 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                 }}
               />
             )}
-            <CardContent sx={{ pr: 3 }}>
-              <Tooltip title={card.description} placement="top-start">
-                <Typography variant="subtitle2" noWrap>
+            <CardContent
+              sx={{
+                pr: 3,
+                py: 1.5,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 0.75,
+                height: '100%',
+              }}
+            >
+              <Tooltip title={card.description} placement="top-start" arrow disableInteractive>
+                <Typography
+                  variant="subtitle2"
+                  sx={{
+                    fontWeight: 600,
+                    display: '-webkit-box',
+                    overflow: 'hidden',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    textTransform: 'none',
+                  }}
+                >
                   {card.description || 'Ohne Beschreibung'}
                 </Typography>
               </Tooltip>
-              {dueDateLabel && (
-                <Typography
-                  variant="caption"
-                  color={overdue ? 'error' : 'text.secondary'}
-                  sx={{ display: 'block', mt: 0.5 }}
-                >
-                  Fällig: {dueDateLabel}
-                </Typography>
-              )}
+              <Box sx={{ mt: 'auto' }}>
+                {dueDateLabel && (
+                  <Typography
+                    variant="caption"
+                    color={overdue ? 'error.main' : 'text.secondary'}
+                    sx={{ fontWeight: overdue ? 600 : 500 }}
+                  >
+                    Fällig: {dueDateLabel}
+                  </Typography>
+                )}
+              </Box>
             </CardContent>
           </Card>
         )}
@@ -641,7 +683,16 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box
+      sx={{
+        p: { xs: 2, md: 3 },
+        background: 'linear-gradient(180deg, rgba(240, 244, 255, 0.8) 0%, rgba(255, 255, 255, 0.95) 45%)',
+        minHeight: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 3,
+      }}
+    >
       {error && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
@@ -653,8 +704,16 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       <DragDropContext onDragEnd={handleDragEnd}>
         <Grid container spacing={3} alignItems="flex-start">
           <Grid item xs={12} md={3}>
-            <Card sx={{ height: '100%' }}>
-              <CardContent>
+            <Card
+              sx={{
+                height: '100%',
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'rgba(148, 163, 184, 0.28)',
+                boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
+              }}
+            >
+              <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Stack spacing={2}>
                   <Stack direction="row" justifyContent="space-between" alignItems="center">
                     <Typography variant="h6">Aufgabenspeicher</Typography>
@@ -670,12 +729,16 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                         ref={provided.innerRef}
                         {...provided.droppableProps}
                         sx={{
-                          minHeight: 200,
-                          border: '1px dashed',
-                          borderColor: 'divider',
+                          minHeight: 220,
+                          border: '1px solid',
+                          borderColor: 'rgba(148, 163, 184, 0.22)',
                           borderRadius: 2,
                           p: 1.5,
-                          backgroundColor: '#f9fafb',
+                          backgroundColor: (theme) => alpha(theme.palette.primary.light, 0.08),
+                          transition: 'background-color 0.12s ease',
+                          '&:hover': {
+                            backgroundColor: (theme) => alpha(theme.palette.primary.light, 0.16),
+                          },
                         }}
                       >
                         {backlogCards.length === 0 && (
@@ -694,14 +757,35 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           </Grid>
 
           <Grid item xs={12} md={9}>
-            <Card>
-              <CardContent>
+            <Card
+              sx={{
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'rgba(148, 163, 184, 0.28)',
+                boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
+              }}
+            >
+              <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <Stack spacing={2}>
                   <Typography variant="h6">Team-Flow</Typography>
                   <Box sx={{ overflowX: 'auto' }}>
                     <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
                       <Box component="thead">
-                        <Box component="tr" sx={{ '& th': { borderBottom: '1px solid', borderColor: 'divider', py: 1, px: 1.5 } }}>
+                        <Box
+                          component="tr"
+                          sx={{
+                            '& th': {
+                              borderBottom: '1px solid',
+                              borderColor: 'rgba(148, 163, 184, 0.3)',
+                              py: 1,
+                              px: 1.5,
+                              textTransform: 'uppercase',
+                              fontSize: '0.75rem',
+                              letterSpacing: '0.06em',
+                              color: 'text.secondary',
+                            },
+                          }}
+                        >
                           <Box component="th" align="left">Mitglied</Box>
                           <Box component="th" align="center" width="25%">
                             {statusLabels.flow1}
@@ -728,11 +812,22 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                             <Box
                               component="tr"
                               key={member.id}
-                              sx={{ '& td': { borderBottom: '1px solid', borderColor: 'divider', px: 1.5, py: 1.5, verticalAlign: 'top' } }}
+                              sx={{
+                                '& td': {
+                                  borderBottom: '1px solid',
+                                  borderColor: 'rgba(148, 163, 184, 0.2)',
+                                  px: 1.5,
+                                  py: 1.5,
+                                  verticalAlign: 'top',
+                                  backgroundColor: 'rgba(255,255,255,0.9)',
+                                },
+                              }}
                             >
                               <Box component="td" width="25%">
                                 <Stack spacing={0.5}>
-                                  <Typography variant="subtitle2">{label}</Typography>
+                                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                    {label}
+                                  </Typography>
                                   {member.profile?.company && (
                                     <Typography variant="caption" color="text.secondary">
                                       {member.profile.company}
@@ -752,11 +847,15 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                                           {...providedDroppable.droppableProps}
                                           sx={{
                                             minHeight: 160,
-                                            border: '1px dashed',
-                                            borderColor: 'divider',
+                                            border: '1px solid',
+                                            borderColor: 'rgba(148, 163, 184, 0.22)',
                                             borderRadius: 2,
                                             p: 1.5,
-                                            backgroundColor: '#fdfdfd',
+                                            backgroundColor: (theme) => alpha(theme.palette.primary.light, 0.06),
+                                            transition: 'background-color 0.12s ease',
+                                            '&:hover': {
+                                              backgroundColor: (theme) => alpha(theme.palette.primary.light, 0.16),
+                                            },
                                           }}
                                         >
                                           {rows.length === 0 && (
