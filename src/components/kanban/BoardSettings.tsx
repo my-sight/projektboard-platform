@@ -199,10 +199,10 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
                   Zuletzt geändert: {new Date(board.updated_at).toLocaleString('de-DE')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Spalten: {board.board_columns?.length || 0}
+                  Spalten: {(board.columns?.length ?? 0)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Karten: {board.board_columns?.reduce((total, col) => total + (col.cards?.length || 0), 0) || 0}
+                  Karten: {(board.columns ?? []).reduce((total, col) => total + (col.cards?.length || 0), 0)}
                 </Typography>
               </Box>
             </Box>
@@ -289,7 +289,7 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
               </Box>
 
               <List>
-                {board.board_columns?.map((column, index) => (
+                {(board.columns ?? []).map((column, index) => (
                   <ListItem key={column.id} divider>
                     <DragIcon sx={{ mr: 1, color: 'text.secondary' }} />
                     <Box
