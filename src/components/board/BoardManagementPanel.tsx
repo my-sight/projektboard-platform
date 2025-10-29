@@ -437,6 +437,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
 
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [topicDrafts, setTopicDrafts] = useState<Record<string, string>>({});
   const [escalations, setEscalations] = useState<EscalationView[]>([]);
   const [escalationSchemaReady, setEscalationSchemaReady] = useState(true);
   const [escalationDialogOpen, setEscalationDialogOpen] = useState(false);
@@ -670,6 +671,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       setDepartments(departmentRows);
       setMembers(memberRows);
       setTopics(topicRows);
+      const topicDraftValues: Record<string, string> = {};
+      topicRows.forEach(topic => {
+        topicDraftValues[topic.id] = topic.title ?? '';
+      });
+      setTopicDrafts(topicDraftValues);
       setEscalations(escalationViews);
       setEscalationSchemaReady(!escalationSchemaMissing);
       if (escalationSchemaMissing) {
@@ -823,7 +829,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       if (error) throw new Error(error.message);
 
       if (data) {
-        setTopics(prev => [...prev, data as Topic]);
+        const topic = data as Topic;
+        setTopics(prev => [...prev, topic]);
+        setTopicDrafts(prev => ({ ...prev, [topic.id]: topic.title ?? '' }));
       }
     } catch (error) {
       handleError(error, 'Fehler beim Hinzufügen eines Top-Themas');
@@ -832,14 +840,21 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const updateTopic = async (topicId: string, title: string) => {
     try {
+      const trimmed = title.trim();
+      const current = topics.find(topic => topic.id === topicId);
+      if (current && current.title === trimmed) {
+        setTopicDrafts(prev => ({ ...prev, [topicId]: trimmed }));
+        return;
+      }
       const { error } = await supabase
         .from('board_top_topics')
-        .update({ title })
+        .update({ title: trimmed })
         .eq('id', topicId);
 
       if (error) throw new Error(error.message);
 
-      setTopics(prev => prev.map(topic => (topic.id === topicId ? { ...topic, title } : topic)));
+      setTopics(prev => prev.map(topic => (topic.id === topicId ? { ...topic, title: trimmed } : topic)));
+      setTopicDrafts(prev => ({ ...prev, [topicId]: trimmed }));
     } catch (error) {
       handleError(error, 'Fehler beim Aktualisieren des Top-Themas');
     }
@@ -855,6 +870,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       if (error) throw new Error(error.message);
 
       setTopics(prev => prev.filter(topic => topic.id !== topicId));
+      setTopicDrafts(prev => {
+        const next = { ...prev };
+        delete next[topicId];
+        return next;
+      });
     } catch (error) {
       handleError(error, 'Fehler beim Löschen des Top-Themas');
     }
@@ -1236,6 +1256,66 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 </TableBody>
               </Table>
             </Box>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            justifyContent="space-between"
+            alignItems={{ xs: 'flex-start', md: 'center' }}
+            spacing={2}
+          >
+            <Box>
+              <Typography variant="h6">⭐ Top-Themen</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Halte die wichtigsten Themen fest (maximal fünf Einträge).
+              </Typography>
+            </Box>
+            {canEdit && (
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={addTopic}
+                disabled={topics.length >= 5}
+              >
+                Neues Thema
+              </Button>
+            )}
+          </Stack>
+
+          <Stack spacing={2} sx={{ mt: 3 }}>
+            {topics.length === 0 && (
+              <Typography variant="body2" color="text.secondary">
+                Noch keine Top-Themen erfasst.
+              </Typography>
+            )}
+            {topics.map(topic => (
+              <Stack
+                key={topic.id}
+                direction={{ xs: 'column', md: 'row' }}
+                spacing={1}
+                alignItems={{ xs: 'stretch', md: 'center' }}
+              >
+                <TextField
+                  label="Thema"
+                  value={topicDrafts[topic.id] ?? ''}
+                  onChange={event =>
+                    setTopicDrafts(prev => ({ ...prev, [topic.id]: event.target.value }))
+                  }
+                  onBlur={() => updateTopic(topic.id, topicDrafts[topic.id] ?? '')}
+                  fullWidth
+                  disabled={!canEdit}
+                />
+                {canEdit && (
+                  <Button color="error" onClick={() => deleteTopic(topic.id)} startIcon={<DeleteIcon />}>
+                    Löschen
+                  </Button>
+                )}
+              </Stack>
+            ))}
           </Stack>
         </CardContent>
       </Card>

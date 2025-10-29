@@ -12,13 +12,9 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
   FormControlLabel,
   Grid,
   IconButton,
-  InputLabel,
-  MenuItem,
-  Select,
   Stack,
   TextField,
   Tooltip,
@@ -202,6 +198,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const [draft, setDraft] = useState<TaskDraft>(defaultDraft);
   const [editingCard, setEditingCard] = useState<TeamBoardCard | null>(null);
   const [saving, setSaving] = useState(false);
+  const [dueDateError, setDueDateError] = useState(false);
   const [flowSaving, setFlowSaving] = useState(false);
   const [boardSettings, setBoardSettings] = useState<Record<string, any>>({});
   const [completedCount, setCompletedCount] = useState(0);
@@ -444,6 +441,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
     if (!canModify) return;
     setEditingCard(null);
     setDraft(defaultDraft);
+    setDueDateError(false);
+    setError(null);
     setDialogOpen(true);
   };
 
@@ -457,6 +456,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       assigneeId: card.assigneeId,
       status: card.status,
     });
+    setDueDateError(false);
+    setError(null);
     setDialogOpen(true);
   };
 
@@ -465,10 +466,18 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
     setDialogOpen(false);
     setEditingCard(null);
     setDraft(defaultDraft);
+    setDueDateError(false);
   };
 
   const handleDraftChange = <K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) => {
-    setDraft((prev) => ({ ...prev, [key]: value }));
+    setDraft(prev => ({ ...prev, [key]: value }));
+    if (key === 'dueDate') {
+      const missing = !value;
+      setDueDateError(missing);
+      if (!missing) {
+        setError(null);
+      }
+    }
   };
 
   const columnsMap = useMemo(() => {
@@ -535,6 +544,12 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       return;
     }
 
+    if (!draft.dueDate) {
+      setDueDateError(true);
+      setError('Bitte einen Zieltermin festlegen.');
+      return;
+    }
+
     if (draft.status !== 'backlog' && !draft.assigneeId) {
       setError('Bitte ein Teammitglied auswählen, um den Status zu setzen.');
       return;
@@ -558,7 +573,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
         const updatedCard: TeamBoardCard = {
           ...editingCard,
           description: draft.description.trim(),
-          dueDate: draft.dueDate || null,
+          dueDate: draft.dueDate,
           important: draft.important,
           assigneeId: draft.assigneeId,
           status: draft.status,
@@ -579,7 +594,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           rowId: cardId,
           cardId,
           description: draft.description.trim(),
-          dueDate: draft.dueDate || null,
+          dueDate: draft.dueDate,
           important: draft.important,
           assigneeId: draft.assigneeId,
           status: draft.status,
@@ -1055,11 +1070,15 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
               minRows={2}
             />
             <TextField
-              label="Fälligkeitsdatum"
+              label="Zieltermin"
               type="date"
               InputLabelProps={{ shrink: true }}
               value={draft.dueDate}
               onChange={(event) => handleDraftChange('dueDate', event.target.value)}
+              onBlur={() => setDueDateError(!draft.dueDate)}
+              required
+              error={dueDateError && !draft.dueDate}
+              helperText={dueDateError && !draft.dueDate ? 'Bitte einen Zieltermin auswählen.' : undefined}
             />
             <FormControlLabel
               control={
@@ -1070,55 +1089,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
               }
               label="Wichtige Aufgabe markieren"
             />
-            <FormControl fullWidth>
-              <InputLabel>Verantwortlich</InputLabel>
-              <Select
-                label="Verantwortlich"
-                value={draft.assigneeId ?? ''}
-                onChange={(event) => {
-                  const value = event.target.value ? String(event.target.value) : null;
-                  handleDraftChange('assigneeId', value);
-                  if (!value && draft.status !== 'backlog') {
-                    handleDraftChange('status', 'backlog');
-                  }
-                }}
-              >
-                <MenuItem value="">
-                  <em>Keinem Mitglied zugeordnet</em>
-                </MenuItem>
-                {members.map((member) => {
-                  const profile = member.profile;
-                  if (!profile) {
-                    return null;
-                  }
-                  return (
-                    <MenuItem key={member.profile_id} value={member.profile_id}>
-                      {profile.full_name || profile.email}
-                      {profile.company ? ` • ${profile.company}` : ''}
-                    </MenuItem>
-                  );
-                })}
-              </Select>
-            </FormControl>
-            <FormControl fullWidth>
-              <InputLabel>Status</InputLabel>
-              <Select
-                label="Status"
-                value={draft.status}
-                onChange={(event) => handleDraftChange('status', event.target.value as TeamBoardStatus)}
-              >
-                <MenuItem value="backlog">Aufgabenspeicher</MenuItem>
-                <MenuItem value="flow1" disabled={!draft.assigneeId}>
-                  Flow-1
-                </MenuItem>
-                <MenuItem value="flow" disabled={!draft.assigneeId}>
-                  Flow
-                </MenuItem>
-                <MenuItem value="done" disabled={!draft.assigneeId}>
-                  Fertig
-                </MenuItem>
-              </Select>
-            </FormControl>
           </Stack>
         </DialogContent>
         <DialogActions>
