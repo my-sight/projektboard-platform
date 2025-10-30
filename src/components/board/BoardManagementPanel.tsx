@@ -814,7 +814,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   };
 
   const addTopic = async () => {
-    if (topics.length >= 5) return;
+    if (topics.length >= 5) {
+      setMessage('❌ Es können maximal 5 Top-Themen angelegt werden.');
+      setTimeout(() => setMessage(''), 4000);
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from('board_top_topics')
