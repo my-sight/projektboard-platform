@@ -144,6 +144,7 @@ create table public.kanban_boards (
 );
 
 create index kanban_boards_owner_idx on public.kanban_boards (owner_id);
+create index kanban_boards_board_admin_idx on public.kanban_boards (board_admin_id);
 create index kanban_boards_visibility_idx on public.kanban_boards (visibility);
 
 create trigger set_kanban_boards_updated_at
@@ -325,7 +326,7 @@ create policy "Authenticated users can read board settings"
     )
   );
 
-create policy "Board owners manage board settings"
+create policy "Board owners or admins manage board settings"
   on public.kanban_board_settings
   for all
   using (
@@ -333,7 +334,10 @@ create policy "Board owners manage board settings"
       select 1
       from public.kanban_boards b
       where b.id = board_id
-        and b.owner_id = auth.uid()
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
     )
   )
   with check (
@@ -341,7 +345,10 @@ create policy "Board owners manage board settings"
       select 1
       from public.kanban_boards b
       where b.id = board_id
-        and b.owner_id = auth.uid()
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
     )
   );
 
@@ -380,7 +387,7 @@ create policy "Authenticated users can read board cards"
     )
   );
 
-create policy "Board owners manage board cards"
+create policy "Board owners or admins manage board cards"
   on public.kanban_cards
   for all
   using (
@@ -388,7 +395,10 @@ create policy "Board owners manage board cards"
       select 1
       from public.kanban_boards b
       where b.id = board_id
-        and b.owner_id = auth.uid()
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
     )
   )
   with check (
@@ -396,7 +406,10 @@ create policy "Board owners manage board cards"
       select 1
       from public.kanban_boards b
       where b.id = board_id
-        and b.owner_id = auth.uid()
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
     )
   );
 
@@ -428,54 +441,183 @@ create policy "Authenticated users can read board members"
   for select
   using (auth.role() = 'authenticated');
 
-create policy "Authenticated users manage board members"
+create policy "Board owners or admins manage board members"
   on public.board_members
   for all
-  using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');
+  using (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
+    )
+  )
+  with check (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
+    )
+  );
 
 create policy "Authenticated users can read attendance"
   on public.board_attendance
   for select
   using (auth.role() = 'authenticated');
 
-create policy "Authenticated users manage attendance"
+create policy "Board admins manage attendance"
   on public.board_attendance
   for all
-  using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');
+  using (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
+    )
+  )
+  with check (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
+    )
+  );
 
 create policy "Authenticated users can read top topics"
   on public.board_top_topics
   for select
   using (auth.role() = 'authenticated');
 
-create policy "Authenticated users manage top topics"
+create policy "Board members manage top topics"
   on public.board_top_topics
   for all
-  using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');
+  using (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.board_members bm
+      where bm.board_id = board_id
+        and bm.profile_id = auth.uid()
+    )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
+    )
+  )
+  with check (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.board_members bm
+      where bm.board_id = board_id
+        and bm.profile_id = auth.uid()
+    )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
+    )
+  );
 
 create policy "Authenticated users can read escalations"
   on public.board_escalations
   for select
   using (auth.role() = 'authenticated');
 
-create policy "Authenticated users manage escalations"
+create policy "Board members manage escalations"
   on public.board_escalations
   for all
-  using (auth.role() = 'authenticated')
-  with check (auth.role() = 'authenticated');
+  using (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.board_members bm
+      where bm.board_id = board_id
+        and bm.profile_id = auth.uid()
+    )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
+    )
+  )
+  with check (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.board_members bm
+      where bm.board_id = board_id
+        and bm.profile_id = auth.uid()
+    )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
+    )
+  );
 
 create policy "Authenticated users can read escalation history"
   on public.board_escalation_history
   for select
   using (auth.role() = 'authenticated');
 
-create policy "Authenticated users can write escalation history"
+create policy "Board members write escalation history"
   on public.board_escalation_history
   for insert
-  with check (auth.role() = 'authenticated');
+  with check (
+    auth.email() = 'michael@mysight.net'
+    or exists (
+      select 1
+      from public.board_members bm
+      where bm.board_id = board_id
+        and bm.profile_id = auth.uid()
+    )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+        )
+    )
+  );
 
 -- Aggregierte Ansichten für die Anwesenheitsübersicht
 create or replace view public.board_attendance_weeks as

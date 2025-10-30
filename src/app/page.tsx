@@ -80,6 +80,17 @@ export default function HomePage() {
   const [archivedCount, setArchivedCount] = useState<number | null>(null);
   const [kpiCount, setKpiCount] = useState(0);
 
+  const canManageBoardAdministration =
+    isAdmin ||
+    isSuperuser ||
+    selectedBoardAccess.isOwner ||
+    selectedBoardAccess.isBoardAdmin;
+
+  const canCollaborateOnTopicsAndEscalations =
+    canManageBoardAdministration || selectedBoardAccess.isMember;
+
+  const canViewManagementSections = true;
+
   useEffect(() => {
     setArchivedCount(null);
     setKpiCount(0);

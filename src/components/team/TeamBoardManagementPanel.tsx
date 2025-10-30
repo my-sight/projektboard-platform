@@ -73,7 +73,8 @@ interface WeekHistoryItem {
 interface TeamBoardManagementPanelProps {
   boardId: string;
   canEdit: boolean;
-  memberCanSee: boolean;
+  canView: boolean;
+  canManageTopics: boolean;
 }
 
 const formatWeekKey = (date: Date): string => {
@@ -130,7 +131,12 @@ const shiftWeek = (weekKey: string, delta: number): string => {
   return formatWeekKey(base);
 };
 
-export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSee }: TeamBoardManagementPanelProps) {
+export default function TeamBoardManagementPanel({
+  boardId,
+  canEdit,
+  canView,
+  canManageTopics,
+}: TeamBoardManagementPanelProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -515,7 +521,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     );
   }
 
-  if (!memberCanSee) {
+  if (!canView) {
     return (
       <Card>
         <CardContent>
@@ -739,7 +745,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                 Halte die wichtigsten Themen fest (maximal fünf Einträge).
               </Typography>
             </Box>
-            {canEdit && (
+            {canManageTopics && (
               <Button
                 variant="outlined"
                 startIcon={<AddIcon />}

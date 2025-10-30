@@ -128,7 +128,9 @@ interface EscalationHistoryEntry {
 interface BoardManagementPanelProps {
   boardId: string;
   canEdit: boolean;
-  memberCanSee: boolean;
+  canView: boolean;
+  canManageTopics: boolean;
+  canManageEscalations: boolean;
 }
 
 const ESCALATION_SCHEMA_DOC_PATH = 'docs/patch-board-escalations-card-id.sql';
@@ -405,7 +407,13 @@ function buildEscalationViews(
     .filter((entry): entry is EscalationView => entry !== null);
 }
 
-export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }: BoardManagementPanelProps) {
+export default function BoardManagementPanel({
+  boardId,
+  canEdit,
+  canView,
+  canManageTopics,
+  canManageEscalations,
+}: BoardManagementPanelProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
 
   if (!supabase) {
@@ -935,7 +943,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     });
   };
 
-  const canEditEscalations = memberCanSee;
+  const canEditEscalations = canManageEscalations;
 
   useEffect(() => {
     supabase.auth
@@ -1060,7 +1068,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     updateEscalationDraft({ completion_steps: next });
   };
 
-  if (!memberCanSee) {
+  if (!canView) {
     return (
       <Card>
         <CardContent>
@@ -1309,7 +1317,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 Halte die wichtigsten Themen fest (maximal fünf Einträge).
               </Typography>
             </Box>
-            {canEdit && (
+            {canManageTopics && (
               <Button
                 variant="outlined"
                 startIcon={<AddIcon />}
