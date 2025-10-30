@@ -44,6 +44,7 @@ interface Board {
   cardCount?: number;
   settings?: Record<string, unknown> | null;
   boardType: 'standard' | 'team';
+  boardAdminId: string | null;
 }
 
 export default function HomePage() {
@@ -157,12 +158,17 @@ export default function HomePage() {
             : {};
         const typeRaw = (rawSettings as Record<string, unknown>)['boardType'];
         const boardType = typeof typeRaw === 'string' && typeRaw.toLowerCase() === 'team' ? 'team' : 'standard';
+        const boardAdminId =
+          'board_admin_id' in board
+            ? ((board as { board_admin_id?: string | null }).board_admin_id ?? null)
+            : null;
 
         return {
           ...board,
           settings: rawSettings,
           visibility: board.visibility ?? 'public',
           boardType,
+          boardAdminId,
         } as Board;
       });
 
@@ -206,6 +212,9 @@ export default function HomePage() {
     loadProfile();
     loadBoards();
   }, [user, loadProfile, loadBoards]);
+
+  const currentUserId = user?.id ?? null;
+  const isSelectedBoardAdmin = selectedBoard?.boardAdminId === currentUserId;
 
   useEffect(() => {
     const handleBoardMetaUpdated = (event: Event) => {
@@ -468,6 +477,7 @@ export default function HomePage() {
   }
 
   if (selectedBoard && selectedBoard.boardType === 'standard' && viewMode === 'management') {
+    const canEditBoard = isAdmin || isSelectedBoardAdmin;
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Box
@@ -532,7 +542,7 @@ export default function HomePage() {
 
         <BoardManagementPanel
           boardId={selectedBoard.id}
-          canEdit={isAdmin || isSuperuser}
+          canEdit={canEditBoard}
           memberCanSee={true}
         />
       </Container>
@@ -583,6 +593,7 @@ export default function HomePage() {
   }
 
   if (selectedBoard && selectedBoard.boardType === 'team' && viewMode === 'team-management') {
+    const canEditBoard = isAdmin || isSelectedBoardAdmin;
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Box
@@ -647,7 +658,7 @@ export default function HomePage() {
 
         <TeamBoardManagementPanel
           boardId={selectedBoard.id}
-          canEdit={isAdmin || isSuperuser}
+          canEdit={canEditBoard}
           memberCanSee={true}
         />
       </Container>

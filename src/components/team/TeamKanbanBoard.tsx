@@ -428,13 +428,33 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           isSuperuserEmail(email);
 
         const member = members.some((entry) => entry.profile_id === authUser.id);
-        setCanModify(elevated || member);
+
+        let ownsBoard = false;
+        let isBoardAdmin = false;
+        try {
+          const { data: boardRow, error: boardError } = await supabase
+            .from('kanban_boards')
+            .select('owner_id, board_admin_id')
+            .eq('id', boardId)
+            .maybeSingle();
+
+          if (boardError) {
+            console.error('⚠️ Fehler beim Laden der Board-Berechtigungen', boardError);
+          } else if (boardRow) {
+            ownsBoard = boardRow.owner_id === authUser.id;
+            isBoardAdmin = boardRow.board_admin_id === authUser.id;
+          }
+        } catch (boardError) {
+          console.error('⚠️ Konnte Board-Berechtigungen nicht ermitteln', boardError);
+        }
+
+        setCanModify(elevated || member || ownsBoard || isBoardAdmin);
       } catch (cause) {
         console.error('⚠️ Konnte Berechtigungen nicht auswerten', cause);
         setCanModify(false);
       }
     },
-    [members, supabase],
+    [boardId, members, supabase],
   );
 
   const openCreateDialog = () => {
@@ -874,8 +894,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                           flexDirection: 'column',
                           alignItems: 'stretch',
                           minHeight: 220,
-                          maxHeight: { xs: 320, md: 480 },
-                          overflowY: 'auto',
+                          gap: 1,
+                          overflow: 'visible',
                           border: '1px solid',
                           borderColor: 'rgba(148, 163, 184, 0.22)',
                           borderRadius: 2,
@@ -1017,8 +1037,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                                             flexDirection: 'column',
                                             alignItems: 'stretch',
                                             minHeight: 160,
-                                            maxHeight: { xs: 220, md: 360 },
-                                            overflowY: 'auto',
+                                            gap: 1,
+                                            overflow: 'visible',
                                             border: '1px solid',
                                             borderColor: 'rgba(148, 163, 184, 0.22)',
                                             borderRadius: 2,

@@ -14,6 +14,12 @@ create policy "Board members manage board cards"
       where bm.board_id = board_id
         and bm.profile_id = auth.uid()
     )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and b.board_admin_id = auth.uid()
+    )
   )
   with check (
     auth.email() = 'michael@mysight.net'
@@ -22,6 +28,12 @@ create policy "Board members manage board cards"
       from public.board_members bm
       where bm.board_id = board_id
         and bm.profile_id = auth.uid()
+    )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and b.board_admin_id = auth.uid()
     )
   );
 

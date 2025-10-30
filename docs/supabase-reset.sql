@@ -131,19 +131,21 @@ create trigger sync_profile_from_auth
   execute function public.handle_new_auth_user();
 
 create table public.kanban_boards (
-  id           uuid primary key default gen_random_uuid(),
-  name         text not null,
-  description  text,
-  settings     jsonb not null default '{"boardType":"standard"}'::jsonb,
-  visibility   text not null default 'public' check (visibility in ('public', 'private')),
-  owner_id     uuid references auth.users(id) on delete set null,
-  user_id      uuid references auth.users(id) on delete set null,
-  created_at   timestamptz not null default timezone('utc', now()),
-  updated_at   timestamptz not null default timezone('utc', now())
+  id              uuid primary key default gen_random_uuid(),
+  name            text not null,
+  description     text,
+  settings        jsonb not null default '{"boardType":"standard"}'::jsonb,
+  visibility      text not null default 'public' check (visibility in ('public', 'private')),
+  owner_id        uuid references auth.users(id) on delete set null,
+  user_id         uuid references auth.users(id) on delete set null,
+  board_admin_id  uuid references public.profiles(id) on delete set null,
+  created_at      timestamptz not null default timezone('utc', now()),
+  updated_at      timestamptz not null default timezone('utc', now())
 );
 
 create index kanban_boards_owner_idx on public.kanban_boards (owner_id);
 create index kanban_boards_visibility_idx on public.kanban_boards (visibility);
+create index kanban_boards_admin_idx on public.kanban_boards (board_admin_id);
 
 create trigger set_kanban_boards_updated_at
   before update on public.kanban_boards
@@ -192,6 +194,7 @@ create table public.board_top_topics (
   id          uuid primary key default gen_random_uuid(),
   board_id    uuid not null references public.kanban_boards(id) on delete cascade,
   title       text not null default '',
+  calendar_week text,
   position    integer not null default 0,
   created_at  timestamptz not null default timezone('utc', now()),
   updated_at  timestamptz not null default timezone('utc', now())
@@ -307,8 +310,26 @@ create policy "Authenticated users can read public boards"
 create policy "Board owners manage their boards"
   on public.kanban_boards
   for all
-  using (auth.uid() = owner_id)
-  with check (auth.uid() = owner_id);
+  using (
+    auth.uid() = owner_id
+    or auth.uid() = board_admin_id
+    or exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid()
+        and lower(p.role) in ('admin', 'owner', 'manager', 'superuser')
+    )
+  )
+  with check (
+    auth.uid() = owner_id
+    or auth.uid() = board_admin_id
+    or exists (
+      select 1
+      from public.profiles p
+      where p.id = auth.uid()
+        and lower(p.role) in ('admin', 'owner', 'manager', 'superuser')
+    )
+  );
 
 -- Board settings inherit board visibility for reads; only owners may mutate.
 create policy "Authenticated users can read board settings"
@@ -331,7 +352,16 @@ create policy "Board owners manage board settings"
       select 1
       from public.kanban_boards b
       where b.id = board_id
-        and b.owner_id = auth.uid()
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+          or exists (
+            select 1
+            from public.profiles p
+            where p.id = auth.uid()
+              and lower(p.role) in ('admin', 'owner', 'manager', 'superuser')
+          )
+        )
     )
   )
   with check (
@@ -339,7 +369,16 @@ create policy "Board owners manage board settings"
       select 1
       from public.kanban_boards b
       where b.id = board_id
-        and b.owner_id = auth.uid()
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+          or exists (
+            select 1
+            from public.profiles p
+            where p.id = auth.uid()
+              and lower(p.role) in ('admin', 'owner', 'manager', 'superuser')
+          )
+        )
     )
   );
 
@@ -354,6 +393,12 @@ create policy "Board members manage board settings"
       where bm.board_id = board_id
         and bm.profile_id = auth.uid()
     )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and b.board_admin_id = auth.uid()
+    )
   )
   with check (
     auth.email() = 'michael@mysight.net'
@@ -362,6 +407,12 @@ create policy "Board members manage board settings"
       from public.board_members bm
       where bm.board_id = board_id
         and bm.profile_id = auth.uid()
+    )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and b.board_admin_id = auth.uid()
     )
   );
 
@@ -386,7 +437,16 @@ create policy "Board owners manage board cards"
       select 1
       from public.kanban_boards b
       where b.id = board_id
-        and b.owner_id = auth.uid()
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+          or exists (
+            select 1
+            from public.profiles p
+            where p.id = auth.uid()
+              and lower(p.role) in ('admin', 'owner', 'manager', 'superuser')
+          )
+        )
     )
   )
   with check (
@@ -394,7 +454,16 @@ create policy "Board owners manage board cards"
       select 1
       from public.kanban_boards b
       where b.id = board_id
-        and b.owner_id = auth.uid()
+        and (
+          b.owner_id = auth.uid()
+          or b.board_admin_id = auth.uid()
+          or exists (
+            select 1
+            from public.profiles p
+            where p.id = auth.uid()
+              and lower(p.role) in ('admin', 'owner', 'manager', 'superuser')
+          )
+        )
     )
   );
 
@@ -409,6 +478,12 @@ create policy "Board members manage board cards"
       where bm.board_id = board_id
         and bm.profile_id = auth.uid()
     )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and b.board_admin_id = auth.uid()
+    )
   )
   with check (
     auth.email() = 'michael@mysight.net'
@@ -417,6 +492,12 @@ create policy "Board members manage board cards"
       from public.board_members bm
       where bm.board_id = board_id
         and bm.profile_id = auth.uid()
+    )
+    or exists (
+      select 1
+      from public.kanban_boards b
+      where b.id = board_id
+        and b.board_admin_id = auth.uid()
     )
   );
 

@@ -74,7 +74,13 @@ interface Topic {
   id: string;
   board_id: string;
   title: string;
+  calendar_week: string | null;
   position: number;
+}
+
+interface TopicDraft {
+  title: string;
+  calendarWeek: string;
 }
 
 interface KanbanCardRow {
@@ -437,6 +443,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
 
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
   const [topicDrafts, setTopicDrafts] = useState<Record<string, string>>({});
   const [escalations, setEscalations] = useState<EscalationView[]>([]);
   const [escalationSchemaReady, setEscalationSchemaReady] = useState(true);
@@ -671,6 +678,12 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       setDepartments(departmentRows);
       setMembers(memberRows);
       setTopics(topicRows);
+      const topicDraftValues: Record<string, TopicDraft> = {};
+      topicRows.forEach(topic => {
+        topicDraftValues[topic.id] = {
+          title: topic.title ?? '',
+          calendarWeek: topic.calendar_week ?? '',
+        };
       const topicDraftValues: Record<string, string> = {};
       topicRows.forEach(topic => {
         topicDraftValues[topic.id] = topic.title ?? '';
@@ -821,6 +834,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         .insert({
           board_id: boardId,
           title: '',
+          calendar_week: null,
           position: topics.length,
         })
         .select()
@@ -831,6 +845,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       if (data) {
         const topic = data as Topic;
         setTopics(prev => [...prev, topic]);
+        setTopicDrafts(prev => ({
+          ...prev,
+          [topic.id]: {
+            title: topic.title ?? '',
+            calendarWeek: topic.calendar_week ?? '',
+          },
+        }));
         setTopicDrafts(prev => ({ ...prev, [topic.id]: topic.title ?? '' }));
       }
     } catch (error) {
@@ -838,8 +859,35 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     }
   };
 
-  const updateTopic = async (topicId: string, title: string) => {
+  const persistTopic = async (topicId: string) => {
     try {
+      const draft = topicDrafts[topicId] ?? { title: '', calendarWeek: '' };
+      const trimmedTitle = draft.title.trim();
+      const sanitizedWeek = draft.calendarWeek.trim();
+      const weekValue = sanitizedWeek || '';
+
+      const current = topics.find(topic => topic.id === topicId);
+      const currentWeek = current?.calendar_week ?? '';
+
+      if (current && current.title === trimmedTitle && currentWeek === weekValue) {
+        if (
+          (draft.title !== trimmedTitle) ||
+          (draft.calendarWeek !== weekValue)
+        ) {
+          setTopicDrafts(prev => ({
+            ...prev,
+            [topicId]: { title: trimmedTitle, calendarWeek: weekValue },
+          }));
+        }
+        return;
+      }
+
+      const { error } = await supabase
+        .from('board_top_topics')
+        .update({
+          title: trimmedTitle,
+          calendar_week: weekValue ? weekValue : null,
+        })
       const trimmed = title.trim();
       const current = topics.find(topic => topic.id === topicId);
       if (current && current.title === trimmed) {
@@ -853,6 +901,17 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
       if (error) throw new Error(error.message);
 
+      setTopics(prev =>
+        prev.map(topic =>
+          topic.id === topicId
+            ? { ...topic, title: trimmedTitle, calendar_week: weekValue || null }
+            : topic,
+        ),
+      );
+      setTopicDrafts(prev => ({
+        ...prev,
+        [topicId]: { title: trimmedTitle, calendarWeek: weekValue },
+      }));
       setTopics(prev => prev.map(topic => (topic.id === topicId ? { ...topic, title: trimmed } : topic)));
       setTopicDrafts(prev => ({ ...prev, [topicId]: trimmed }));
     } catch (error) {
@@ -1292,6 +1351,61 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 Noch keine Top-Themen erfasst.
               </Typography>
             )}
+            {topics.map(topic => {
+              const draft = topicDrafts[topic.id] ?? {
+                title: topic.title ?? '',
+                calendarWeek: topic.calendar_week ?? '',
+              };
+
+              return (
+                <Stack
+                  key={topic.id}
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1}
+                  alignItems={{ xs: 'stretch', md: 'center' }}
+                >
+                  <TextField
+                    label="Thema"
+                    value={draft.title}
+                    onChange={event =>
+                      setTopicDrafts(prev => ({
+                        ...prev,
+                        [topic.id]: {
+                          ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
+                          title: event.target.value,
+                        },
+                      }))
+                    }
+                    onBlur={() => persistTopic(topic.id)}
+                    fullWidth
+                    disabled={!canEdit}
+                  />
+                  <TextField
+                    type="week"
+                    label="Kalenderwoche"
+                    value={draft.calendarWeek}
+                    onChange={event =>
+                      setTopicDrafts(prev => ({
+                        ...prev,
+                        [topic.id]: {
+                          ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
+                          calendarWeek: event.target.value,
+                        },
+                      }))
+                    }
+                    onBlur={() => persistTopic(topic.id)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ width: { xs: '100%', md: 200 } }}
+                    disabled={!canEdit}
+                  />
+                  {canEdit && (
+                    <Button color="error" onClick={() => deleteTopic(topic.id)} startIcon={<DeleteIcon />}>
+                      Löschen
+                    </Button>
+                  )}
+                </Stack>
+              );
+            })}
             {topics.map(topic => (
               <Stack
                 key={topic.id}
