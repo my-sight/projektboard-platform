@@ -56,6 +56,13 @@ interface Department {
   created_at?: string;
 }
 
+interface BoardSummary {
+  id: string;
+  name: string;
+  boardType: 'standard' | 'team';
+  boardAdminId: string | null;
+}
+
 function normalizeUserProfile(profile: any): UserProfile {
   return {
     id: profile.id,
@@ -83,6 +90,7 @@ export default function UserManagement() {
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
@@ -121,7 +129,7 @@ export default function UserManagement() {
     try {
       setLoading(true);
 
-      const [usersResult, departmentsResult] = await Promise.all([
+      const [usersResult, departmentsResult, boardsResult] = await Promise.all([
         supabase
           .from('profiles')
           .select('*')
@@ -129,7 +137,11 @@ export default function UserManagement() {
         supabase
           .from('departments')
           .select('*')
-          .order('name')
+          .order('name'),
+        supabase
+          .from('kanban_boards')
+          .select('id, name, settings, board_admin_id')
+          .order('name', { ascending: true }),
       ]);
 
       const { data: usersData, error: usersError } = usersResult;
@@ -158,6 +170,34 @@ export default function UserManagement() {
         setDepartments([]);
       } else {
         setDepartments(departmentsData || []);
+      }
+
+      const { data: boardsData, error: boardsError } = boardsResult;
+      if (boardsError) {
+        console.error('❌ Boards Error:', boardsError);
+        setBoards([]);
+        if (!boardsError.message.includes('permission')) {
+          setMessage(`❌ Board-Fehler: ${boardsError.message}`);
+        }
+      } else {
+        const normalizedBoards: BoardSummary[] = ((boardsData as any[]) ?? []).map((entry) => {
+          const rawSettings =
+            entry && typeof entry.settings === 'object' && entry.settings !== null
+              ? (entry.settings as Record<string, unknown>)
+              : {};
+          const typeCandidate = rawSettings['boardType'];
+          const typeValue =
+            typeof typeCandidate === 'string' && typeCandidate.toLowerCase() === 'team'
+              ? 'team'
+              : 'standard';
+          return {
+            id: String(entry.id),
+            name: String(entry.name ?? 'Unbenanntes Board'),
+            boardType: typeValue,
+            boardAdminId: typeof entry.board_admin_id === 'string' ? entry.board_admin_id : null,
+          };
+        });
+        setBoards(normalizedBoards);
       }
     } catch (error) {
       console.error('💥 Unerwarteter Fehler:', error);
@@ -368,6 +408,36 @@ export default function UserManagement() {
     }
   };
 
+  const updateBoardAdmin = async (boardId: string, adminId: string | null) => {
+    try {
+      const { error } = await supabase
+        .from('kanban_boards')
+        .update({ board_admin_id: adminId })
+        .eq('id', boardId);
+
+      if (error) {
+        throw error;
+      }
+
+      setBoards(prev =>
+        prev.map(board => (board.id === boardId ? { ...board, boardAdminId: adminId } : board)),
+      );
+      setMessage('✅ Board-Admin aktualisiert');
+      setTimeout(() => setMessage(''), 4000);
+
+      window.dispatchEvent(
+        new CustomEvent('board-meta-updated', {
+          detail: { id: boardId },
+        }),
+      );
+    } catch (error) {
+      console.error('❌ Fehler beim Aktualisieren des Board-Admins', error);
+      const message = error instanceof Error ? error.message : 'Unbekannter Fehler';
+      setMessage(`❌ Board-Admin konnte nicht aktualisiert werden: ${message}`);
+      setTimeout(() => setMessage(''), 4000);
+    }
+  };
+
   const createUser = async () => {
     if (!newUserEmail.trim() || !newUserPassword.trim()) return;
 
@@ -540,6 +610,80 @@ export default function UserManagement() {
           ) : (
             <Typography variant="body2" color="text.secondary">
               Noch keine Abteilungen angelegt.
+            </Typography>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card sx={{ mb: 4 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            🛠️ Board-Administratoren
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Weise jedem Board eine verantwortliche Person zu. Board-Admins verfügen in ihren Boards über vollständige Rechte.
+          </Typography>
+          {boards.length > 0 ? (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Board</TableCell>
+                    <TableCell>Typ</TableCell>
+                    <TableCell>Board-Admin</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {boards.map(board => {
+                    const currentAdmin = users.find(user => user.id === board.boardAdminId);
+                    const hasCurrentAdmin = Boolean(currentAdmin);
+                    return (
+                      <TableRow key={board.id} hover>
+                        <TableCell>{board.name}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            color={board.boardType === 'team' ? 'info' : 'default'}
+                            label={board.boardType === 'team' ? 'Teamboard' : 'Projektboard'}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <FormControl size="small" sx={{ minWidth: 220 }}>
+                            <Select
+                              displayEmpty
+                              value={board.boardAdminId ?? ''}
+                              onChange={event =>
+                                updateBoardAdmin(
+                                  board.id,
+                                  event.target.value ? String(event.target.value) : null,
+                                )
+                              }
+                            >
+                              <MenuItem value="">
+                                <em>Kein Admin</em>
+                              </MenuItem>
+                              {users.map(userProfile => (
+                                <MenuItem key={userProfile.id} value={userProfile.id}>
+                                  {userProfile.full_name || userProfile.email}
+                                </MenuItem>
+                              ))}
+                              {board.boardAdminId && !hasCurrentAdmin && (
+                                <MenuItem value={board.boardAdminId}>
+                                  {board.boardAdminId}
+                                </MenuItem>
+                              )}
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Typography variant="body2" color="text.secondary">
+              Keine Boards gefunden.
             </Typography>
           )}
         </CardContent>

@@ -263,6 +263,24 @@ const resolvePermissions = async (loadedUsers: any[]) => {
       role === 'superuser' ||
       isSuperuserEmail(email);
 
+    let isOwner = false;
+    let isBoardAdmin = false;
+    try {
+      const { data: boardInfo, error: boardError } = await supabase
+        .from('kanban_boards')
+        .select('owner_id, board_admin_id')
+        .eq('id', boardId)
+        .maybeSingle();
+      if (boardError) {
+        console.error('⚠️ Fehler beim Laden der Board-Daten:', boardError);
+      } else if (boardInfo) {
+        isOwner = boardInfo.owner_id === authUserId;
+        isBoardAdmin = boardInfo.board_admin_id === authUserId;
+      }
+    } catch (boardError) {
+      console.error('⚠️ Konnte Board-Informationen nicht laden:', boardError);
+    }
+
     const { data: membershipData, error: membershipError } = await supabase
       .from('board_members')
       .select('id')
@@ -271,12 +289,12 @@ const resolvePermissions = async (loadedUsers: any[]) => {
 
     if (membershipError) {
       console.error('⚠️ Fehler beim Prüfen der Board-Mitgliedschaft:', membershipError);
-      setCanModifyBoard(elevated);
+      setCanModifyBoard(elevated || isOwner || isBoardAdmin);
       return;
     }
 
     const isMember = (membershipData?.length ?? 0) > 0;
-    setCanModifyBoard(elevated || isMember);
+    setCanModifyBoard(elevated || isMember || isOwner || isBoardAdmin);
   } catch (permissionError) {
     console.error('❌ Unerwarteter Fehler bei der Berechtigungsprüfung:', permissionError);
     setCanModifyBoard(false);

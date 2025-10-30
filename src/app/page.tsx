@@ -44,6 +44,13 @@ interface Board {
   cardCount?: number;
   settings?: Record<string, unknown> | null;
   boardType: 'standard' | 'team';
+  boardAdminId: string | null;
+}
+
+interface BoardAccessState {
+  isMember: boolean;
+  isOwner: boolean;
+  isBoardAdmin: boolean;
 }
 
 export default function HomePage() {
@@ -56,6 +63,11 @@ export default function HomePage() {
 
   // Board Management States
   const [boards, setBoards] = useState<Board[]>([]);
+  const [selectedBoardAccess, setSelectedBoardAccess] = useState<BoardAccessState>({
+    isMember: false,
+    isOwner: false,
+    isBoardAdmin: false,
+  });
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperuser, setIsSuperuser] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -67,6 +79,17 @@ export default function HomePage() {
   const [message, setMessage] = useState('');
   const [archivedCount, setArchivedCount] = useState<number | null>(null);
   const [kpiCount, setKpiCount] = useState(0);
+
+  const canManageBoardAdministration =
+    isAdmin ||
+    isSuperuser ||
+    selectedBoardAccess.isOwner ||
+    selectedBoardAccess.isBoardAdmin;
+
+  const canCollaborateOnTopicsAndEscalations =
+    canManageBoardAdministration || selectedBoardAccess.isMember;
+
+  const canViewManagementSections = true;
 
   useEffect(() => {
     setArchivedCount(null);
@@ -116,7 +139,7 @@ export default function HomePage() {
       return;
     }
     try {
-      let boardsData: Board[] | null = null;
+      let boardsData: any[] | null = null;
 
       try {
         const { data: rpcBoards, error: rpcError } = await supabase
@@ -147,7 +170,7 @@ export default function HomePage() {
 
         if (error) throw error;
 
-        boardsData = (data as Board[]) ?? [];
+        boardsData = (data as any[]) ?? [];
       }
 
       const sanitizedBoards = (boardsData ?? []).map((board) => {
@@ -157,16 +180,35 @@ export default function HomePage() {
             : {};
         const typeRaw = (rawSettings as Record<string, unknown>)['boardType'];
         const boardType = typeof typeRaw === 'string' && typeRaw.toLowerCase() === 'team' ? 'team' : 'standard';
+        const boardAdminRaw = (board as Record<string, unknown>)['board_admin_id'];
+        const boardAdminId = typeof boardAdminRaw === 'string' ? boardAdminRaw : null;
 
         return {
-          ...board,
+          id: String((board as Record<string, unknown>).id ?? ''),
+          name: String((board as Record<string, unknown>).name ?? ''),
+          description: ((board as Record<string, unknown>).description as string) ?? '',
+          created_at: String((board as Record<string, unknown>).created_at ?? new Date().toISOString()),
+          visibility: ((board as Record<string, unknown>).visibility as string) ?? 'public',
+          owner_id: ((board as Record<string, unknown>).owner_id as string | null) ?? null,
+          user_id: ((board as Record<string, unknown>).user_id as string | null) ?? null,
+          cardCount:
+            typeof (board as Record<string, unknown>).cardCount === 'number'
+              ? ((board as Record<string, unknown>).cardCount as number)
+              : undefined,
           settings: rawSettings,
-          visibility: board.visibility ?? 'public',
           boardType,
-        } as Board;
+          boardAdminId,
+        } satisfies Board;
       });
 
       setBoards(sanitizedBoards);
+      setSelectedBoard((prev) => {
+        if (!prev) {
+          return prev;
+        }
+        const updated = sanitizedBoards.find((board) => board.id === prev.id);
+        return updated ? { ...prev, ...updated } : prev;
+      });
 
       const boardsWithoutVisibility = sanitizedBoards
         .filter((board) => !board.visibility || board.visibility === '');
@@ -200,12 +242,110 @@ export default function HomePage() {
       setIsSuperuser(false);
       setSelectedBoard(null);
       setViewMode('list');
+      setSelectedBoardAccess({ isMember: false, isOwner: false, isBoardAdmin: false });
       return;
     }
 
     loadProfile();
     loadBoards();
   }, [user, loadProfile, loadBoards]);
+
+  useEffect(() => {
+    if (!selectedBoard) {
+      setSelectedBoardAccess({ isMember: false, isOwner: false, isBoardAdmin: false });
+    }
+  }, [selectedBoard]);
+
+  useEffect(() => {
+    let active = true;
+
+    const evaluateAccess = async () => {
+      if (!selectedBoard || !supabase || !user) {
+        if (active) {
+          setSelectedBoardAccess({ isMember: false, isOwner: false, isBoardAdmin: false });
+        }
+        return;
+      }
+
+      try {
+        const [boardResult, membershipResult] = await Promise.all([
+          supabase
+            .from('kanban_boards')
+            .select('owner_id, board_admin_id')
+            .eq('id', selectedBoard.id)
+            .maybeSingle(),
+          supabase
+            .from('board_members')
+            .select('id')
+            .eq('board_id', selectedBoard.id)
+            .eq('profile_id', user.id)
+            .maybeSingle(),
+        ]);
+
+        if (!active) return;
+
+        if (boardResult.error) {
+          throw boardResult.error;
+        }
+        if (membershipResult.error) {
+          throw membershipResult.error;
+        }
+
+        const boardRow = (boardResult.data ?? null) as { owner_id: string | null; board_admin_id: string | null } | null;
+        const membershipRow = (membershipResult.data ?? null) as { id: string } | null;
+
+        const ownerId = boardRow?.owner_id ?? null;
+        const adminId = boardRow?.board_admin_id ?? null;
+
+        setSelectedBoardAccess({
+          isMember: Boolean(membershipRow),
+          isOwner: ownerId === user.id,
+          isBoardAdmin: adminId === user.id,
+        });
+
+        if (boardRow) {
+          setBoards((prev) => {
+            let changed = false;
+            const next = prev.map((board) => {
+              if (board.id !== selectedBoard.id) {
+                return board;
+              }
+              const nextOwner = ownerId ?? board.owner_id ?? null;
+              const nextAdmin = adminId ?? null;
+              if (board.owner_id === nextOwner && board.boardAdminId === nextAdmin) {
+                return board;
+              }
+              changed = true;
+              return { ...board, owner_id: nextOwner, boardAdminId: nextAdmin };
+            });
+            return changed ? next : prev;
+          });
+
+          setSelectedBoard((prev) => {
+            if (!prev || prev.id !== selectedBoard.id) {
+              return prev;
+            }
+            const nextOwner = ownerId ?? prev.owner_id ?? null;
+            const nextAdmin = adminId ?? null;
+            if (prev.owner_id === nextOwner && prev.boardAdminId === nextAdmin) {
+              return prev;
+            }
+            return { ...prev, owner_id: nextOwner, boardAdminId: nextAdmin };
+          });
+        }
+      } catch (cause) {
+        if (!active) return;
+        console.error('Fehler beim Auswerten der Board-Rechte:', cause);
+        setSelectedBoardAccess({ isMember: false, isOwner: false, isBoardAdmin: false });
+      }
+    };
+
+    evaluateAccess();
+
+    return () => {
+      active = false;
+    };
+  }, [selectedBoard, supabase, user]);
 
   useEffect(() => {
     const handleBoardMetaUpdated = (event: Event) => {
@@ -280,6 +420,7 @@ export default function HomePage() {
             user_id: user?.id,
             visibility: 'public',
             settings: initialSettings,
+            board_admin_id: user?.id ?? null,
           },
         ])
         .select()
@@ -306,6 +447,10 @@ export default function HomePage() {
           cardCount: typeof base['cardCount'] === 'number' ? (base['cardCount'] as number) : undefined,
           settings: rawSettings,
           boardType,
+          boardAdminId:
+            typeof base['board_admin_id'] === 'string'
+              ? (base['board_admin_id'] as string)
+              : user?.id ?? null,
         };
 
         setBoards((prev) => [createdBoard, ...prev]);
@@ -532,8 +677,10 @@ export default function HomePage() {
 
         <BoardManagementPanel
           boardId={selectedBoard.id}
-          canEdit={isAdmin || isSuperuser}
-          memberCanSee={true}
+          canEdit={canManageBoardAdministration}
+          canView={canViewManagementSections}
+          canManageTopics={canCollaborateOnTopicsAndEscalations}
+          canManageEscalations={canCollaborateOnTopicsAndEscalations}
         />
       </Container>
     );
@@ -647,8 +794,9 @@ export default function HomePage() {
 
         <TeamBoardManagementPanel
           boardId={selectedBoard.id}
-          canEdit={isAdmin || isSuperuser}
-          memberCanSee={true}
+          canEdit={canManageBoardAdministration}
+          canView={canViewManagementSections}
+          canManageTopics={canCollaborateOnTopicsAndEscalations}
         />
       </Container>
     );
