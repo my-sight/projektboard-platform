@@ -566,11 +566,17 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     setTimeout(() => setMessage(''), 4000);
   };
 
-  const loadBaseData = async (options?: { skipLoading?: boolean }): Promise<boolean> => {
+  async function loadBaseData(options?: { skipLoading?: boolean }): Promise<boolean> {
     const skipLoading = options?.skipLoading ?? false;
     try {
       if (!skipLoading) {
         setLoading(true);
+      }
+
+      if (!supabase) {
+        setMessage('❌ Supabase-Client ist nicht konfiguriert.');
+        setTimeout(() => setMessage(''), 4000);
+        return false;
       }
       const profilePromise = fetchClientProfiles();
 
@@ -711,10 +717,15 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         setLoading(false);
       }
     }
-  };
+  }
 
   const loadAttendanceHistory = async () => {
     try {
+      if (!supabase) {
+        setMessage('❌ Supabase-Client ist nicht konfiguriert.');
+        setTimeout(() => setMessage(''), 4000);
+        return;
+      }
       const { data, error } = await supabase
         .from('board_attendance')
         .select('*')
