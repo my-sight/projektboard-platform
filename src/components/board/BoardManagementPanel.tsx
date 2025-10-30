@@ -1362,7 +1362,7 @@ export default function BoardManagementPanel({
                     }
                     onBlur={() => persistTopic(topic.id)}
                     fullWidth
-                    disabled={!canManageTopics}
+                    disabled={!canEdit}
                   />
                   <TextField
                     label="KW"
@@ -1377,11 +1377,11 @@ export default function BoardManagementPanel({
                       }))
                     }
                     onBlur={() => persistTopic(topic.id)}
-                    disabled={!canManageTopics}
+                    disabled={!canEdit}
                     sx={{ width: { xs: '100%', md: 160 } }}
                     placeholder="z. B. KW 12"
                   />
-                  {canManageTopics && (
+                  {canEdit && (
                     <Button color="error" onClick={() => deleteTopic(topic.id)} startIcon={<DeleteIcon />}>
                       Löschen
                     </Button>

@@ -677,10 +677,19 @@ export default function HomePage() {
 
         <BoardManagementPanel
           boardId={selectedBoard.id}
-          canEdit={canManageBoardAdministration}
-          canView={canViewManagementSections}
-          canManageTopics={canCollaborateOnTopicsAndEscalations}
-          canManageEscalations={canCollaborateOnTopicsAndEscalations}
+          canEdit={
+            isAdmin ||
+            isSuperuser ||
+            selectedBoardAccess.isOwner ||
+            selectedBoardAccess.isBoardAdmin
+          }
+          memberCanSee={
+            isAdmin ||
+            isSuperuser ||
+            selectedBoardAccess.isMember ||
+            selectedBoardAccess.isOwner ||
+            selectedBoardAccess.isBoardAdmin
+          }
         />
       </Container>
     );
@@ -794,9 +803,19 @@ export default function HomePage() {
 
         <TeamBoardManagementPanel
           boardId={selectedBoard.id}
-          canEdit={canManageBoardAdministration}
-          canView={canViewManagementSections}
-          canManageTopics={canCollaborateOnTopicsAndEscalations}
+          canEdit={
+            isAdmin ||
+            isSuperuser ||
+            selectedBoardAccess.isOwner ||
+            selectedBoardAccess.isBoardAdmin
+          }
+          memberCanSee={
+            isAdmin ||
+            isSuperuser ||
+            selectedBoardAccess.isMember ||
+            selectedBoardAccess.isOwner ||
+            selectedBoardAccess.isBoardAdmin
+          }
         />
       </Container>
     );
