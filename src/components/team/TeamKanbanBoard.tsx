@@ -60,8 +60,6 @@ interface TaskDraft {
   description: string;
   dueDate: string;
   important: boolean;
-  assigneeId: string | null;
-  status: TeamBoardStatus;
 }
 
 interface DroppableInfo {
@@ -83,8 +81,6 @@ const defaultDraft: TaskDraft = {
   description: '',
   dueDate: '',
   important: false,
-  assigneeId: null,
-  status: 'backlog',
 };
 
 const droppableKey = (assigneeId: string | null, status: TeamBoardStatus) =>
@@ -428,13 +424,31 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           isSuperuserEmail(email);
 
         const member = members.some((entry) => entry.profile_id === authUser.id);
-        setCanModify(elevated || member);
+        let isOwner = false;
+        let isBoardAdmin = false;
+        try {
+          const { data: boardInfo, error: boardError } = await supabase
+            .from('kanban_boards')
+            .select('owner_id, board_admin_id')
+            .eq('id', boardId)
+            .maybeSingle();
+          if (boardError) {
+            console.error('⚠️ Fehler beim Laden der Board-Daten:', boardError);
+          } else if (boardInfo) {
+            isOwner = boardInfo.owner_id === authUser.id;
+            isBoardAdmin = boardInfo.board_admin_id === authUser.id;
+          }
+        } catch (boardLoadError) {
+          console.error('⚠️ Konnte Board-Details nicht laden', boardLoadError);
+        }
+
+        setCanModify(elevated || member || isOwner || isBoardAdmin);
       } catch (cause) {
         console.error('⚠️ Konnte Berechtigungen nicht auswerten', cause);
         setCanModify(false);
       }
     },
-    [members, supabase],
+    [boardId, members, supabase],
   );
 
   const openCreateDialog = () => {
@@ -453,10 +467,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       description: card.description,
       dueDate: card.dueDate ?? '',
       important: card.important,
-      assigneeId: card.assigneeId,
-      status: card.status,
     });
-    setDueDateError(false);
+    setDueDateError(!card.dueDate);
     setError(null);
     setDialogOpen(true);
   };
@@ -550,8 +562,11 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       return;
     }
 
-    if (draft.status !== 'backlog' && !draft.assigneeId) {
-      setError('Bitte ein Teammitglied auswählen, um den Status zu setzen.');
+    const currentStatus = editingCard ? editingCard.status : 'backlog';
+    const currentAssigneeId = editingCard ? editingCard.assigneeId : null;
+
+    if (currentStatus !== 'backlog' && !currentAssigneeId) {
+      setError('Bitte ordne die Aufgabe einem Teammitglied in der passenden Spalte zu.');
       return;
     }
 
@@ -575,8 +590,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           description: draft.description.trim(),
           dueDate: draft.dueDate,
           important: draft.important,
-          assigneeId: draft.assigneeId,
-          status: draft.status,
+          assigneeId: currentAssigneeId,
+          status: currentStatus,
         };
 
         working.set(previousKey, previousEntries);
@@ -596,8 +611,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           description: draft.description.trim(),
           dueDate: draft.dueDate,
           important: draft.important,
-          assigneeId: draft.assigneeId,
-          status: draft.status,
+          assigneeId: null,
+          status: 'backlog',
           position: 0,
         };
 
@@ -874,8 +889,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                           flexDirection: 'column',
                           alignItems: 'stretch',
                           minHeight: 220,
-                          maxHeight: { xs: 320, md: 480 },
-                          overflowY: 'auto',
                           border: '1px solid',
                           borderColor: 'rgba(148, 163, 184, 0.22)',
                           borderRadius: 2,
@@ -1017,8 +1030,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                                             flexDirection: 'column',
                                             alignItems: 'stretch',
                                             minHeight: 160,
-                                            maxHeight: { xs: 220, md: 360 },
-                                            overflowY: 'auto',
                                             border: '1px solid',
                                             borderColor: 'rgba(148, 163, 184, 0.22)',
                                             borderRadius: 2,
