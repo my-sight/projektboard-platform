@@ -60,8 +60,6 @@ interface TaskDraft {
   description: string;
   dueDate: string;
   important: boolean;
-  assigneeId: string | null;
-  status: TeamBoardStatus;
 }
 
 interface DroppableInfo {
@@ -83,8 +81,6 @@ const defaultDraft: TaskDraft = {
   description: '',
   dueDate: '',
   important: false,
-  assigneeId: null,
-  status: 'backlog',
 };
 
 const droppableKey = (assigneeId: string | null, status: TeamBoardStatus) =>
@@ -453,10 +449,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       description: card.description,
       dueDate: card.dueDate ?? '',
       important: card.important,
-      assigneeId: card.assigneeId,
-      status: card.status,
     });
-    setDueDateError(false);
+    setDueDateError(!card.dueDate);
     setError(null);
     setDialogOpen(true);
   };
@@ -550,8 +544,11 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       return;
     }
 
-    if (draft.status !== 'backlog' && !draft.assigneeId) {
-      setError('Bitte ein Teammitglied auswählen, um den Status zu setzen.');
+    const currentStatus = editingCard ? editingCard.status : 'backlog';
+    const currentAssigneeId = editingCard ? editingCard.assigneeId : null;
+
+    if (currentStatus !== 'backlog' && !currentAssigneeId) {
+      setError('Bitte ordne die Aufgabe einem Teammitglied in der passenden Spalte zu.');
       return;
     }
 
@@ -575,8 +572,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           description: draft.description.trim(),
           dueDate: draft.dueDate,
           important: draft.important,
-          assigneeId: draft.assigneeId,
-          status: draft.status,
+          assigneeId: currentAssigneeId,
+          status: currentStatus,
         };
 
         working.set(previousKey, previousEntries);
@@ -596,8 +593,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           description: draft.description.trim(),
           dueDate: draft.dueDate,
           important: draft.important,
-          assigneeId: draft.assigneeId,
-          status: draft.status,
+          assigneeId: null,
+          status: 'backlog',
           position: 0,
         };
 
