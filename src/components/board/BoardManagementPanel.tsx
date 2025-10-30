@@ -74,7 +74,13 @@ interface Topic {
   id: string;
   board_id: string;
   title: string;
+  calendar_week: string | null;
   position: number;
+}
+
+interface TopicDraft {
+  title: string;
+  calendarWeek: string;
 }
 
 interface KanbanCardRow {
@@ -437,6 +443,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
 
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
   const [escalations, setEscalations] = useState<EscalationView[]>([]);
   const [escalationSchemaReady, setEscalationSchemaReady] = useState(true);
   const [escalationDialogOpen, setEscalationDialogOpen] = useState(false);
@@ -670,6 +677,14 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       setDepartments(departmentRows);
       setMembers(memberRows);
       setTopics(topicRows);
+      const topicDraftValues: Record<string, TopicDraft> = {};
+      topicRows.forEach(topic => {
+        topicDraftValues[topic.id] = {
+          title: topic.title ?? '',
+          calendarWeek: topic.calendar_week ?? '',
+        };
+      });
+      setTopicDrafts(topicDraftValues);
       setEscalations(escalationViews);
       setEscalationSchemaReady(!escalationSchemaMissing);
       if (escalationSchemaMissing) {
@@ -815,6 +830,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         .insert({
           board_id: boardId,
           title: '',
+          calendar_week: null,
           position: topics.length,
         })
         .select()
@@ -823,23 +839,65 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       if (error) throw new Error(error.message);
 
       if (data) {
-        setTopics(prev => [...prev, data as Topic]);
+        const topic = data as Topic;
+        setTopics(prev => [...prev, topic]);
+        setTopicDrafts(prev => ({
+          ...prev,
+          [topic.id]: {
+            title: topic.title ?? '',
+            calendarWeek: topic.calendar_week ?? '',
+          },
+        }));
       }
     } catch (error) {
       handleError(error, 'Fehler beim Hinzufügen eines Top-Themas');
     }
   };
 
-  const updateTopic = async (topicId: string, title: string) => {
+  const persistTopic = async (topicId: string) => {
     try {
+      const draft = topicDrafts[topicId] ?? { title: '', calendarWeek: '' };
+      const trimmedTitle = draft.title.trim();
+      const sanitizedWeek = draft.calendarWeek.trim();
+      const weekValue = sanitizedWeek || '';
+
+      const current = topics.find(topic => topic.id === topicId);
+      const currentWeek = current?.calendar_week ?? '';
+
+      if (current && current.title === trimmedTitle && currentWeek === weekValue) {
+        if (
+          (draft.title !== trimmedTitle) ||
+          (draft.calendarWeek !== weekValue)
+        ) {
+          setTopicDrafts(prev => ({
+            ...prev,
+            [topicId]: { title: trimmedTitle, calendarWeek: weekValue },
+          }));
+        }
+        return;
+      }
+
       const { error } = await supabase
         .from('board_top_topics')
-        .update({ title })
+        .update({
+          title: trimmedTitle,
+          calendar_week: weekValue ? weekValue : null,
+        })
         .eq('id', topicId);
 
       if (error) throw new Error(error.message);
 
-      setTopics(prev => prev.map(topic => (topic.id === topicId ? { ...topic, title } : topic)));
+      setTopics(prev =>
+        prev.map(topic =>
+          topic.id === topicId
+            ? { ...topic, title: trimmedTitle, calendar_week: weekValue || null }
+            : topic,
+        ),
+      );
+      setTopicDrafts(prev => ({
+        ...prev,
+        [topicId]: { title: trimmedTitle, calendarWeek: weekValue },
+      }));
     } catch (error) {
       handleError(error, 'Fehler beim Aktualisieren des Top-Themas');
     }
@@ -855,6 +913,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       if (error) throw new Error(error.message);
 
       setTopics(prev => prev.filter(topic => topic.id !== topicId));
+      setTopicDrafts(prev => {
+        const next = { ...prev };
+        delete next[topicId];
+        return next;
+      });
     } catch (error) {
       handleError(error, 'Fehler beim Löschen des Top-Themas');
     }
@@ -1236,6 +1299,97 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 </TableBody>
               </Table>
             </Box>
+          </Stack>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Stack
+            direction={{ xs: 'column', md: 'row' }}
+            justifyContent="space-between"
+            alignItems={{ xs: 'flex-start', md: 'center' }}
+            spacing={2}
+          >
+            <Box>
+              <Typography variant="h6">⭐ Top-Themen</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Halte die wichtigsten Themen fest (maximal fünf Einträge).
+              </Typography>
+            </Box>
+            {canEdit && (
+              <Button
+                variant="outlined"
+                startIcon={<AddIcon />}
+                onClick={addTopic}
+                disabled={topics.length >= 5}
+              >
+                Neues Thema
+              </Button>
+            )}
+          </Stack>
+
+          <Stack spacing={2} sx={{ mt: 3 }}>
+            {topics.length === 0 && (
+              <Typography variant="body2" color="text.secondary">
+                Noch keine Top-Themen erfasst.
+              </Typography>
+            )}
+            {topics.map(topic => {
+              const draft = topicDrafts[topic.id] ?? {
+                title: topic.title ?? '',
+                calendarWeek: topic.calendar_week ?? '',
+              };
+
+              return (
+                <Stack
+                  key={topic.id}
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1}
+                  alignItems={{ xs: 'stretch', md: 'center' }}
+                >
+                  <TextField
+                    label="Thema"
+                    value={draft.title}
+                    onChange={event =>
+                      setTopicDrafts(prev => ({
+                        ...prev,
+                        [topic.id]: {
+                          ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
+                          title: event.target.value,
+                        },
+                      }))
+                    }
+                    onBlur={() => persistTopic(topic.id)}
+                    fullWidth
+                    disabled={!canEdit}
+                  />
+                  <TextField
+                    type="week"
+                    label="Kalenderwoche"
+                    value={draft.calendarWeek}
+                    onChange={event =>
+                      setTopicDrafts(prev => ({
+                        ...prev,
+                        [topic.id]: {
+                          ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
+                          calendarWeek: event.target.value,
+                        },
+                      }))
+                    }
+                    onBlur={() => persistTopic(topic.id)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ width: { xs: '100%', md: 200 } }}
+                    disabled={!canEdit}
+                  />
+                  {canEdit && (
+                    <Button color="error" onClick={() => deleteTopic(topic.id)} startIcon={<DeleteIcon />}>
+                      Löschen
+                    </Button>
+                  )}
+                </Stack>
+              );
+            })}
           </Stack>
         </CardContent>
       </Card>

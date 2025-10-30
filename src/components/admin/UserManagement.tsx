@@ -56,6 +56,15 @@ interface Department {
   created_at?: string;
 }
 
+interface BoardSummary {
+  id: string;
+  name: string;
+  description?: string | null;
+  settings?: Record<string, unknown> | null;
+  board_admin_id: string | null;
+  boardType: 'standard' | 'team';
+}
+
 function normalizeUserProfile(profile: any): UserProfile {
   return {
     id: profile.id,
@@ -83,6 +92,8 @@ export default function UserManagement() {
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [boards, setBoards] = useState<BoardSummary[]>([]);
+  const [boardAdminSelections, setBoardAdminSelections] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
 
@@ -121,7 +132,7 @@ export default function UserManagement() {
     try {
       setLoading(true);
 
-      const [usersResult, departmentsResult] = await Promise.all([
+      const [usersResult, departmentsResult, boardsResult] = await Promise.all([
         supabase
           .from('profiles')
           .select('*')
@@ -129,7 +140,11 @@ export default function UserManagement() {
         supabase
           .from('departments')
           .select('*')
-          .order('name')
+          .order('name'),
+        supabase
+          .from('kanban_boards')
+          .select('id, name, description, settings, board_admin_id')
+          .order('name'),
       ]);
 
       const { data: usersData, error: usersError } = usersResult;
@@ -158,6 +173,39 @@ export default function UserManagement() {
         setDepartments([]);
       } else {
         setDepartments(departmentsData || []);
+      }
+
+      const { data: boardsData, error: boardsError } = boardsResult;
+      if (boardsError) {
+        console.error('❌ Boards Error:', boardsError);
+        setMessage((prev) => prev || `❌ Board-Fehler: ${boardsError.message}`);
+        setBoards([]);
+        setBoardAdminSelections({});
+      } else {
+        const normalizedBoards = ((boardsData as any[]) ?? []).map((board) => {
+          const rawSettings =
+            board && typeof board.settings === 'object' && board.settings !== null
+              ? (board.settings as Record<string, unknown>)
+              : {};
+          const typeRaw = typeof rawSettings.boardType === 'string' ? rawSettings.boardType : '';
+          const boardType = typeRaw.toLowerCase() === 'team' ? 'team' : 'standard';
+
+          return {
+            id: board.id as string,
+            name: board.name ?? 'Board',
+            description: board.description ?? null,
+            settings: rawSettings,
+            board_admin_id: board.board_admin_id ?? null,
+            boardType,
+          } as BoardSummary;
+        });
+
+        setBoards(normalizedBoards);
+        const adminSelections: Record<string, string> = {};
+        normalizedBoards.forEach((board) => {
+          adminSelections[board.id] = board.board_admin_id ?? '';
+        });
+        setBoardAdminSelections(adminSelections);
       }
     } catch (error) {
       console.error('💥 Unerwarteter Fehler:', error);
@@ -240,6 +288,53 @@ export default function UserManagement() {
       { company: departmentName || null },
       'Abteilung erfolgreich aktualisiert!',
     );
+  };
+
+  const updateBoardAdmin = async (boardId: string, nextAdminId: string) => {
+    if (!supabase) {
+      setMessage('❌ Supabase-Konfiguration fehlt.');
+      setTimeout(() => setMessage(''), 3000);
+      return;
+    }
+
+    const desiredId = nextAdminId.trim() ? nextAdminId.trim() : '';
+    const previousSelection = boardAdminSelections[boardId] ?? '';
+    const currentBoard = boards.find((entry) => entry.id === boardId);
+    if (currentBoard && (currentBoard.board_admin_id ?? '') === desiredId) {
+      setBoardAdminSelections((prev) => ({ ...prev, [boardId]: desiredId }));
+      return;
+    }
+
+    setBoardAdminSelections((prev) => ({ ...prev, [boardId]: desiredId }));
+
+    try {
+      const { error } = await supabase
+        .from('kanban_boards')
+        .update({ board_admin_id: desiredId || null })
+        .eq('id', boardId);
+
+      if (error) {
+        throw error;
+      }
+
+      setBoards((prev) =>
+        prev.map((board) =>
+          board.id === boardId
+            ? { ...board, board_admin_id: desiredId || null }
+            : board,
+        ),
+      );
+      setBoardAdminSelections((prev) => ({ ...prev, [boardId]: desiredId }));
+      setMessage('✅ Board-Admin erfolgreich aktualisiert!');
+      setTimeout(() => setMessage(''), 3000);
+    } catch (cause) {
+      console.error('❌ Fehler beim Aktualisieren des Board-Admins', cause);
+      const errorMessage =
+        cause instanceof Error ? cause.message : 'Board-Admin konnte nicht aktualisiert werden.';
+      setMessage(`❌ ${errorMessage}`);
+      setTimeout(() => setMessage(''), 4000);
+      setBoardAdminSelections((prev) => ({ ...prev, [boardId]: previousSelection }));
+    }
   };
 
   const updateUserName = async (userId: string, fullName: string) => {
@@ -541,6 +636,73 @@ export default function UserManagement() {
             <Typography variant="body2" color="text.secondary">
               Noch keine Abteilungen angelegt.
             </Typography>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card sx={{ mb: 4 }}>
+        <CardContent>
+          <Typography variant="h6" gutterBottom>
+            📋 Board-Administratoren
+          </Typography>
+          {boards.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              Keine Boards gefunden.
+            </Typography>
+          ) : (
+            <TableContainer component={Paper}>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Board</TableCell>
+                    <TableCell>Board-Admin</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {boards.map((board) => {
+                    const selection = boardAdminSelections[board.id] ?? '';
+                    return (
+                      <TableRow key={board.id}>
+                        <TableCell>
+                          <Stack spacing={0.5}>
+                            <Typography variant="subtitle2" fontWeight={600}>
+                              {board.name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {board.boardType === 'team' ? 'Teamboard' : 'Projektboard'}
+                            </Typography>
+                            {board.description && (
+                              <Typography variant="caption" color="text.secondary">
+                                {board.description}
+                              </Typography>
+                            )}
+                          </Stack>
+                        </TableCell>
+                        <TableCell sx={{ minWidth: { xs: 220, md: 320 } }}>
+                          <FormControl size="small" fullWidth>
+                            <InputLabel>Board-Admin</InputLabel>
+                            <Select
+                              label="Board-Admin"
+                              value={selection}
+                              onChange={(event) => updateBoardAdmin(board.id, String(event.target.value))}
+                            >
+                              <MenuItem value="">
+                                <em>Kein Admin</em>
+                              </MenuItem>
+                              {users.map((userProfile) => (
+                                <MenuItem key={userProfile.id} value={userProfile.id}>
+                                  {userProfile.full_name || userProfile.email}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
           )}
         </CardContent>
       </Card>

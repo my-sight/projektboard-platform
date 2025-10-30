@@ -9,6 +9,7 @@ import type { SessionTokenHeaders } from './apiTokens';
 interface BoardRow {
   id: string;
   owner_id: string | null;
+  board_admin_id: string | null;
 }
 
 interface BoardAccessSuccess {
@@ -44,7 +45,7 @@ export async function ensureBoardMemberAccess(
 
   const { data: board, error: boardError } = await client
     .from('kanban_boards')
-    .select('id, owner_id')
+    .select('id, owner_id, board_admin_id')
     .eq('id', boardId)
     .maybeSingle();
 
@@ -57,7 +58,7 @@ export async function ensureBoardMemberAccess(
     return { response: NextResponse.json({ error: 'Board nicht gefunden.' }, { status: 404 }) } as const;
   }
 
-  if (board.owner_id === user.id) {
+  if (board.owner_id === user.id || board.board_admin_id === user.id) {
     return { client, user, board } as const;
   }
 

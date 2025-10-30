@@ -263,20 +263,43 @@ const resolvePermissions = async (loadedUsers: any[]) => {
       role === 'superuser' ||
       isSuperuserEmail(email);
 
-    const { data: membershipData, error: membershipError } = await supabase
-      .from('board_members')
-      .select('id')
-      .eq('board_id', boardId)
-      .eq('profile_id', authUserId);
+    let isMember = false;
+    try {
+      const { data: membershipData, error: membershipError } = await supabase
+        .from('board_members')
+        .select('id')
+        .eq('board_id', boardId)
+        .eq('profile_id', authUserId);
 
-    if (membershipError) {
+      if (membershipError) {
+        console.error('⚠️ Fehler beim Prüfen der Board-Mitgliedschaft:', membershipError);
+      } else {
+        isMember = (membershipData?.length ?? 0) > 0;
+      }
+    } catch (membershipError) {
       console.error('⚠️ Fehler beim Prüfen der Board-Mitgliedschaft:', membershipError);
-      setCanModifyBoard(elevated);
-      return;
     }
 
-    const isMember = (membershipData?.length ?? 0) > 0;
-    setCanModifyBoard(elevated || isMember);
+    let ownsBoard = false;
+    let isBoardAdmin = false;
+    try {
+      const { data: boardRow, error: boardError } = await supabase
+        .from('kanban_boards')
+        .select('owner_id, board_admin_id')
+        .eq('id', boardId)
+        .maybeSingle();
+
+      if (boardError) {
+        console.error('⚠️ Fehler beim Laden der Board-Berechtigungen:', boardError);
+      } else if (boardRow) {
+        ownsBoard = boardRow.owner_id === authUserId;
+        isBoardAdmin = boardRow.board_admin_id === authUserId;
+      }
+    } catch (boardError) {
+      console.error('⚠️ Fehler beim Laden der Board-Berechtigungen:', boardError);
+    }
+
+    setCanModifyBoard(elevated || isMember || ownsBoard || isBoardAdmin);
   } catch (permissionError) {
     console.error('❌ Unerwarteter Fehler bei der Berechtigungsprüfung:', permissionError);
     setCanModifyBoard(false);
