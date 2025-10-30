@@ -58,6 +58,7 @@ interface TopicRow {
   board_id: string;
   title: string;
   position: number;
+  calendar_week: string | null;
 }
 
 interface MemberWithProfile extends BoardMemberRow {
@@ -144,7 +145,9 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   const [historyWeeks, setHistoryWeeks] = useState<WeekHistoryItem[]>([]);
   const [attendanceDraft, setAttendanceDraft] = useState<Record<string, boolean>>({});
   const [attendanceSaving, setAttendanceSaving] = useState(false);
-  const [topicDrafts, setTopicDrafts] = useState<Record<string, string>>({});
+  const [topicDrafts, setTopicDrafts] = useState<
+    Record<string, { title: string; calendarWeek: string }>
+  >({});
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; memberId: string | null }>({ open: false, memberId: null });
 
   useEffect(() => {
@@ -175,7 +178,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
             .order('week_start', { ascending: true }),
           supabase
             .from('board_top_topics')
-            .select('id, board_id, title, position')
+            .select('id, board_id, title, position, calendar_week')
             .eq('board_id', boardId)
             .order('position', { ascending: true }),
         ]);
@@ -228,9 +231,12 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
 
         const topicRows = (topicsResult.data as TopicRow[] | null) ?? [];
         setTopics(topicRows);
-        const topicDraftValues: Record<string, string> = {};
+        const topicDraftValues: Record<string, { title: string; calendarWeek: string }> = {};
         topicRows.forEach((row) => {
-          topicDraftValues[row.id] = row.title;
+          topicDraftValues[row.id] = {
+            title: row.title ?? '',
+            calendarWeek: row.calendar_week ?? '',
+          };
         });
         setTopicDrafts(topicDraftValues);
       } catch (cause) {
@@ -411,28 +417,65 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     try {
       const { data, error } = await supabase
         .from('board_top_topics')
-        .insert({ board_id: boardId, title: '', position: topics.length })
+        .insert({
+          board_id: boardId,
+          title: '',
+          position: topics.length,
+          calendar_week: null,
+        })
         .select()
         .single();
       if (error) throw error;
 
       const topic = data as TopicRow;
       setTopics((prev) => [...prev, topic]);
-      setTopicDrafts((prev) => ({ ...prev, [topic.id]: '' }));
+      setTopicDrafts((prev) => ({
+        ...prev,
+        [topic.id]: {
+          title: topic.title ?? '',
+          calendarWeek: topic.calendar_week ?? '',
+        },
+      }));
     } catch (cause) {
       console.error('❌ Fehler beim Hinzufügen eines Top-Themas', cause);
       setMessage('❌ Top-Thema konnte nicht angelegt werden.');
     }
   };
 
-  const updateTopic = async (topicId: string, value: string) => {
+  const persistTopic = async (topicId: string) => {
     if (!supabase) return;
     try {
+      const draft = topicDrafts[topicId] ?? { title: '', calendarWeek: '' };
+      const trimmedTitle = draft.title.trim();
+      const trimmedWeek = draft.calendarWeek.trim();
+      const normalizedWeek = trimmedWeek === '' ? null : trimmedWeek;
+      const current = topics.find((entry) => entry.id === topicId);
+      const currentWeek = current?.calendar_week ?? null;
+      if (current && current.title === trimmedTitle && currentWeek === normalizedWeek) {
+        if (current.title !== draft.title || (currentWeek ?? '') !== (draft.calendarWeek ?? '')) {
+          setTopicDrafts((prev) => ({
+            ...prev,
+            [topicId]: { title: trimmedTitle, calendarWeek: trimmedWeek },
+          }));
+        }
+        return;
+      }
       const { error } = await supabase
         .from('board_top_topics')
-        .update({ title: value })
+        .update({ title: trimmedTitle, calendar_week: normalizedWeek })
         .eq('id', topicId);
       if (error) throw error;
+      setTopics((prev) =>
+        prev.map((entry) =>
+          entry.id === topicId
+            ? { ...entry, title: trimmedTitle, calendar_week: normalizedWeek }
+            : entry,
+        ),
+      );
+      setTopicDrafts((prev) => ({
+        ...prev,
+        [topicId]: { title: trimmedTitle, calendarWeek: trimmedWeek },
+      }));
       setMessage('✅ Top-Thema aktualisiert');
       setTimeout(() => setMessage(null), 3000);
     } catch (cause) {
@@ -714,21 +757,58 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                 Noch keine Top-Themen erfasst.
               </Typography>
             )}
-            {topics.map((topic) => (
-              <Stack key={topic.id} direction={{ xs: 'column', md: 'row' }} spacing={1} alignItems={{ xs: 'stretch', md: 'center' }}>
-                <TextField
-                  label="Thema"
-                  value={topicDrafts[topic.id] ?? ''}
-                  onChange={(event) => setTopicDrafts((prev) => ({ ...prev, [topic.id]: event.target.value }))}
-                  onBlur={() => updateTopic(topic.id, topicDrafts[topic.id] ?? '')}
-                  fullWidth
-                  disabled={!canEdit}
-                />
-                {canEdit && (
-                  <Button color="error" onClick={() => deleteTopic(topic.id)} startIcon={<DeleteIcon />}>Löschen</Button>
-                )}
-              </Stack>
-            ))}
+            {topics.map((topic) => {
+              const draft =
+                topicDrafts[topic.id] ?? {
+                  title: topic.title ?? '',
+                  calendarWeek: topic.calendar_week ?? '',
+                };
+              return (
+                <Stack
+                  key={topic.id}
+                  direction={{ xs: 'column', md: 'row' }}
+                  spacing={1}
+                  alignItems={{ xs: 'stretch', md: 'center' }}
+                >
+                  <TextField
+                    label="Thema"
+                    value={draft.title}
+                    onChange={(event) =>
+                      setTopicDrafts((prev) => ({
+                        ...prev,
+                        [topic.id]: {
+                          title: event.target.value,
+                          calendarWeek: (prev[topic.id] ?? draft).calendarWeek,
+                        },
+                      }))
+                    }
+                    onBlur={() => persistTopic(topic.id)}
+                    fullWidth
+                    disabled={!canEdit}
+                  />
+                  <TextField
+                    label="KW"
+                    value={draft.calendarWeek}
+                    onChange={(event) =>
+                      setTopicDrafts((prev) => ({
+                        ...prev,
+                        [topic.id]: {
+                          title: (prev[topic.id] ?? draft).title,
+                          calendarWeek: event.target.value,
+                        },
+                      }))
+                    }
+                    onBlur={() => persistTopic(topic.id)}
+                    disabled={!canEdit}
+                    sx={{ width: { xs: '100%', md: 160 } }}
+                    placeholder="z. B. KW 12"
+                  />
+                  {canEdit && (
+                    <Button color="error" onClick={() => deleteTopic(topic.id)} startIcon={<DeleteIcon />}>Löschen</Button>
+                  )}
+                </Stack>
+              );
+            })}
           </Stack>
         </CardContent>
       </Card>

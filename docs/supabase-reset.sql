@@ -137,6 +137,7 @@ create table public.kanban_boards (
   settings     jsonb not null default '{"boardType":"standard"}'::jsonb,
   visibility   text not null default 'public' check (visibility in ('public', 'private')),
   owner_id     uuid references auth.users(id) on delete set null,
+  board_admin_id uuid references public.profiles(id) on delete set null,
   user_id      uuid references auth.users(id) on delete set null,
   created_at   timestamptz not null default timezone('utc', now()),
   updated_at   timestamptz not null default timezone('utc', now())
@@ -193,6 +194,7 @@ create table public.board_top_topics (
   board_id    uuid not null references public.kanban_boards(id) on delete cascade,
   title       text not null default '',
   position    integer not null default 0,
+  calendar_week text,
   created_at  timestamptz not null default timezone('utc', now()),
   updated_at  timestamptz not null default timezone('utc', now())
 );
