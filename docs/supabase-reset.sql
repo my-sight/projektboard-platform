@@ -1,44 +1,11 @@
--- Reset and rebuild the Projektboard schema.
--- ⚠️ This script DROPS existing tables and functions before recreating them.
---    Run it only if you are comfortable losing the current board/profile data.
---
--- Recommended execution order:
---   1. Open Supabase SQL editor.
---   2. Paste this script.
---   3. Execute in a single transaction.
---
--- The script assumes the `pgcrypto` extension is available (default on Supabase)
--- so that `gen_random_uuid()` works.
-
+-- ✅ Sichere Drop-/Cleanup-Phase (ersetzt Deinen bisherigen Drop-Block)
 begin;
 
+-- Immer im public-Schema arbeiten und UUID-Gen sicherstellen
 set search_path = public;
+create extension if not exists pgcrypto with schema public;
 
--- ---------------------------------------------------------------------------
--- Drop legacy objects so we can recreate a clean schema
--- ---------------------------------------------------------------------------
-
--- helper triggers/functions
-drop trigger if exists set_departments_updated_at on public.departments;
-drop trigger if exists set_profiles_updated_at on public.profiles;
-drop trigger if exists set_kanban_boards_updated_at on public.kanban_boards;
-drop trigger if exists set_board_settings_updated_at on public.kanban_board_settings;
-drop trigger if exists set_cards_updated_at on public.kanban_cards;
-drop trigger if exists sync_profile_from_auth on auth.users;
-
-drop function if exists public.handle_profiles_updated_at();
-drop function if exists public.handle_kanban_boards_updated_at();
-drop function if exists public.handle_board_settings_updated_at();
-drop function if exists public.handle_kanban_cards_updated_at();
-drop function if exists public.set_updated_at();
-drop function if exists public.list_all_boards();
-drop function if exists public.handle_new_auth_user();
-
--- legacy/unused tables from the earlier implementation
-drop table if exists public.team_members cascade;
-drop table if exists public.teams cascade;
-
--- main domain tables
+-- 1) Zuerst alle Tabellen droppen (nimmt Trigger gleich mit)
 drop table if exists public.board_escalation_history cascade;
 drop table if exists public.board_escalations cascade;
 drop table if exists public.board_top_topics cascade;
@@ -49,6 +16,27 @@ drop table if exists public.kanban_board_settings cascade;
 drop table if exists public.kanban_boards cascade;
 drop table if exists public.departments cascade;
 drop table if exists public.profiles cascade;
+
+-- Legacy/unused
+drop table if exists public.team_members cascade;
+drop table if exists public.teams cascade;
+
+-- 2) Trigger auf auth.users bedingt droppen (Tabelle liegt in Schema auth)
+do $$
+begin
+  if to_regclass('auth.users') is not null then
+    execute 'drop trigger if exists sync_profile_from_auth on auth.users';
+  end if;
+end$$;
+
+-- 3) Danach (jetzt ohne Trigger-Abhängigkeiten) Funktionen entsorgen
+drop function if exists public.handle_profiles_updated_at();
+drop function if exists public.handle_kanban_boards_updated_at();
+drop function if exists public.handle_board_settings_updated_at();
+drop function if exists public.handle_kanban_cards_updated_at();
+drop function if exists public.set_updated_at();
+drop function if exists public.list_all_boards();
+drop function if exists public.handle_new_auth_user();
 
 -- ---------------------------------------------------------------------------
 -- Helper function for automatic updated_at handling
