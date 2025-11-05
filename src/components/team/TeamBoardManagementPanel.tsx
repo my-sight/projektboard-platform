@@ -798,30 +798,36 @@ useEffect(() => {
                       }))
                     }
                     onBlur={() => persistTopic(topic.id)}
-        fullWidth
-   disabled={!canManageTopics}
-                  />
-                  <TextField
-                    type="week"
-                    label="Kalenderwoche"
-                    value={draft.calendarWeek}
-                    onChange={(event) =>
-                      setTopicDrafts((prev) => ({
-                        ...prev,
-                        [topic.id]: {
-                          ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
-                          calendarWeek: event.target.value,
-                        },
-                      }))
-                    }
-                    onBlur={() => persistTopic(topic.id)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ width: { xs: '100%', md: 200 } }}
-                    disabled={!canManageTopics}
-                  
-                  canManageTopics && (
-                    <Button color="error" onClick={() => deleteTopic(topic.id)} startIcon={<DeleteIcon />}>Löschen</Button>
-                  )}
+       fullWidth
+                     disabled={!canManageTopics}
+                   />
+                   <TextField
+                     type="week"
+                     label="Kalenderwoche"
+                     value={draft.calendarWeek}
+                     onChange={(event) =>
+                       setTopicDrafts((prev) => ({
+                         ...prev,
+                         [topic.id]: {
+                           ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
+                           calendarWeek: event.target.value,
+                         },
+                       }))
+                     }
+                     onBlur={() => persistTopic(topic.id)}
+                     InputLabelProps={{ shrink: true }}
+                     sx={{ width: { xs: '100%', md: 200 } }}
+                     disabled={!canManageTopics}
+                   />
+                   {canManageTopics && (
+                     <Button
+                       color="error"
+                       onClick={() => deleteTopic(topic.id)}
+                       startIcon={<DeleteIcon />}
+                     >
+                       Löschen
+                     </Button>
+                   )}
                 </Stack>
               );
             })}
