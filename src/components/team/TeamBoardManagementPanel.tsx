@@ -153,10 +153,22 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; memberId: string | null }>({ open: false, memberId: null });
 
+ 
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUserId(user?.id ?? null);
+    }).catch(() => {
+      setCurrentUserId(null);
+    });
+  }, [supabase]);
+  const isMember = useMemo(() => members.some((m) => m.profile_id === currentUserId), [members, currentUserId]);
+  const canManageTopics = canEdit || isMember;
+useEffect(() => {
     if (!supabase) {
-      return;
-    }
+    return;
+  }
+
 
     let active = true;
 
@@ -742,7 +754,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                 Halte die wichtigsten Themen fest (maximal fünf Einträge).
               </Typography>
             </Box>
-            {canEdit && (
+{canManageTopics && (
               <Button
                 variant="outlined"
                 startIcon={<AddIcon />}
@@ -786,8 +798,8 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                       }))
                     }
                     onBlur={() => persistTopic(topic.id)}
-                    fullWidth
-                    disabled={!canEdit}
+        fullWidth
+   disabled={!canManageTopics}
                   />
                   <TextField
                     type="week"
@@ -805,9 +817,9 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                     onBlur={() => persistTopic(topic.id)}
                     InputLabelProps={{ shrink: true }}
                     sx={{ width: { xs: '100%', md: 200 } }}
-                    disabled={!canEdit}
-                  />
-                  {canEdit && (
+                    disabled={!canManageTopics}
+                  
+                  canManageTopics && (
                     <Button color="error" onClick={() => deleteTopic(topic.id)} startIcon={<DeleteIcon />}>Löschen</Button>
                   )}
                 </Stack>
