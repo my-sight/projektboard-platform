@@ -22,7 +22,7 @@ import {
   Select,
   TextField,
   Typography,
-  Divider, // ✅ NEU: Für das Dashboard
+  Divider,
 } from '@mui/material';
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
 import { useTheme } from '@/theme/ThemeRegistry';
@@ -31,7 +31,7 @@ import AssessmentIcon from '@mui/icons-material/Assessment';
 import BoardManagementPanel from '@/components/board/BoardManagementPanel';
 import TeamKanbanBoard from '@/components/team/TeamKanbanBoard';
 import TeamBoardManagementPanel from '@/components/team/TeamBoardManagementPanel';
-import PersonalDashboard from '@/components/dashboard/PersonalDashboard'; // ✅ NEU
+import PersonalDashboard from '@/components/dashboard/PersonalDashboard';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
@@ -55,14 +55,12 @@ export default function HomePage() {
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'management' | 'board' | 'team-management' | 'team-board'>('list');
   
-  // ✅ NEU: State für Deep-Link aus Dashboard
   const [openCardId, setOpenCardId] = useState<string | null>(null);
 
   const { isDark, toggleTheme } = useTheme();
   const { user, loading, signOut } = useAuth();
   const boardRef = useRef<OriginalKanbanBoardHandle>(null);
 
-  // Board Management States
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperuser, setIsSuperuser] = useState(false);
@@ -81,7 +79,6 @@ export default function HomePage() {
     setKpiCount(0);
   }, [selectedBoard]);
 
-  // Auth-Check
   useEffect(() => {
     if (!supabase) return;
     if (!loading && !user) {
@@ -93,12 +90,7 @@ export default function HomePage() {
     if (!user || !supabase) return;
     try {
       const superuser = isSuperuserEmail(user.email ?? null);
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-
+      const { data, error } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
       if (error) throw error;
       const role = String(data?.role || '').toLowerCase();
       setIsSuperuser(superuser);
@@ -143,7 +135,6 @@ export default function HomePage() {
   const currentUserId = user?.id ?? null;
   const isSelectedBoardAdmin = selectedBoard?.boardAdminId === currentUserId;
 
-  // ✅ NEU: Handler für das Öffnen aus dem Dashboard
   const handleOpenBoardFromDashboard = (boardId: string, cardId?: string, type: 'standard' | 'team' = 'standard') => {
     const board = boards.find(b => b.id === boardId);
     if (board) {
@@ -166,10 +157,7 @@ export default function HomePage() {
       const initialSettings = { boardType: newBoardType };
       const { data, error } = await supabase.from('kanban_boards').insert([{ name: newBoardName.trim(), description: newBoardDescription.trim(), owner_id: user?.id, user_id: user?.id, visibility: 'public', settings: initialSettings }]).select().single();
       if (error) throw error;
-      if (data) {
-         // Optimistic update
-         loadBoards();
-      }
+      if (data) { loadBoards(); }
       setCreateDialogOpen(false); setNewBoardName(''); setNewBoardDescription(''); setMessage('✅ Board erfolgreich erstellt!'); setTimeout(() => setMessage(''), 3000);
     } catch (error) { setMessage('❌ Fehler beim Erstellen des Boards'); }
   };
@@ -188,7 +176,7 @@ export default function HomePage() {
   if (!supabase) return <Container maxWidth="sm" sx={{ py: 8 }}><SupabaseConfigNotice /></Container>;
   if (!user) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 Weiterleitung...</Typography></Box>;
 
-  // --- BOARD VIEW ---
+  // BOARD VIEWS
   if (selectedBoard && selectedBoard.boardType === 'standard' && viewMode === 'board') {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -213,7 +201,6 @@ export default function HomePage() {
     );
   }
 
-  // --- TEAM BOARD VIEW ---
   if (selectedBoard && selectedBoard.boardType === 'team' && viewMode === 'team-board') {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -235,7 +222,7 @@ export default function HomePage() {
     );
   }
 
-  // --- MANAGEMENT VIEWS ---
+  // MANAGEMENT VIEWS
   if (selectedBoard && viewMode === 'management') {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -260,7 +247,7 @@ export default function HomePage() {
     );
   }
 
-  // --- MAIN LIST VIEW ---
+  // --- MAIN LIST VIEW (Umgedrehte Reihenfolge!) ---
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -275,7 +262,13 @@ export default function HomePage() {
 
       {message && <Alert severity={message.startsWith('✅') ? 'success' : 'error'} sx={{ mb: 3 }}>{message}</Alert>}
 
-      <Typography variant="h5" sx={{ mt: 2, mb: 2 }}>Projektboards</Typography>
+      {/* ✅ 1. PERSÖNLICHES DASHBOARD GANZ OBEN */}
+      <PersonalDashboard onOpenBoard={handleOpenBoardFromDashboard} />
+      
+      <Divider sx={{ my: 6 }} />
+
+      {/* ✅ 2. BOARDS UNTEN */}
+      <Typography variant="h5" sx={{ mb: 2 }}>Projektboards</Typography>
       <Grid container spacing={3}>
         {isAdmin && (
           <Grid item xs={12} sm={6} md={4}>
@@ -325,10 +318,7 @@ export default function HomePage() {
         ))}
       </Grid>
       
-      {/* ✅ DASHBOARD HIER EINGEFÜGT */}
-      <Divider sx={{ my: 6 }} />
-      <PersonalDashboard onOpenBoard={handleOpenBoardFromDashboard} />
-
+      {/* Dialogs... */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
         <DialogTitle>Neues Board erstellen</DialogTitle>
         <DialogContent>

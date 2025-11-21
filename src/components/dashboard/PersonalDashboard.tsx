@@ -19,7 +19,7 @@ import {
   Divider,
   LinearProgress,
 } from '@mui/material';
-import { Delete, Add, Event, ArrowForward } from '@mui/icons-material';
+import { Delete, Add, Event } from '@mui/icons-material';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 
@@ -30,15 +30,13 @@ interface PersonalDashboardProps {
 export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const [loading, setLoading] = useState(true);
-  const [userName, setUserName] = useState<string>('');
   const [userId, setUserId] = useState<string>('');
   
   // Daten
   const [teamTasks, setTeamTasks] = useState<any[]>([]);
   const [projectTasks, setProjectTasks] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
-  const [boardsMap, setBoardsMap] = useState<Record<string, string>>({}); // ID -> Name
-
+  
   // Note Draft
   const [newNote, setNewNote] = useState('');
   const [newNoteDate, setNewNoteDate] = useState('');
@@ -46,30 +44,40 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
+      console.log("🚀 Starte Dashboard-Datenladung...");
       
-      // 1. User Info & Profile laden (für Namensabgleich)
+      // 1. User Info laden
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
 
       const profiles = await fetchClientProfiles();
       const myProfile = profiles.find(p => p.id === user.id);
-      const myFullName = myProfile?.full_name || myProfile?.name || user.email || '';
-      setUserName(myFullName);
+      
+      // Namens-Varianten für den Abgleich erstellen (Token-basiert)
+      const myNameParts = [
+          myProfile?.full_name,
+          myProfile?.name,
+          user.email?.split('@')[0]
+      ]
+      .filter(Boolean)
+      .map(n => String(n).toLowerCase().trim())
+      .flatMap(n => n.split(/[\s,.]+/)); // Zerlege in Wörter ("Max", "Mustermann")
+      
+      const uniqueNameParts = Array.from(new Set(myNameParts)).filter(p => p.length > 2); // Nur Teile > 2 Zeichen
+      
+      console.log("👤 Mein User:", { id: user.id, email: user.email, suchBegriffe: uniqueNameParts });
 
       // 2. Boards laden (für Namen)
-      const { data: boards } = await supabase.from('kanban_boards').select('id, name, settings');
+      const { data: boards } = await supabase.from('kanban_boards').select('id, name');
       const bMap: Record<string, string> = {};
       boards?.forEach(b => { bMap[b.id] = b.name; });
-      setBoardsMap(bMap);
 
-      // 3. Karten laden (Alle Karten, wir filtern client-seitig für Flexibilität)
-      // Optimierung: Nur Karten laden, die nicht archiviert sind
+      // 3. Karten laden
       const { data: cards } = await supabase
         .from('kanban_cards')
         .select('*')
-        // Wir laden etwas mehr, um sicher zu filtern. RLS erlaubt das Lesen.
-        .not('card_data->>Archived', 'eq', '1'); 
+        .not('card_data->>Archived', 'eq', '1');
 
       if (cards) {
         const tTasks: any[] = [];
@@ -78,30 +86,40 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         cards.forEach(row => {
           const data = row.card_data || {};
           const boardId = row.board_id;
-          const board = boards?.find(b => b.id === boardId);
-          const isTeamBoard = board?.settings?.boardType === 'team';
+          const boardName = bMap[boardId] || 'Unbekanntes Board';
+          
+          // A) TEAM TASK ERKENNUNG
+          // Prüfen auf type='teamTask' (neue Struktur) oder assigneeId Existenz
+          const isTeamTask = data.type === 'teamTask' || (data.assigneeId !== undefined && data.assigneeId !== null);
 
-          if (isTeamBoard) {
-            // TEAM TASK LOGIK: Assignee ID + Status Flow
+          if (isTeamTask) {
             const status = data.status || '';
+            // Relevante Status für das Dashboard (aktiv)
             const isFlow = status === 'flow1' || status === 'flow';
-            const isAssigned = data.assigneeId === user.id;
             
-            if (isFlow && isAssigned) {
-              tTasks.push({ ...data, boardId, id: row.card_id, boardName: bMap[boardId] });
+            if (isFlow && data.assigneeId === user.id) {
+              tTasks.push({ ...data, boardId, id: row.card_id, boardName });
             }
-          } else {
-            // PROJEKT TASK LOGIK: Verantwortlich Name
-            const responsible = String(data.Verantwortlich || '').trim();
-            // Einfacher String-Vergleich (könnte man noch robuster machen)
-            const isAssigned = responsible && myFullName.includes(responsible);
+          } 
+          // B) PROJEKT TASK ERKENNUNG (Fallback)
+          else {
+            const responsible = String(data.Verantwortlich || '').toLowerCase().trim();
             
-            if (isAssigned) {
-              pTasks.push({ ...data, boardId, id: row.card_id, boardName: bMap[boardId] });
+            if (responsible) {
+               // Prüfen, ob eines meiner Namens-Teile im Verantwortlichen-Feld vorkommt
+               const isAssigned = uniqueNameParts.some(part => responsible.includes(part));
+               
+               // Oder ob die E-Mail direkt matcht
+               const isEmailMatch = user.email && responsible.includes(user.email.toLowerCase());
+
+               if (isAssigned || isEmailMatch) {
+                 pTasks.push({ ...data, boardId, id: row.card_id, boardName });
+               }
             }
           }
         });
 
+        console.log(`✅ Gefunden: ${tTasks.length} Team-Tasks, ${pTasks.length} Projekt-Tasks`);
         setTeamTasks(tTasks);
         setProjectTasks(pTasks);
       }
@@ -115,7 +133,6 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         .order('due_date', { ascending: true });
         
       setNotes(myNotes || []);
-      
       setLoading(false);
     };
 
@@ -150,21 +167,18 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
   if (loading) return <LinearProgress sx={{ mt: 4 }} />;
 
   return (
-    <Box sx={{ mt: 6 }}>
+    <Box sx={{ mt: 4, mb: 6 }}>
       <Typography variant="h5" sx={{ mb: 3, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
         🚀 Mein Cockpit
       </Typography>
 
       <Grid container spacing={3}>
-        {/* 1. TEAM FLOW AUFGABEN */}
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: '100%', bgcolor: '#e3f2fd', border: '1px solid #90caf9' }}>
+        {/* ZEILE 1: AUFGABEN (Team & Projekt nebeneinander) */}
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%', bgcolor: '#e3f2fd', border: '1px solid #90caf9', boxShadow: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom sx={{ color: '#1565c0', fontWeight: 600 }}>
                 ⚡ Im Flow (Team)
-              </Typography>
-              <Typography variant="caption" sx={{ mb: 2, display: 'block', color: '#1e88e5' }}>
-                Deine aktiven Aufgaben in Teamboards
               </Typography>
               
               {teamTasks.length === 0 ? (
@@ -172,9 +186,9 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                   Alles erledigt! Nichts im Flow.
                 </Typography>
               ) : (
-                <Stack spacing={1.5}>
+                <Stack spacing={1.5} sx={{ mt: 2 }}>
                   {teamTasks.map((task) => (
-                    <Card key={task.id} sx={{ p: 1.5, cursor: 'pointer', '&:hover': { boxShadow: 2 } }} onClick={() => onOpenBoard(task.boardId, task.id, 'team')}>
+                    <Card key={task.id} sx={{ p: 1.5, cursor: 'pointer', '&:hover': { boxShadow: 2, transform: 'translateY(-2px)' }, transition: 'all 0.2s', borderLeft: '4px solid #1565c0' }} onClick={() => onOpenBoard(task.boardId, task.id, 'team')}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.3 }}>
                           {task.description || 'Ohne Titel'}
@@ -197,15 +211,11 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
           </Card>
         </Grid>
 
-        {/* 2. PROJEKT KARTEN */}
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: '100%', bgcolor: '#f3e5f5', border: '1px solid #ce93d8' }}>
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%', bgcolor: '#f3e5f5', border: '1px solid #ce93d8', boxShadow: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom sx={{ color: '#6a1b9a', fontWeight: 600 }}>
                 📋 Meine Projektkarten
-              </Typography>
-              <Typography variant="caption" sx={{ mb: 2, display: 'block', color: '#8e24aa' }}>
-                Karten, auf denen du als "Verantwortlich" stehst
               </Typography>
 
               {projectTasks.length === 0 ? (
@@ -213,9 +223,9 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                   Keine Projektkarten zugewiesen.
                 </Typography>
               ) : (
-                <Stack spacing={1.5}>
+                <Stack spacing={1.5} sx={{ mt: 2 }}>
                   {projectTasks.map((task) => (
-                    <Card key={task.id} sx={{ p: 1.5, cursor: 'pointer', '&:hover': { boxShadow: 2 } }} onClick={() => onOpenBoard(task.boardId, task.id, 'standard')}>
+                    <Card key={task.id} sx={{ p: 1.5, cursor: 'pointer', '&:hover': { boxShadow: 2, transform: 'translateY(-2px)' }, transition: 'all 0.2s', borderLeft: '4px solid #6a1b9a' }} onClick={() => onOpenBoard(task.boardId, task.id, 'standard')}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                             {task.Nummer}
@@ -237,63 +247,88 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
           </Card>
         </Grid>
 
-        {/* 3. PERSÖNLICHE NOTIZEN */}
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: '100%', bgcolor: '#fff3e0', border: '1px solid #ffcc80' }}>
+        {/* ZEILE 2: PERSÖNLICHE NOTIZEN (VOLLE BREITE) */}
+        <Grid item xs={12}>
+          <Card sx={{ bgcolor: '#fff3e0', border: '1px solid #ffcc80', boxShadow: 3 }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom sx={{ color: '#ef6c00', fontWeight: 600 }}>
-                📝 Persönliche Notizen
-              </Typography>
-              <Typography variant="caption" sx={{ mb: 2, display: 'block', color: '#f57c00' }}>
-                Nur für dich sichtbar
-              </Typography>
-
-              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                <TextField 
-                  size="small" 
-                  placeholder="Neues Thema..." 
-                  fullWidth 
-                  value={newNote} 
-                  onChange={(e) => setNewNote(e.target.value)} 
-                  onKeyDown={(e) => e.key === 'Enter' && addNote()}
-                  sx={{ bgcolor: 'white' }}
-                />
-                <TextField 
-                  size="small" 
-                  type="date" 
-                  value={newNoteDate} 
-                  onChange={(e) => setNewNoteDate(e.target.value)}
-                  sx={{ bgcolor: 'white', width: 130 }}
-                />
-                <IconButton onClick={addNote} color="warning" sx={{ bgcolor: 'white', border: '1px solid #ffe0b2' }}><Add /></IconButton>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Box>
+                    <Typography variant="h6" sx={{ color: '#ef6c00', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                        ⭐ Persönliche Top-Themen
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: '#f57c00' }}>
+                        Deine private Merkliste
+                    </Typography>
+                </Box>
+                
+                {/* Eingabe direkt oben */}
+                <Box sx={{ display: 'flex', gap: 1, width: { xs: '100%', md: '50%' } }}>
+                    <TextField 
+                    size="small" 
+                    placeholder="Neues Thema..." 
+                    fullWidth 
+                    value={newNote} 
+                    onChange={(e) => setNewNote(e.target.value)} 
+                    onKeyDown={(e) => e.key === 'Enter' && addNote()}
+                    sx={{ bgcolor: 'white' }}
+                    />
+                    <TextField 
+                    size="small" 
+                    type="date" 
+                    value={newNoteDate} 
+                    onChange={(e) => setNewNoteDate(e.target.value)}
+                    sx={{ bgcolor: 'white', width: 150 }}
+                    />
+                    <Button variant="contained" color="warning" onClick={addNote} sx={{ minWidth: '40px' }}>
+                        <Add />
+                    </Button>
+                </Box>
               </Box>
 
-              <List dense sx={{ maxHeight: 400, overflow: 'auto' }}>
-                {notes.map((note) => (
-                  <ListItem 
-                    key={note.id} 
-                    secondaryAction={
-                      <IconButton edge="end" size="small" onClick={() => deleteNote(note.id)}>
-                        <Delete fontSize="small" color="action" />
-                      </IconButton>
-                    }
-                    disablePadding
-                    sx={{ mb: 1, bgcolor: 'white', borderRadius: 1, border: '1px solid #ffe0b2', p: 0.5 }}
-                  >
-                     <Checkbox 
-                        checked={note.is_done} 
-                        onChange={() => toggleNote(note.id, note.is_done)}
-                        color="warning"
-                     />
-                     <ListItemText 
-                        primary={note.content} 
-                        secondary={note.due_date ? `Bis: ${new Date(note.due_date).toLocaleDateString('de-DE')}` : null}
-                        sx={{ 
-                            textDecoration: note.is_done ? 'line-through' : 'none',
-                            opacity: note.is_done ? 0.6 : 1
-                        }}
-                     />
-                  </ListItem>
+              <List dense sx={{ bgcolor: 'white', borderRadius: 2, border: '1px solid #ffe0b2' }}>
+                {notes.length === 0 && (
+                    <ListItem>
+                        <ListItemText primary="Keine Notizen vorhanden." sx={{ fontStyle: 'italic', color: 'text.secondary' }} />
+                    </ListItem>
+                )}
+                {notes.map((note, index) => (
+                  <div key={note.id}>
+                    {index > 0 && <Divider component="li" />}
+                    <ListItem 
+                        secondaryAction={
+                        <IconButton edge="end" size="small" onClick={() => deleteNote(note.id)}>
+                            <Delete fontSize="small" color="action" />
+                        </IconButton>
+                        }
+                    >
+                        <Checkbox 
+                            checked={note.is_done} 
+                            onChange={() => toggleNote(note.id, note.is_done)}
+                            color="warning"
+                        />
+                        <ListItemText 
+                            primary={
+                                <Typography sx={{ 
+                                    fontWeight: 500,
+                                    textDecoration: note.is_done ? 'line-through' : 'none',
+                                    opacity: note.is_done ? 0.6 : 1
+                                }}>
+                                    {note.content}
+                                </Typography>
+                            } 
+                        />
+                        {note.due_date && (
+                            <Chip 
+                                label={new Date(note.due_date).toLocaleDateString('de-DE')} 
+                                size="small" 
+                                icon={<Event fontSize="small" />}
+                                color={new Date(note.due_date) < new Date() && !note.is_done ? 'error' : 'default'}
+                                variant="outlined"
+                                sx={{ mr: 2 }}
+                            />
+                        )}
+                    </ListItem>
+                  </div>
                 ))}
               </List>
             </CardContent>
