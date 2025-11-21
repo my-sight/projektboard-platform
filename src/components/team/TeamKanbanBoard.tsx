@@ -50,6 +50,7 @@ interface TeamBoardCard {
   assigneeId: string | null;
   status: TeamBoardStatus;
   position: number;
+  createdBy?: string;
 }
 
 interface TeamKanbanBoardProps {
@@ -76,8 +77,8 @@ const statusLabels: Record<TeamBoardStatus, string> = {
   done: 'Fertig',
 };
 
-const CARD_HEIGHT = 92;
 const CARD_WIDTH = 260;
+const MIN_CARD_HEIGHT = 92;
 
 const defaultDraft: TaskDraft = {
   description: '',
@@ -85,6 +86,16 @@ const defaultDraft: TaskDraft = {
   important: false,
   assigneeId: null,
   status: 'backlog',
+};
+
+const getInitials = (name: string) => {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
 };
 
 const droppableKey = (assigneeId: string | null, status: TeamBoardStatus) =>
@@ -109,24 +120,22 @@ const buildCardData = (card: TeamBoardCard) => ({
   important: card.important,
   assigneeId: card.assigneeId,
   status: card.status,
+  createdBy: card.createdBy,
 });
 
 const createColumnsMapFromCards = (cards: TeamBoardCard[]) => {
   const map = new Map<string, TeamBoardCard[]>();
-
   cards.forEach((card) => {
     const key = droppableKey(card.assigneeId, card.status);
     const entries = map.get(key) ?? [];
     entries.push({ ...card });
     map.set(key, entries);
   });
-
   return map;
 };
 
 const flattenColumnsMap = (map: Map<string, TeamBoardCard[]>) => {
   const flattened: TeamBoardCard[] = [];
-
   Array.from(map.keys())
     .sort()
     .forEach((key) => {
@@ -137,7 +146,6 @@ const flattenColumnsMap = (map: Map<string, TeamBoardCard[]>) => {
           flattened.push({ ...entry, position: index });
         });
     });
-
   return flattened;
 };
 
@@ -162,6 +170,7 @@ const normalizeCard = (row: any): TeamBoardCard | null => {
   const description = typeof payload.description === 'string' ? payload.description : '';
   const dueDate = typeof payload.dueDate === 'string' && payload.dueDate ? payload.dueDate : null;
   const important = Boolean(payload.important);
+  const createdBy = typeof payload.createdBy === 'string' ? payload.createdBy : undefined;
 
   let status: TeamBoardStatus = stageInfo.status;
   if (typeof payload.status === 'string' && ['backlog', 'flow1', 'flow', 'done'].includes(payload.status)) {
@@ -184,6 +193,7 @@ const normalizeCard = (row: any): TeamBoardCard | null => {
     assigneeId,
     status,
     position: typeof row.position === 'number' ? row.position : 0,
+    createdBy,
   };
 };
 
@@ -202,6 +212,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const [flowSaving, setFlowSaving] = useState(false);
   const [boardSettings, setBoardSettings] = useState<Record<string, any>>({});
   const [completedCount, setCompletedCount] = useState(0);
+  const [users, setUsers] = useState<any[]>([]);
 
   const persistAllCards = useCallback(
     async (entries: TeamBoardCard[]) => {
@@ -293,6 +304,17 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
     [boardId, boardSettings, supabase],
   );
 
+  const loadAllUsers = useCallback(async () => {
+    try {
+      const profiles = await fetchClientProfiles();
+      setUsers(profiles);
+      return profiles;
+    } catch (err) {
+      console.error("Fehler beim Laden der Profile:", err);
+      return [];
+    }
+  }, []);
+
   useEffect(() => {
     if (!supabase) {
       return;
@@ -304,7 +326,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       setLoading(true);
       setError(null);
       try {
-        const loadedProfiles = await fetchClientProfiles();
+        const loadedProfiles = await loadAllUsers();
         if (!active) return;
 
         await loadBoardSettings();
@@ -327,7 +349,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [boardId, supabase, loadBoardSettings]);
 
   const loadMembers = useCallback(
@@ -500,18 +521,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
     }
   };
 
-  const columnsMap = useMemo(() => {
-    const map = new Map<string, TeamBoardCard[]>();
-    cards.forEach((card) => {
-      const key = droppableKey(card.assigneeId, card.status);
-      const entries = map.get(key) ?? [];
-      entries.push(card);
-      map.set(key, entries);
-    });
-    map.forEach((entries) => entries.sort((a, b) => a.position - b.position));
-    return map;
-  }, [cards]);
-
   const handleDragEnd = async (result: DropResult) => {
     if (!canModify) return;
     if (!result.destination) return;
@@ -610,6 +619,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
         working.set(nextKey, targetEntries);
       } else {
         const cardId = `team-${crypto.randomUUID()}`;
+        const { data: { user } } = await supabase.auth.getUser();
+        
         const newCard: TeamBoardCard = {
           rowId: cardId,
           cardId,
@@ -619,6 +630,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           assigneeId: draft.assigneeId,
           status: draft.status,
           position: 0,
+          createdBy: user?.id,
         };
 
         const targetKey = droppableKey(newCard.assigneeId, newCard.status);
@@ -723,6 +735,9 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const renderCard = (card: TeamBoardCard, index: number) => {
     const dueDateLabel = card.dueDate ? new Date(card.dueDate).toLocaleDateString('de-DE') : null;
     const overdue = card.dueDate ? new Date(card.dueDate) < new Date(new Date().toDateString()) : false;
+    const creator = card.createdBy ? users.find((u) => u.id === card.createdBy) : null;
+    const creatorInitials = creator ? getInitials(creator.full_name || creator.name || '') : null;
+
     return (
       <Draggable key={card.cardId} draggableId={card.cardId} index={index} isDragDisabled={!canModify}>
         {(provided, snapshot) => (
@@ -744,9 +759,9 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
               transition: 'transform 0.14s ease, box-shadow 0.14s ease',
               border: '1px solid',
               borderColor: card.important ? 'error.light' : 'rgba(148, 163, 184, 0.35)',
-              height: CARD_HEIGHT,
-              minHeight: CARD_HEIGHT,
-              maxHeight: CARD_HEIGHT,
+              // ✅ FIX: Flexible Höhe (kein Abschneiden mehr), aber Mindesthöhe
+              height: 'auto',
+              minHeight: MIN_CARD_HEIGHT,
               display: 'flex',
               flexDirection: 'column',
               background: (theme) =>
@@ -781,6 +796,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                 flexDirection: 'column',
                 gap: 0.75,
                 height: '100%',
+                position: 'relative',
               }}
             >
               <Tooltip
@@ -791,22 +807,26 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                 enterDelay={1000}
               >
                 <Typography
-                  variant="subtitle2"
+                  variant="body2" // ✅ FIX: Normale Schriftart
                   sx={{
-                    fontWeight: 600,
+                    fontWeight: 400, // ✅ FIX: Nicht fett
+                    fontSize: '0.9rem',
+                    lineHeight: 1.4,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     display: '-webkit-box',
-                    WebkitLineClamp: 2,
+                    WebkitLineClamp: 2, // ✅ FIX: Max 2 Zeilen
                     WebkitBoxOrient: 'vertical',
                     whiteSpace: 'normal',
                     textTransform: 'none',
+                    mb: 1.5,
                   }}
                 >
                   {card.description || 'Ohne Beschreibung'}
                 </Typography>
               </Tooltip>
-              <Box sx={{ mt: 'auto' }}>
+              
+              <Box sx={{ mt: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                 {dueDateLabel && (
                   <Typography
                     variant="caption"
@@ -815,6 +835,26 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                   >
                     Fällig: {dueDateLabel}
                   </Typography>
+                )}
+                
+                {creatorInitials && (
+                   <Tooltip title={`Erstellt von: ${creator?.full_name || creator?.name}`} placement="top" arrow>
+                       <Typography
+                         variant="caption"
+                         sx={{
+                           fontSize: '0.65rem',
+                           color: 'text.disabled',
+                           fontWeight: 600,
+                           backgroundColor: 'rgba(0,0,0,0.05)',
+                           borderRadius: '4px',
+                           px: 0.5,
+                           py: 0.25,
+                           ml: 'auto'
+                         }}
+                       >
+                         {creatorInitials}
+                       </Typography>
+                   </Tooltip>
                 )}
               </Box>
             </CardContent>
@@ -845,38 +885,39 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       sx={{
         p: { xs: 2, md: 3 },
         background: 'linear-gradient(180deg, rgba(240, 244, 255, 0.8) 0%, rgba(255, 255, 255, 0.95) 45%)',
-        minHeight: '100%',
+        height: '100%', 
         display: 'flex',
         flexDirection: 'column',
         gap: 3,
-        flexGrow: 1,
-        minWidth: 0,
+        overflow: 'hidden', // ✅ FIX: Kein Scrollen im Hauptcontainer
       }}
     >
       {error && (
-        <Card sx={{ mb: 3 }}>
+        <Card sx={{ mb: 3, flexShrink: 0 }}>
           <CardContent>
             <Typography color="error">{error}</Typography>
           </CardContent>
         </Card>
       )}
 
-      <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'auto', pr: { md: 1 } }}>
+      <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'hidden' }}>
         <DragDropContext onDragEnd={handleDragEnd}>
-          <Grid container spacing={3} alignItems="flex-start" wrap="nowrap" sx={{ minWidth: 0 }}>
-          <Grid item xs={12} md={3}>
-            <Card
-              sx={{
-                height: '100%',
-                borderRadius: 3,
-                border: '1px solid',
-                borderColor: 'rgba(148, 163, 184, 0.28)',
-                boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
-              }}
-            >
-              <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Stack spacing={2}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center">
+          <Grid container spacing={3} sx={{ height: '100%' }} alignItems="flex-start" wrap="nowrap">
+            {/* Backlog Column */}
+            <Grid item xs={12} md={3} sx={{ height: '100%' }}>
+              <Card
+                sx={{
+                  height: '100%',
+                  borderRadius: 3,
+                  border: '1px solid',
+                  borderColor: 'rgba(148, 163, 184, 0.28)',
+                  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflow: 'hidden', p: 2 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ flexShrink: 0 }}>
                     <Typography variant="h6">Aufgabenspeicher</Typography>
                     {canModify && (
                       <IconButton color="primary" size="small" onClick={openCreateDialog}>
@@ -884,6 +925,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                       </IconButton>
                     )}
                   </Stack>
+                  
+                  {/* ✅ FIX: Droppable Bereich scrollbar */}
                   <Droppable droppableId={droppableKey(null, 'backlog')}>
                     {(provided) => (
                       <Box
@@ -893,9 +936,9 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                           display: 'flex',
                           flexDirection: 'column',
                           alignItems: 'stretch',
-                          minHeight: 220,
                           gap: 1,
-                          overflow: 'visible',
+                          flex: 1,
+                          overflowY: 'auto', // SCROLLBAR
                           border: '1px solid',
                           borderColor: 'rgba(148, 163, 184, 0.22)',
                           borderRadius: 2,
@@ -917,26 +960,31 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                       </Box>
                     )}
                   </Droppable>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
 
-          <Grid item xs={12} md={9}>
-            <Card
-              sx={{
-                borderRadius: 3,
-                border: '1px solid',
-                borderColor: 'rgba(148, 163, 184, 0.28)',
-                boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
-              }}
-            >
-              <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <Stack spacing={2}>
-                  <Typography variant="h6">Team-Flow</Typography>
-                  <Box sx={{ overflowX: 'auto' }}>
+            {/* Team Flow Column */}
+            <Grid item xs={12} md={9} sx={{ height: '100%' }}>
+              <Card
+                sx={{
+                  height: '100%',
+                  borderRadius: 3,
+                  border: '1px solid',
+                  borderColor: 'rgba(148, 163, 184, 0.28)',
+                  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+              >
+                <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflow: 'hidden', p: 2 }}>
+                  <Typography variant="h6" sx={{ flexShrink: 0 }}>Team-Flow</Typography>
+                  
+                  {/* ✅ FIX: Tabelle scrollbar */}
+                  <Box sx={{ flex: 1, overflowY: 'auto' }}>
                     <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <Box component="thead">
+                      {/* Sticky Header */}
+                      <Box component="thead" sx={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'background.paper' }}>
                         <Box
                           component="tr"
                           sx={{
@@ -977,7 +1025,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                                     disabled={flowSaving || doneCardsCount === 0}
                                     sx={{ textTransform: 'none' }}
                                   >
-                                    Flow abschließen
+                                    Abschließen
                                   </Button>
                                 )}
                               </Stack>
@@ -1006,7 +1054,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                                   px: 1.5,
                                   py: 1.5,
                                   verticalAlign: 'top',
-                                  backgroundColor: 'rgba(255,255,255,0.9)',
                                 },
                               }}
                             >
@@ -1069,10 +1116,9 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                       </Box>
                     </Box>
                   </Box>
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
+                </CardContent>
+              </Card>
+            </Grid>
           </Grid>
         </DragDropContext>
       </Box>

@@ -1,7 +1,8 @@
 'use client';
 
 import { ReactNode, useMemo } from 'react';
-import { Box, Chip, IconButton, Typography } from '@mui/material';
+// Tooltip importieren!
+import { Box, Chip, IconButton, Typography, Tooltip } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
 
 import { nullableDate, toBoolean } from '@/utils/booleans';
@@ -196,7 +197,8 @@ export function KanbanCard({
               boxShadow: '0 6px 14px rgba(0,0,0,0.18)',
             },
           }}
-          title={statusKurz || ''}
+          // Wir entfernen das native "title" Attribut, da wir jetzt den Tooltip nutzen
+          // title={statusKurz || ''} 
         >
           {currentSize === 'xcompact' ? (
             <Box
@@ -402,24 +404,28 @@ export function KanbanCard({
                 </Typography>
               )}
 
+              {/* Hier ist der Status-Text mit Tooltip */}
               {statusKurz && (
-                <Typography
-                  variant="caption"
-                  sx={{
-                    fontSize: '12px',
-                    color: 'var(--muted)',
-                    overflow: 'hidden',
-                    textOverflow: currentSize === 'large' ? 'clip' : 'ellipsis',
-                    whiteSpace: currentSize === 'large' ? 'pre-wrap' : 'nowrap',
-                    display: currentSize === 'large' ? '-webkit-box' : 'block',
-                    WebkitLineClamp: currentSize === 'large' ? 6 : undefined,
-                    WebkitBoxOrient: currentSize === 'large' ? 'vertical' : undefined,
-                    mb: 0.5,
-                    wordBreak: currentSize === 'large' ? 'break-word' : 'normal',
-                  }}
-                >
-                  {statusKurz}
-                </Typography>
+                <Tooltip title={statusKurz} enterDelay={1000} arrow>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      fontSize: '12px',
+                      color: 'var(--muted)',
+                      overflow: 'hidden',
+                      textOverflow: currentSize === 'large' ? 'clip' : 'ellipsis',
+                      whiteSpace: currentSize === 'large' ? 'pre-wrap' : 'nowrap',
+                      display: currentSize === 'large' ? '-webkit-box' : 'block',
+                      WebkitLineClamp: currentSize === 'large' ? 6 : undefined,
+                      WebkitBoxOrient: currentSize === 'large' ? 'vertical' : undefined,
+                      mb: 0.5,
+                      wordBreak: currentSize === 'large' ? 'break-word' : 'normal',
+                      cursor: 'help', // Zeigt an, dass es einen Tooltip gibt
+                    }}
+                  >
+                    {statusKurz}
+                  </Typography>
+                </Tooltip>
               )}
 
               {currentSize === 'large' && card['Bild'] && (

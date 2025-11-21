@@ -69,6 +69,7 @@ export function KanbanColumnsView({
                 display: 'flex',
                 flexDirection: 'column',
                 minHeight: '55vh',
+                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)', // ✅ VISUELLE TRENNUNG: Shadow hinzugefügt
               }}
             >
               <Box
@@ -303,6 +304,7 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
                         flexDirection: 'column',
                         padding: '8px',
                         gap: 1,
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)', // ✅ VISUELLE TRENNUNG: Shadow hinzugefügt
                       }}
                     >
                       {cellCards.map((card, cardIndex) => renderCard(card, cardIndex))}
@@ -440,6 +442,7 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
                         flexDirection: 'column',
                         padding: '8px',
                         gap: 1,
+                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)', // ✅ VISUELLE TRENNUNG: Shadow hinzugefügt
                       }}
                     >
                       {cellCards.map((card, cardIndex) => renderCard(card, cardIndex))}

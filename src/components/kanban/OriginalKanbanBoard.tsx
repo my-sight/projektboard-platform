@@ -3,36 +3,29 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { 
   Box, 
-  Typography, 
-  IconButton, 
   Button,
-  TextField,
-  Select,
-  MenuItem,
-  FormControl,
-  InputLabel,
-  Chip,
   Dialog,
-  DialogTitle,
-  DialogContent,
   DialogActions,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Checkbox,
-  FormControlLabel,
+  DialogContent,
+  DialogTitle,
+  Typography,
+  TextField,
+  IconButton,
+  Chip,
   Tabs,
   Tab,
+  Grid,
+  Card,
+  CardContent,
+  Badge,
   List,
   ListItem,
-  Badge, 
-  Grid, 
-  Card,
+  ListItemText,
+  Divider,
+  InputAdornment,
 } from '@mui/material';
 import { DropResult } from '@hello-pangea/dnd';
-import { Assessment, Close } from '@mui/icons-material';
+import { Assessment, Close, Delete, Add, Done, Settings, Assignment, People, ArrowUpward, ArrowDownward, Edit } from '@mui/icons-material';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { KanbanCard } from './original/KanbanCard';
@@ -43,40 +36,23 @@ import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders';
 
-const getErrorMessage = (error: unknown) => {
-  if (error instanceof Error) {
-    return error.message;
-  }
+// --- Typen & Helper ---
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
   if (error && typeof error === 'object' && 'message' in error) {
     const message = (error as { message?: unknown }).message;
-    if (typeof message === 'string' && message.trim().length > 0) {
-      return message;
-    }
+    if (typeof message === 'string' && message.trim().length > 0) return message;
   }
-
   return String(error);
 };
-// import { useAuth } from '../../contexts/AuthContext';
-// import { AuthProvider } from '../../contexts/AuthContext';
-// import { LoginForm } from '../auth/LoginForm';
-
-const BOARD_MEMBER_POLICY_DOC = 'docs/board-members-card-policy.sql';
 
 const formatSupabaseActionError = (action: string, message?: string | null): string => {
-  if (!message) {
-    return `${action} fehlgeschlagen: Unbekannter Fehler.`;
-  }
-
+  if (!message) return `${action} fehlgeschlagen: Unbekannter Fehler.`;
   const normalized = message.toLowerCase();
   if (normalized.includes('row-level security')) {
-    return (
-      `${action} fehlgeschlagen: Supabase hat die Änderung wegen fehlender Berechtigungen blockiert. ` +
-      `Bitte stelle sicher, dass der Benutzer als Mitglied im Board eingetragen ist und ` +
-      `dass die Policy aus ${BOARD_MEMBER_POLICY_DOC} angewendet wurde.`
-    );
+    return `${action} fehlgeschlagen: Fehlende Berechtigungen (RLS). Bitte prüfe, ob du Mitglied des Boards bist.`;
   }
-
   return `${action} fehlgeschlagen: ${message}`;
 };
 
@@ -92,7 +68,6 @@ interface OriginalKanbanBoardProps {
   onKpiCountChange?: (count: number) => void;
 }
 
-// Deine ursprünglichen Spalten
 const DEFAULT_COLS = [
   {id: "c1", name: "Werkzeug beim Werkzeugmacher", done: false},
   {id: "c2", name: "Werkzeugtransport", done: false},
@@ -104,221 +79,487 @@ const DEFAULT_COLS = [
   {id: "c8", name: "Fertig", done: true}
 ];
 
-// Checklisten pro Phase
-const DEFAULT_CHECKLISTS = {
-  "Werkzeug beim Werkzeugmacher": [
-    "Werkzeug-Zeichnung prüfen",
-    "Material bestellt",
-    "Bearbeitung gestartet"
-  ],
-  "Musterung": [
-    "Muster produziert",
-    "Qualitätsprüfung durchgeführt",
-    "Freigabe erhalten"
-  ],
-  "Fertig": [
-    "Dokumentation vollständig",
-    "Übergabe erfolgt"
-  ]
-};
+// --- Komponente ---
 
 const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanbanBoardProps>(
 function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }: OriginalKanbanBoardProps, ref) {
-  // State für Benutzer
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
 
   if (!supabase) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <SupabaseConfigNotice />
-      </Box>
-    );
+    return <Box sx={{ p: 3 }}><SupabaseConfigNotice /></Box>;
   }
 
+  // --- State ---
   const [viewMode, setViewMode] = useState<'columns' | 'swim' | 'lane'>('columns');
   const [density, setDensity] = useState<'compact' | 'xcompact' | 'large'>('compact');
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortMode, setSortMode] = useState<'' | 'due' | 'number'>('');
   const [rows, setRows] = useState<any[]>([]);
   const [cols, setCols] = useState(DEFAULT_COLS);
   const [lanes, setLanes] = useState<string[]>(['Projekt A', 'Projekt B', 'Projekt C']);
   const [users, setUsers] = useState<any[]>([]);
   const [canModifyBoard, setCanModifyBoard] = useState(false);
+  
+  // Archiv & Meta
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archivedCards, setArchivedCards] = useState<any[]>([]);
-  const [boardMeta, setBoardMeta] = useState<{
-    name: string;
-    description?: string | null;
-    updated_at?: string | null;
-  } | null>(null);
+  const [boardMeta, setBoardMeta] = useState<{ name: string; description?: string | null; updated_at?: string | null } | null>(null);
+  
+  // Dialogs
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedCard, setSelectedCard] = useState<any>(null);
+  const [editTabValue, setEditTabValue] = useState(0);
+  const [newCardOpen, setNewCardOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [kpiPopupOpen, setKpiPopupOpen] = useState(false);
+  
+  // Settings (lokaler State für den Dialog)
   const [boardName, setBoardName] = useState('');
   const [boardDescription, setBoardDescription] = useState('');
+  
+  // Checklisten Templates
+  const [checklistTemplates, setChecklistTemplates] = useState<Record<string, string[]>>(() => {
+    const templates: Record<string, string[]> = {};
+    DEFAULT_COLS.forEach(col => {
+      templates[col.name] = [ "Anforderungen prüfen", "Dokumentation erstellen", "Qualitätskontrolle" ];
+    });
+    return templates;
+  });
 
+  // --- Helper Functions ---
+
+  const inferStage = useCallback((r: any) => {
+    const s = (r["Board Stage"] || "").trim();
+    const stages = cols.map(c => c.name);
+    if (s && stages.includes(s)) return s;
+    return stages[0];
+  }, [cols]);
+
+  const idFor = useCallback((r: any) => {
+    if (r["UID"]) return String(r["UID"]);
+    if (r.id) return String(r.id);
+    if (r.card_id) return String(r.card_id);
+    return [r["Nummer"], r["Teil"]].map(x => String(x || "").trim()).join(" | ");
+  }, []);
+
+  // ✅ NEU: Konvertiert DB-Zeile in Karten-Format (für Realtime & Load)
+  const convertDbToCard = useCallback((item: any) => {
+    const card = { ...(item.card_data || {}) };
+    
+    // IDs konsolidieren
+    card.UID = card.UID || item.card_id || item.id;
+    // Supabase ID für Updates sichern
+    card.id = item.id; 
+    card.card_id = item.card_id;
+
+    // Stage/Position aus Spalten übernehmen
+    if (item.stage) card["Board Stage"] = item.stage;
+    if (item.position !== undefined && item.position !== null) {
+       card.position = item.position;
+       card.order = item.position; 
+    }
+    return card;
+  }, []);
+
+  const reindexByStage = useCallback((cards: any[]): any[] => {
+    const byStage: Record<string, number> = {};
+    return cards.map((c) => {
+      const stageKey = inferStage(c);
+      let groupKey = stageKey;
+      if (viewMode === 'swim') {
+        groupKey += '|' + ((c["Verantwortlich"] || '').trim() || '—');
+      } else if (viewMode === 'lane') {
+        groupKey += '|' + (c["Swimlane"] || 'Allgemein');
+      }
+      byStage[groupKey] = (byStage[groupKey] ?? 0) + 1;
+      return { ...c, order: byStage[groupKey], position: byStage[groupKey] };
+    });
+  }, [viewMode, inferStage]);
+  
   const updateArchivedState = useCallback((cards: any[]) => {
     setArchivedCards(cards);
     onArchiveCountChange?.(cards.length);
   }, [onArchiveCountChange]);
 
+  // KPI Berechnung
+  const calculateKPIs = useCallback(() => {
+    const activeCards = rows.filter(card => card["Archived"] !== "1");
+    const kpis: any = {
+      totalCards: activeCards.length,
+      trOverdue: [],
+      trToday: [],
+      trThisWeek: [],
+      ampelGreen: 0,
+      ampelRed: 0,
+      ampelYellow: 0,
+      lkEscalations: [],
+      skEscalations: [],
+      columnDistribution: {},
+    };
 
-  // --- helper: re-index order inside each Board Stage (column) ---
-  function reindexByStage(cards: any[]) {
-  const byStage: Record<string, number> = {};
-  return cards.map((c: any) => {
-    const stage = c["Board Stage"];
-    byStage[stage] = (byStage[stage] ?? 0) + 1;
-    return { ...c, order: byStage[stage] };
-  });
-}
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+    const endOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - now.getDay()), 23, 59, 59);
+    
+    activeCards.forEach(card => {
+      const ampel = String(card.Ampel || '').toLowerCase();
+      if (ampel === 'grün') kpis.ampelGreen++;
+      else if (ampel === 'rot') kpis.ampelRed++;
+      else if (ampel === 'gelb') kpis.ampelYellow++;
 
-// Dialog States
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [selectedCard, setSelectedCard] = useState<any>(null);
-  const [newCardOpen, setNewCardOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [kpiPopupOpen, setKpiPopupOpen] = useState(false);
+      const eskalation = String(card.Eskalation || '').toUpperCase();
+      if (eskalation === 'LK') kpis.lkEscalations.push(card);
+      if (eskalation === 'SK') kpis.skEscalations.push(card);
 
+      const trDateStr = card['TR_Neu'] || card['TR_Datum'];
+      const trCompleted = toBoolean(card['TR_Completed']);
+      if (trDateStr && !trCompleted) {
+        const trDate = nullableDate(trDateStr);
+        if (trDate) {
+          if (trDate < now) {
+            kpis.trOverdue.push(card);
+          } else if (trDate.toISOString().split('T')[0] === today) {
+            kpis.trToday.push(card);
+          } else if (trDate >= startOfWeek && trDate <= endOfWeek) {
+            kpis.trThisWeek.push(card);
+          }
+        }
+      }
+
+      const stage = inferStage(card);
+      kpis.columnDistribution[stage] = (kpis.columnDistribution[stage] || 0) + 1;
+    });
+
+    return kpis;
+  }, [rows, inferStage]);
+  
+  const kpis = calculateKPIs();
   const kpiBadgeCount = useMemo(() => {
-    return rows.filter(card => {
-      const trDate = card['TR_Neu'] || card['TR_Datum'];
-      if (!trDate) return false;
-      const tr = new Date(trDate);
-      return tr < new Date() && card['Archived'] !== '1';
-    }).length;
-  }, [rows]);
+    return kpis.trOverdue.length + kpis.lkEscalations.length + kpis.skEscalations.length;
+  }, [kpis]);
 
   useEffect(() => {
     onKpiCountChange?.(kpiBadgeCount);
   }, [kpiBadgeCount, onKpiCountChange]);
 
- // Checklisten Templates State - SPALTENSPEZIFISCH
-  const [checklistTemplates, setChecklistTemplates] = useState(() => {
-  const templates: Record<string, string[]> = {};
-  cols.forEach(col => {
-    templates[col.name] = [
-      "Anforderungen prüfen",
-      "Dokumentation erstellen", 
-      "Qualitätskontrolle"
-    ];
-  });
-  return templates;
-  });
+  // --- REALTIME SUBSCRIPTION (STEP 1) ---
+  useEffect(() => {
+    if (!supabase || !boardId) return;
 
-// ✅ KORRIGIERTE BENUTZER-LADUNG - BASIEREND AUF DEINER PROFILES STRUKTUR
-const loadUsers = async (): Promise<any[]> => {
-  try {
-    const profiles = await fetchClientProfiles();
+    console.log('🔌 Starte Realtime-Verbindung für Board:', boardId);
 
-    const normalized = profiles
-      .filter(profile => !isSuperuserEmail(profile.email))
-      .filter(profile => profile.is_active)
-      .map(profile => {
-        const email = profile.email ?? '';
-        const fallbackName = email ? email.split('@')[0] : 'Unbekannt';
+    const channel = supabase
+      .channel(`board:${boardId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'kanban_cards',
+          filter: `board_id=eq.${boardId}`,
+        },
+        (payload) => {
+          console.log('⚡ Realtime Event:', payload.eventType, payload);
 
+          if (payload.eventType === 'INSERT') {
+            const newCard = convertDbToCard(payload.new);
+            setRows((prev) => {
+              // Verhindere Duplikate, falls das Event durch eigenes Speichern kommt
+              if (prev.some((r) => idFor(r) === idFor(newCard))) return prev;
+              return reindexByStage([...prev, newCard]);
+            });
+          }
+
+          if (payload.eventType === 'UPDATE') {
+            const updatedCard = convertDbToCard(payload.new);
+            setRows((prev) => {
+               // Ist es eine archivierte Karte?
+               const isArchived = updatedCard["Archived"] === "1";
+               if (isArchived) {
+                 // Aus aktiver Liste entfernen
+                 return prev.filter(r => idFor(r) !== idFor(updatedCard));
+               }
+               
+               // Karte aktualisieren oder hinzufügen, falls sie neu reingekommen ist (z.B. aus Archiv wiederhergestellt)
+               const index = prev.findIndex(r => idFor(r) === idFor(updatedCard));
+               if (index === -1) {
+                 return reindexByStage([...prev, updatedCard]);
+               }
+               
+               const newRows = [...prev];
+               newRows[index] = updatedCard;
+               // Wir sortieren hier nicht neu, um Springen während Drag&Drop anderer User zu vermeiden,
+               // außer die Position hat sich drastisch geändert.
+               return newRows; 
+            });
+            
+            // Auch Archiv aktualisieren falls nötig
+            if (updatedCard["Archived"] === "1") {
+               updateArchivedState([...archivedCards.filter(c => idFor(c) !== idFor(updatedCard)), updatedCard]);
+            }
+          }
+
+          if (payload.eventType === 'DELETE') {
+            // Payload.old enthält nur die ID (wenn replica identity default ist)
+            const deletedId = payload.old.id; 
+            setRows((prev) => prev.filter((r) => r.id !== deletedId));
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Realtime: Verbunden!');
+        }
+      });
+
+    return () => {
+      console.log('🔌 Trenne Realtime-Verbindung...');
+      supabase.removeChannel(channel);
+    };
+  }, [boardId, supabase, convertDbToCard, reindexByStage, idFor, updateArchivedState, archivedCards]);
+
+  // --- API / Persistence ---
+
+  const saveSettings = useCallback(async (options?: { skipMeta?: boolean }) => {
+    if (!canModifyBoard) return false;
+
+    try {
+      const settings = {
+        cols,
+        lanes,
+        checklistTemplates,
+        viewMode,
+        density,
+        lastUpdated: new Date().toISOString(),
+      };
+
+      const requestBody: any = { settings };
+
+      if (!options?.skipMeta) {
+        const trimmedName = boardName.trim();
+        if (!trimmedName && boardMeta?.name) { 
+          setBoardName(boardMeta.name);
+          return false;
+        }
+        const metaPayload: any = {};
+        let metaChanged = false;
+        if (trimmedName !== (boardMeta?.name || '')) {
+          metaPayload.name = trimmedName;
+          metaChanged = true;
+        }
+        const descriptionValue = boardDescription.trim() ? boardDescription.trim() : null;
+        if (descriptionValue !== (boardMeta?.description ?? null)) {
+          metaPayload.description = descriptionValue;
+          metaChanged = true;
+        }
+        if (metaChanged) {
+          requestBody.meta = metaPayload;
+        }
+      }
+
+      const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
+      const response = await fetch(`/api/boards/${boardId}/settings`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        alert(formatSupabaseActionError('Einstellungen speichern', payload?.error));
+        return false;
+      }
+      
+      const payload = await response.json().catch(() => ({}));
+      if (payload.meta) {
+        setBoardMeta(prev => ({ ...prev, ...payload.meta }));
+        window.dispatchEvent(new CustomEvent('board-meta-updated', { detail: { id: boardId, name: payload.meta.name, description: payload.meta.description } }));
+      }
+      
+      return true;
+    } catch (error) {
+      alert(formatSupabaseActionError('Einstellungen speichern', getErrorMessage(error)));
+      return false;
+    }
+  }, [canModifyBoard, boardId, supabase, cols, lanes, checklistTemplates, viewMode, density, boardName, boardDescription, boardMeta]);
+
+  const saveCards = useCallback(async () => {
+    if (!canModifyBoard) return false;
+
+    try {
+      const cardsToSave = rows.map((card) => {
+        const stage = inferStage(card);
         return {
-          id: profile.id,
-          email,
-          name: profile.full_name || fallbackName || 'Unbekannt',
-          full_name: profile.full_name || '',
-          department: profile.company ?? null,
-          company: profile.company || '',
-          role: (profile.role || 'user') as string,
-          isActive: profile.is_active,
+          board_id: boardId,
+          card_id: idFor(card),
+          card_data: card,
+          stage: stage,
+          position: card.position ?? card.order ?? 0,
+          project_number: card.Nummer || card['Nummer'] || null,
+          project_name: card.Teil,
+          updated_at: new Date().toISOString(),
         };
       });
 
-    setUsers(normalized);
-    return normalized;
-  } catch (error) {
-    console.error('❌ Fehler beim Laden der Benutzer:', error);
-    setUsers([]);
-    return [];
-  }
-};
+      const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
+      const response = await fetch(`/api/boards/${boardId}/cards`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ cards: cardsToSave }),
+        credentials: 'include',
+      });
 
-const resolvePermissions = async (loadedUsers: any[]) => {
-  try {
-    const { data, error } = await supabase.auth.getUser();
-    if (error) {
-      console.error('❌ Fehler beim Abrufen des aktuellen Nutzers:', error);
-      setCanModifyBoard(false);
-      return;
-    }
-
-    const authUserId = data.user?.id ?? null;
-
-    if (!authUserId) {
-      setCanModifyBoard(false);
-      return;
-    }
-
-    const fallbackEmail = data.user?.email ?? '';
-    const currentUser = loadedUsers.find(user => user.id === authUserId);
-    const role = String(currentUser?.role ?? '').toLowerCase();
-    const email = currentUser?.email ?? fallbackEmail;
-    const elevated =
-      role === 'admin' ||
-      role === 'owner' ||
-      role === 'manager' ||
-      role === 'superuser' ||
-      isSuperuserEmail(email);
-
-    let isMember = false;
-    try {
-      const { data: membershipData, error: membershipError } = await supabase
-        .from('board_members')
-        .select('id')
-        .eq('board_id', boardId)
-        .eq('profile_id', authUserId);
-
-      if (membershipError) {
-        console.error('⚠️ Fehler beim Prüfen der Board-Mitgliedschaft:', membershipError);
-      } else {
-        isMember = (membershipData?.length ?? 0) > 0;
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        console.error('Karten speichern fehlgeschlagen:', payload?.error);
+        return false;
       }
-    } catch (membershipError) {
-      console.error('⚠️ Fehler beim Prüfen der Board-Mitgliedschaft:', membershipError);
+      return true;
+    } catch (error) {
+      console.error('Karten speichern Fehler:', getErrorMessage(error));
+      return false;
     }
+  }, [canModifyBoard, boardId, rows, supabase, inferStage, idFor]);
 
-    let ownsBoard = false;
-    let isBoardAdmin = false;
+  const loadSettings = useCallback(async () => {
     try {
-      const { data: boardRow, error: boardError } = await supabase
+      const headers = await buildSupabaseAuthHeaders(supabase);
+      const response = await fetch(`/api/boards/${boardId}/settings`, {
+        method: 'GET',
+        headers,
+        credentials: 'include',
+      });
+
+      if (response.status === 404) return false;
+      if (!response.ok) return false;
+
+      const payload = await response.json();
+      if (payload?.settings) {
+        const s = payload.settings;
+        if (s.cols) setCols(s.cols);
+        if (s.lanes) setLanes(s.lanes);
+        if (s.checklistTemplates) setChecklistTemplates(s.checklistTemplates);
+        if (s.viewMode) setViewMode(s.viewMode);
+        if (s.density) setDensity(s.density);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      return false;
+    }
+  }, [boardId, supabase]);
+
+  const loadCards = useCallback(async () => {
+    try {
+      let { data, error } = await supabase
+        .from('kanban_cards')
+        .select('card_data, stage, position, id, card_id')
+        .eq('board_id', boardId);
+
+      if (error && error.message.includes('column')) {
+        const result = await supabase
+          .from('kanban_cards')
+          .select('card_data, id, card_id')
+          .eq('board_id', boardId)
+          .order('updated_at', { ascending: false }); 
+
+        data = result.data;
+        error = result.error;
+      }
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        let loadedCards = data.map(convertDbToCard);
+
+        const activeCards = loadedCards.filter(card => card["Archived"] !== "1");
+        const archivedCards = loadedCards.filter(card => card["Archived"] === "1");
+
+        activeCards.sort((a, b) => {
+          const pos = (name: string) => DEFAULT_COLS.findIndex((c) => c.name === name);
+          const stageA = inferStage(a);
+          const stageB = inferStage(b);
+
+          if (stageA !== stageB) {
+            return pos(stageA) - pos(stageB);
+          }
+          const orderA = a.order ?? a.position ?? 1;
+          const orderB = b.order ?? b.position ?? 1;
+          return orderA - orderB;
+        });
+
+        setRows(activeCards);
+        updateArchivedState(archivedCards);
+        return true;
+      }
+      
+      setRows([]);
+      updateArchivedState([]);
+      return false;
+    } catch (error) {
+      console.error('❌ Fehler beim Laden der Karten:', error);
+      setRows([]);
+      return false;
+    }
+  }, [boardId, supabase, updateArchivedState, inferStage, convertDbToCard]);
+
+  // --- Initialisierung & Permissions ---
+
+  const resolvePermissions = useCallback(async (loadedUsers: any[]) => {
+    try {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data.user) { 
+        setCanModifyBoard(false); 
+        return; 
+      }
+
+      const authUserId = data.user.id;
+      const email = data.user.email ?? '';
+      const profile = loadedUsers.find(user => user.id === authUserId);
+      const globalRole = String(profile?.role ?? '').toLowerCase();
+      const isSuper = isSuperuserEmail(email) || globalRole === 'superuser';
+      
+      // Wenn Global Admin: Darf alles
+      if (isSuper || globalRole === 'admin') {
+        setCanModifyBoard(true);
+        return;
+      }
+
+      const { data: boardRow } = await supabase
         .from('kanban_boards')
         .select('owner_id, board_admin_id')
         .eq('id', boardId)
         .maybeSingle();
+        
+      const isOwner = boardRow?.owner_id === authUserId;
+      const isBoardAdmin = boardRow?.board_admin_id === authUserId;
 
-      if (boardError) {
-        console.error('⚠️ Fehler beim Laden der Board-Berechtigungen:', boardError);
-      } else if (boardRow) {
-        ownsBoard = boardRow.owner_id === authUserId;
-        isBoardAdmin = boardRow.board_admin_id === authUserId;
-      }
-    } catch (boardError) {
-      console.error('⚠️ Fehler beim Laden der Board-Berechtigungen:', boardError);
+      const { data: memberRow } = await supabase
+        .from('board_members')
+        .select('role')
+        .eq('board_id', boardId)
+        .eq('profile_id', authUserId)
+        .maybeSingle();
+      
+      const isMember = !!memberRow;
+      
+      // Für Phase A/B nutzen wir noch das einfache "canModifyBoard"
+      // In Phase C wird das verfeinert
+      setCanModifyBoard(isOwner || isBoardAdmin || isMember);
+
+    } catch (error) {
+      console.error('❌ Berechtigungsprüfung fehlgeschlagen:', error);
+      setCanModifyBoard(false);
     }
+  }, [boardId, supabase]);
 
-    setCanModifyBoard(elevated || isMember || ownsBoard || isBoardAdmin);
-  } catch (permissionError) {
-    console.error('❌ Unerwarteter Fehler bei der Berechtigungsprüfung:', permissionError);
-    setCanModifyBoard(false);
-  }
-};
-
-const loadBoardMeta = async () => {
-  try {
-    console.log('📋 Lade Board-Metadaten...');
-    const { data, error } = await supabase
+  const loadBoardMeta = useCallback(async () => {
+    const { data } = await supabase
       .from('kanban_boards')
       .select('name, description, updated_at')
       .eq('id', boardId)
       .maybeSingle();
-
-    if (error) {
-      console.error('❌ Fehler beim Laden der Board-Metadaten:', error);
-      return null;
-    }
 
     if (data) {
       setBoardMeta(data);
@@ -326,1481 +567,249 @@ const loadBoardMeta = async () => {
       setBoardDescription(data.description || '');
       return data;
     }
-
     return null;
-  } catch (error) {
-    console.error('❌ Unerwarteter Fehler bei Board-Metadaten:', error);
-    return null;
-  }
-};
+  }, [boardId, supabase]);
 
-
-// ✅ WICHTIG: KORRIGIERTE INITIALISIERUNG - BENUTZER ZUERST LADEN!
-useEffect(() => {
-  const initializeBoard = async () => {
-    console.log('🚀 Initialisiere Kanban Board für boardId:', boardId);
-
-    console.log('📋 Lade Boardinformationen...');
-    await loadBoardMeta();
-
-    // 1. ZUERST Benutzer laden (WICHTIG!)
-    console.log('👥 Lade Benutzer...');
-    const loadedUsers = await loadUsers();
-    await resolvePermissions(loadedUsers);
-
-    // 2. Dann Einstellungen laden
-    console.log('⚙️ Lade Einstellungen...');
-    const settingsLoaded = await loadSettings();
-    console.log('⚙️ Einstellungen geladen:', settingsLoaded);
-    
-    // 3. Dann Karten laden
-    console.log('📋 Lade Karten...');
-    const cardsLoaded = await loadCards();
-    console.log('📋 Karten geladen:', cardsLoaded);
-    
-    if (!cardsLoaded) {
-      console.log('📝 Board ist leer - bereit für neue Karten');
+  const loadUsers = useCallback(async (): Promise<any[]> => {
+    try {
+      const profiles = await fetchClientProfiles();
+      const normalized = profiles
+        .filter(profile => !isSuperuserEmail(profile.email))
+        .filter(profile => profile.is_active)
+        .map(profile => ({
+          id: profile.id,
+          email: profile.email ?? '',
+          name: profile.full_name || (profile.email ? profile.email.split('@')[0] : 'Unbekannt'),
+          full_name: profile.full_name || '',
+          department: profile.company ?? null,
+          company: profile.company || '',
+          role: (profile.role || 'user') as string,
+          isActive: profile.is_active,
+        }));
+      setUsers(normalized);
+      return normalized;
+    } catch (error) {
+      console.error('❌ Fehler beim Laden der Benutzer:', error);
+      return [];
     }
-    
-    console.log('✅ Board komplett initialisiert!');
-  };
-  
-  if (boardId) {
-    initializeBoard();
-  }
-}, [boardId]);
+  }, []);
 
-useEffect(() => {
-  void resolvePermissions(users);
-}, [boardId, users]);
-
-// Auto-Update Checklisten Templates wenn Spalten sich ändern
-useEffect(() => {
-  const newTemplates = { ...checklistTemplates };
-  let hasChanges = false;
-  
-  // Neue Spalten hinzufügen
-  cols.forEach(col => {
-    if (!newTemplates[col.name]) {
-      newTemplates[col.name] = [
-        "Anforderungen prüfen",
-        "Dokumentation erstellen", 
-        "Qualitätskontrolle"
-      ];
-      hasChanges = true;
-    }
-  });
-  
-  // Entfernte Spalten löschen
-  Object.keys(newTemplates).forEach(templateName => {
-    if (!cols.find(col => col.name === templateName)) {
-      delete newTemplates[templateName];
-      hasChanges = true;
-    }
-  });
-  
-  if (hasChanges) {
-    setChecklistTemplates(newTemplates);
-  }
-}, [cols]);
-
-  // Edit Modal Tab State
-const [editTabValue, setEditTabValue] = useState(0);
-
-// 👇 HIER HINZUFÜGEN (nach Zeile 133):
-// Einstellungen in Supabase speichern - MIT DEBUGGING
-const saveSettings = async (options?: { skipMeta?: boolean }) => {
-  if (!canModifyBoard) {
-    console.warn('⚠️ Keine Berechtigung zum Speichern der Einstellungen.');
-    return false;
-  }
-
-  try {
-    console.log('🔄 Starte Speichern der Einstellungen...');
-
-    const settings = {
-      cols,
-      lanes,
-      checklistTemplates,
-      viewMode,
-      density,
-      lastUpdated: new Date().toISOString(),
+  useEffect(() => {
+    let isMounted = true;
+    const initializeBoard = async () => {
+      if (!isMounted) return;
+      await loadBoardMeta();
+      const loadedUsers = await loadUsers();
+      await resolvePermissions(loadedUsers);
+      await loadSettings(); 
+      await loadCards();
     };
+    if (boardId) initializeBoard();
+    return () => { isMounted = false; };
+  }, [boardId]); 
 
-    console.log('📦 Einstellungen zu speichern:', settings);
-
-    const requestBody: {
-      settings: typeof settings;
-      meta?: { name?: string | null; description?: string | null };
-    } = {
-      settings,
-    };
-
-    const trimmedName = boardName.trim();
-    const trimmedDescription = boardDescription.trim();
-    const normalizedDescription = trimmedDescription ? trimmedDescription : '';
-
-    let metaChanged = false;
-
-    if (!options?.skipMeta) {
-      if (!trimmedName) {
-        alert('Board-Name darf nicht leer sein.');
-        if (boardMeta?.name) {
-          setBoardName(boardMeta.name);
-        }
-        return false;
-      }
-
-      const metaPayload: { name?: string | null; description?: string | null } = {};
-      if (!boardMeta || trimmedName !== (boardMeta.name || '')) {
-        metaPayload.name = trimmedName;
-        metaChanged = true;
-      }
-
-      const descriptionValue = trimmedDescription ? trimmedDescription : null;
-      if (!boardMeta || descriptionValue !== (boardMeta.description ?? null)) {
-        metaPayload.description = descriptionValue;
-        metaChanged = true;
-      }
-
-      if (metaChanged) {
-        requestBody.meta = metaPayload;
-      }
-    }
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(await buildSupabaseAuthHeaders(supabase)),
-    };
-
-    const response = await fetch(`/api/boards/${boardId}/settings`, {
-      method: 'POST',
-      headers,
-      credentials: 'include',
-      body: JSON.stringify(requestBody),
-    });
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      const message = payload?.error ?? `HTTP ${response.status}`;
-      alert(formatSupabaseActionError('Einstellungen speichern', message));
-      return false;
-    }
-
-    const payload = (await response.json().catch(() => ({}))) as {
-      meta?: { name?: string | null; description?: string | null; updated_at?: string | null };
-    };
-
-    if (!options?.skipMeta) {
-      if (requestBody.meta) {
-        const nextName = (payload.meta?.name ?? requestBody.meta?.name ?? trimmedName) ?? '';
-        const nextDescriptionValue =
-          payload.meta?.description ?? requestBody.meta?.description ?? (trimmedDescription ? trimmedDescription : null);
-        const nextMeta = {
-          name: nextName,
-          description: nextDescriptionValue ?? null,
-          updated_at: payload.meta?.updated_at ?? boardMeta?.updated_at ?? null,
-        };
-
-        setBoardMeta(nextMeta);
-        setBoardName(nextName ?? '');
-        setBoardDescription(nextDescriptionValue ?? '');
-
-        window.dispatchEvent(
-          new CustomEvent('board-meta-updated', {
-            detail: {
-              id: boardId,
-              name: nextName,
-              description: nextDescriptionValue ?? null,
-            },
-          }),
-        );
-      } else {
-        setBoardName(trimmedName);
-        setBoardDescription(normalizedDescription);
-      }
-    }
-
-    console.log('✅ Einstellungen und Board-Metadaten gespeichert');
-    return true;
-  } catch (error) {
-    console.error('❌ Unerwarteter Fehler:', error);
-    const message = getErrorMessage(error);
-    alert(formatSupabaseActionError('Einstellungen speichern', message));
-    return false;
-  }
-};
-
-
-// Einstellungen aus Supabase laden - MIT DEBUGGING
-const loadSettings = async () => {
-  try {
-    console.log('🔄 Lade Einstellungen...');
-
-    const headers = await buildSupabaseAuthHeaders(supabase);
-    const response = await fetch(`/api/boards/${boardId}/settings`, {
-      method: 'GET',
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok && response.status !== 404) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      console.error('❌ Fehler beim Laden:', payload?.error ?? `HTTP ${response.status}`);
-      return false;
-    }
-
-    if (response.status === 404) {
-      console.log('ℹ️ Keine gespeicherten Einstellungen gefunden');
-      return false;
-    }
-
-    const payload = (await response.json().catch(() => ({}))) as { settings?: Record<string, unknown> | null };
-
-    if (payload?.settings) {
-      const settings = (payload.settings ?? {}) as Record<string, unknown>;
-      console.log('✅ Einstellungen geladen:', settings);
-
-      if (settings.cols) setCols(settings.cols as typeof cols);
-      if (settings.lanes) setLanes(settings.lanes as typeof lanes);
-      if (settings.checklistTemplates) setChecklistTemplates(settings.checklistTemplates as typeof checklistTemplates);
-      if (settings.viewMode) setViewMode(settings.viewMode as typeof viewMode);
-      if (settings.density) setDensity(settings.density as typeof density);
-      
-      return true;
-    }
-
-    return false;
-  } catch (error) {
-    console.error('❌ Unerwarteter Fehler beim Laden:', error);
-    return false;
-  }
-};
-
-
-
-const saveCards = async () => {
-  if (!canModifyBoard) {
-    console.warn('⚠️ Keine Berechtigung zum Speichern von Karten.');
-    return false;
-  }
-
-  try {
-    console.log('💾 Speichere Karten über API...');
-    console.log('🔥 DEBUG: rows.length =', rows.length);
-    console.log('🔥 DEBUG: boardId =', boardId);
-
-    const cardsWithPositions: any[] = [];
-    const stagePositions: Record<string, number> = {};
-
-    rows.forEach((card, globalIndex) => {
-      const stage = card['Board Stage'] || DEFAULT_COLS[0].name;
-
-      if (!stagePositions[stage]) {
-        stagePositions[stage] = 0;
-      }
-
-      const position = stagePositions[stage];
-      stagePositions[stage]++;
-
-      card.position = position;
-
-      const cardToSave = {
-        board_id: boardId,
-        card_id: idFor(card),
-        card_data: card,
-        stage,
-        position,
-        project_number: card.Nummer || card['Nummer'] || null,
-        project_name: card.Teil,
-        updated_at: new Date().toISOString(),
-      };
-
-      console.log(`🔥 DEBUG: Karte ${globalIndex}:`, {
-        nummer: card.Nummer,
-        stage,
-        position,
-      });
-
-      cardsWithPositions.push(cardToSave);
-    });
-
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...(await buildSupabaseAuthHeaders(supabase)),
-    };
-
-    const response = await fetch(`/api/boards/${boardId}/cards`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ cards: cardsWithPositions }),
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      const message = payload?.error ?? `HTTP ${response.status}`;
-      console.error('❌ Fehler beim Speichern über API:', message);
-      alert(formatSupabaseActionError('Karten speichern', message));
-      return false;
-    }
-
-    console.log('✅ Karten erfolgreich gespeichert');
-    return true;
-  } catch (error) {
-    console.error('❌ Unerwarteter Fehler:', error);
-    alert(formatSupabaseActionError('Karten speichern', getErrorMessage(error)));
-    return false;
-  }
-};
-
-// 2. ARCHIV LADEN FUNKTION:
-const loadArchivedCards = useCallback(async () => {
-  try {
-    console.log('🗃️ Lade archivierte Karten...');
-
-    const { data, error } = await supabase
-      .from('kanban_cards')
-      .select('card_data')
-      .eq('board_id', boardId);
-
-    if (error) throw error;
-
-    if (data && data.length > 0) {
-      const archived = data
-        .map(item => item.card_data)
-        .filter(card => card["Archived"] === "1");
-
-      console.log('🗃️ Archivierte Karten gefunden:', archived.length);
-      updateArchivedState(archived);
-      return archived;
-    }
-
-    updateArchivedState([]);
-    return [];
-  } catch (error) {
-    console.error('❌ Fehler beim Laden des Archivs:', error);
-    updateArchivedState([]);
-    return [];
-  }
-}, [boardId, updateArchivedState]);
-
-useImperativeHandle(ref, () => ({
-  openSettings: () => setSettingsOpen(true),
-  openArchive: async () => {
-    await loadArchivedCards();
-    setArchiveOpen(true);
-  },
-  openKpis: () => setKpiPopupOpen(true),
-}), [loadArchivedCards]);
-
-// 3. KARTE AUS ARCHIV WIEDERHERSTELLEN:
-const restoreCard = async (card: any) => {
-  if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" wiederherstellen?`)) {
-    return;
-  }
+  // Auto-Save Settings
+  useEffect(() => {
+    const timeoutId = setTimeout(() => { saveSettings({ skipMeta: true }); }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [cols, lanes, checklistTemplates, viewMode, density, saveSettings]);
   
-  try {
-    // Entferne Archived Flag
-    card["Archived"] = "";
-    
-    // Füge zur aktuellen rows hinzu
-    const updatedRows = [...rows, card];
-    setRows(updatedRows);
-    
-    // Entferne aus archivierten Karten
-    const updatedArchived = archivedCards.filter(c => idFor(c) !== idFor(card));
-    updateArchivedState(updatedArchived);
-    
-    // Speichere Änderungen
-    await saveCards();
-    
-    console.log('✅ Karte wiederhergestellt:', card.Nummer);
-  } catch (error) {
-    console.error('❌ Fehler beim Wiederherstellen:', error);
-  }
-};
+  // Auto-Save Cards
+  useEffect(() => {
+    if (rows.length === 0) return;
+    const timeoutId = setTimeout(() => { saveCards(); }, 2000); 
+    return () => clearTimeout(timeoutId);
+  }, [rows, saveCards]); 
 
-// 4. KARTE ENDGÜLTIG LÖSCHEN:
-const deleteCardPermanently = async (card: any) => {
-  if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" ENDGÜLTIG löschen?`)) {
-    return;
-  }
+  // --- Card Actions ---
   
-  if (!window.confirm('Diese Aktion kann nicht rückgängig gemacht werden. Wirklich löschen?')) {
-    return;
-  }
-  
-  try {
-    const headers: Record<string, string> = {};
-
-    if (supabase) {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const accessToken = data.session?.access_token;
-        const refreshToken = data.session?.refresh_token;
-
-        if (accessToken) {
-          headers['x-supabase-access-token'] = accessToken;
-        }
-
-        if (refreshToken) {
-          headers['x-supabase-refresh-token'] = refreshToken;
-        }
-      } catch (sessionError) {
-        console.warn('⚠️ Supabase-Session konnte nicht geladen werden:', sessionError);
-      }
-    }
-
-    const response = await fetch(
-      `/api/boards/${boardId}/cards?cardId=${encodeURIComponent(idFor(card))}`,
-      {
-        method: 'DELETE',
-        headers,
-      },
-    );
-
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      const message = payload?.error ?? `HTTP ${response.status}`;
-      console.error('❌ Fehler beim endgültigen Löschen:', message);
-      alert(formatSupabaseActionError('Karte löschen', message));
-      return;
-    }
-
-    const updatedArchived = archivedCards.filter(c => idFor(c) !== idFor(card));
-    updateArchivedState(updatedArchived);
-
-    console.log('🗑️ Karte endgültig gelöscht:', card.Nummer);
-  } catch (error) {
-    console.error('❌ Fehler beim endgültigen Löschen:', error);
-    alert(formatSupabaseActionError('Karte löschen', getErrorMessage(error)));
-  }
-};
-
-
-
-
-// ANGEPASSTE loadCards (funktioniert mit stage/position oder ohne)
-const loadCards = async () => {
-  try {
-    console.log('🔄 Lade Karten aus Supabase...');
-    console.log('🔥 DEBUG: boardId =', boardId);
-    
-    // Versuche mit stage/position zu laden
-    let data: any[] | null = null;
-    let error: any = null;
-
-    const primaryResult = await supabase
-      .from('kanban_cards')
-      .select('card_data, stage, position')
-      .eq('board_id', boardId)
-      .order('stage', { ascending: true })
-      .order('position', { ascending: true });
-
-    data = primaryResult.data;
-    error = primaryResult.error;
-    
-    // Falls stage/position nicht existieren, lade nur card_data
-    if (error instanceof Error && error.message.includes('column')) {
-      console.log('⚠️ stage/position Spalten nicht gefunden, lade nur card_data');
-      const result = await supabase
+  const loadArchivedCards = useCallback(async () => {
+    try {
+      const { data } = await supabase
         .from('kanban_cards')
         .select('card_data')
-        .eq('board_id', boardId)
-        .order('updated_at', { ascending: false });
+        .eq('board_id', boardId);
 
-      data = result.data as any[] | null;
-      error = result.error;
-    }
-    
-    console.log('🔥 DEBUG: Supabase Antwort:', { dataLength: data?.length, error });
-    
-    if (error) {
-      console.error('🔥 DEBUG: Supabase Fehler:', error);
-      throw error;
-    }
-    
-    if (data && data.length > 0) {
-      const loadedCards = data.map(item => {
-        const card = item.card_data;
-        // Setze Position falls vorhanden
-        if (item.position !== undefined) {
-          card.position = item.position;
-        }
-        return card;
-      });
+      const archived = (data || [])
+        .map(item => item.card_data)
+        .filter(card => card["Archived"] === "1");
       
-      console.log('✅ Karten geladen:', loadedCards.length);
-      loadedCards.forEach(card => {
-        console.log(`📋 ${card.Nummer}: ${card["Board Stage"]} (Pos: ${card.position || 'N/A'})`);
+      updateArchivedState(archived);
+      return archived;
+    } catch (error) {
+      console.error('❌ Fehler beim Laden des Archivs:', error);
+      updateArchivedState([]);
+      return [];
+    }
+  }, [boardId, supabase, updateArchivedState]);
+  
+  const restoreCard = async (card: any) => {
+    if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" wiederherstellen?`)) return;
+    
+    card["Archived"] = "";
+    card["ArchivedDate"] = null;
+    const updatedRows = reindexByStage([...rows, card]);
+    setRows(updatedRows);
+    updateArchivedState(archivedCards.filter(c => idFor(c) !== idFor(card)));
+    await saveCards();
+  };
+
+  const deleteCardPermanently = async (card: any) => {
+    if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" ENDGÜLTIG löschen?`)) return;
+    if (!window.confirm('Diese Aktion kann nicht rückgängig gemacht werden. Wirklich löschen?')) return;
+    
+    try {
+      const headers = await buildSupabaseAuthHeaders(supabase);
+      const response = await fetch(`/api/boards/${boardId}/cards?cardId=${encodeURIComponent(idFor(card))}`, {
+        method: 'DELETE',
+        headers,
       });
-      
-      setRows(loadedCards);
-      return true;
-    }
-    
-    console.log('ℹ️ Keine Karten gefunden - leeres Board');
-    setRows([]);
-    return false;
-  } catch (error) {
-    console.error('❌ Fehler beim Laden:', error);
-    setRows([]);
-    return false;
-  }
-};
 
-
-
-
-
-
-// KORRIGIERTE INITIALISIERUNG - OHNE AUTOMATISCHE TESTDATEN:
-useEffect(() => {
-  const initializeBoard = async () => {
-    console.log('🚀 Initialisiere Kanban Board für boardId:', boardId);
-
-    await loadBoardMeta();
-
-    // Erst Einstellungen laden
-    const settingsLoaded = await loadSettings();
-    console.log('⚙️ Einstellungen geladen:', settingsLoaded);
-    
-    // Dann Karten laden
-    const cardsLoaded = await loadCards();
-    console.log('📋 Karten geladen:', cardsLoaded);
-    
-    // ✅ KEINE AUTOMATISCHEN TESTDATEN MEHR!
-    // Wenn keine Karten vorhanden, bleibt das Board leer
-    if (!cardsLoaded) {
-      console.log('📝 Board ist leer - bereit für neue Karten');
-    }
-    
-    console.log('✅ Board komplett initialisiert!');
-  };
-  
-  if (boardId) {
-    initializeBoard();
-  }
-}, [boardId]);
-
-
-
-// Automatisches Speichern bei Änderungen
-useEffect(() => {
-  if (rows.length === 0) return; // Nicht speichern wenn noch keine Daten geladen
-  
-  const timeoutId = setTimeout(() => {
-    console.log('💾 Auto-Speichere Karten...');
-    saveCards();
-  }, 2000); // Speichere nach 2 Sekunden Inaktivität
-
-  return () => clearTimeout(timeoutId);
-}, [rows]);
-
-// Automatisches Speichern der Einstellungen
-useEffect(() => {
-  const timeoutId = setTimeout(() => {
-    console.log('⚙️ Auto-Speichere Einstellungen...');
-    saveSettings({ skipMeta: true });
-  }, 1000);
-
-  return () => clearTimeout(timeoutId);
-}, [cols, lanes, checklistTemplates, viewMode, density]);
-
-useEffect(() => {
-  if (!users.length || !rows.length) return;
-
-  const userMap = new Map(
-    users
-      .filter((user: any) => user && user.id)
-      .map((user: any) => [String(user.id), user]),
-  );
-
-  let hasChanges = false;
-
-  const normalizedRows = rows.map((card: any) => {
-    if (!Array.isArray(card.Team) || card.Team.length === 0) {
-      return card;
-    }
-
-    let cardChanged = false;
-
-    const updatedTeam = card.Team.map((member: any) => {
-      if (!member || !member.userId) {
-        return member;
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        alert(formatSupabaseActionError('Karte löschen', payload?.error));
+        return;
       }
 
-      const lookup = userMap.get(String(member.userId));
-      if (!lookup) {
-        return member;
-      }
-
-      const resolvedName = (lookup.full_name || lookup.name || '').trim();
-      const fallbackEmail = lookup.email || member.email || '';
-      const displayName = resolvedName || (fallbackEmail ? fallbackEmail.split('@')[0] : 'Unbekannt');
-      const department = lookup.department || lookup.company || member.department || member.company || '';
-      const email = fallbackEmail;
-
-      if (member.name !== displayName || member.department !== department || member.email !== email) {
-        cardChanged = true;
-        return {
-          ...member,
-          name: displayName,
-          department,
-          email,
-        };
-      }
-
-      return member;
-    });
-
-    if (cardChanged) {
-      hasChanges = true;
-      return { ...card, Team: updatedTeam };
+      updateArchivedState(archivedCards.filter(c => idFor(c) !== idFor(card)));
+    } catch (error) {
+      alert(formatSupabaseActionError('Karte löschen', getErrorMessage(error)));
     }
-
-    return card;
-  });
-
-  if (hasChanges) {
-    setRows(normalizedRows);
-  }
-}, [rows, users]);
-
-
-  const loadTestData = () => {
-    const testCards = [
-      {
-        "Nummer": "A-24-001",
-        "Teil": "Gehäuse Vorderseite",
-        "Board Stage": "Werkzeug beim Werkzeugmacher",
-        "Status Kurz": "Werkzeug in Bearbeitung",
-        "Verantwortlich": "Max Mustermann",
-        "Due Date": "2024-02-15",
-        "Ampel": "grün",
-        "Swimlane": "Projekt A",
-        "UID": "uid1",
-        "StatusHistory": [
-          {
-            date: "15.01.2024",
-            message: { text: "Werkzeug in Bearbeitung", escalation: false },
-            qualitaet: { text: "Qualität OK", escalation: false },
-            kosten: { text: "", escalation: false },
-            termine: { text: "Termin eingehalten", escalation: false }
-          }
-        ],
-        "ChecklistDone": {
-        "Werkzeug beim Werkzeugmacher": {
-        "Werkzeug-Zeichnung prüfen": true,
-        "Material bestellt": true, 
-        "Bearbeitung gestartet": false
-      }
-    }   
-
-      },
-      {
-        "Nummer": "A-24-002", 
-        "Teil": "Gehäuse Rückseite",
-        "Board Stage": "Werkzeugtransport",
-        "Status Kurz": "Transport läuft",
-        "Verantwortlich": "Anna Klein",
-        "Due Date": "2024-01-20",
-        "Ampel": "rot",
-        "Eskalation": "LK",
-        "Swimlane": "Projekt A",
-        "UID": "uid2",
-        "StatusHistory": [
-          {
-            date: "20.01.2024",
-            message: { text: "Transport verzögert", escalation: true },
-            qualitaet: { text: "", escalation: false },
-            kosten: { text: "Mehrkosten durch Express", escalation: true },
-            termine: { text: "2 Tage Verzug", escalation: true }
-          }
-        ]
-      },
-    ];
-    setRows(testCards);
   };
 
-  // Deine ursprünglichen Hilfsfunktionen
-  const inferStage = (r: any) => {
-    const s = (r["Board Stage"] || "").trim();
-    const stages = cols.map(c => c.name);
-    if (s && stages.includes(s)) return s;
-    return stages[0];
-  };
-
-  const idFor = (r: any) => {
-    if (r["UID"]) return String(r["UID"]);
-    return [r["Nummer"], r["Teil"]].map(x => String(x || "").trim()).join(" | ");
-  };
-
-  const getPriorityColor = (ampel: string) => {
-    if (ampel?.toLowerCase().startsWith('rot')) return '#ff5a5a';
-    return '#14c38e';
-  };
-
-const calculateKPIs = () => {
-  const activeCards = rows.filter(r => !r["Archived"]);
-  
-  // === GRUNDLEGENDE ZAHLEN ===
-  const totalCards = activeCards.length;
-  const ampelGreen = activeCards.filter(r => String(r["Ampel"] || "").toLowerCase().includes("grÃ¼n") || String(r["Ampel"] || "").toLowerCase().includes("green")).length;
-  const ampelRed = activeCards.filter(r => String(r["Ampel"] || "").toLowerCase().includes("rot") || String(r["Ampel"] || "").toLowerCase().includes("red")).length;
-  
-  // === SPALTEN-VERTEILUNG ===
-  const columnDistribution: Record<string, number> = {};
-  cols.forEach(col => {
-    columnDistribution[col.name] = activeCards.filter(r => inferStage(r) === col.name).length;
-  });
-  
-  // === ESKALATIONEN ===
-  const lkEscalations = activeCards.filter(r => String(r["Eskalation"] || "").toUpperCase() === "LK");
-  const skEscalations = activeCards.filter(r => String(r["Eskalation"] || "").toUpperCase() === "SK");
-  
-  // === TR-TERMINE (ERWEITERT MIT ABGESCHLOSSEN-STATUS) ===
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  const trOverdue = activeCards.filter(r => {
-    const trDate = r["TR_Neu"] || r["TR_Datum"];
-    if (!trDate) return false;
-    
-    // âœ… NEUE LOGIK: Nicht als Ã¼berfÃ¤llig anzeigen wenn TR abgeschlossen ist
-    if (toBoolean(r["TR_Completed"])) {
-      return false;
-    }
-    
-    const date = new Date(trDate);
-    date.setHours(0, 0, 0, 0);
-    return date < today;
-  });
-  
-  const trToday = activeCards.filter(r => {
-    const trDate = r["TR_Neu"] || r["TR_Datum"];
-    if (!trDate) return false;
-    
-    // Auch heute fÃ¤llige nicht anzeigen wenn abgeschlossen
-    if (toBoolean(r["TR_Completed"])) {
-      return false;
-    }
-    
-    const date = new Date(trDate);
-    date.setHours(0, 0, 0, 0);
-    return date.getTime() === today.getTime();
-  });
-  
-  const trThisWeek = activeCards.filter(r => {
-    const trDate = r["TR_Neu"] || r["TR_Datum"];
-    if (!trDate) return false;
-    
-    // Diese Woche fÃ¤llige nicht anzeigen wenn abgeschlossen
-    if (toBoolean(r["TR_Completed"])) {
-      return false;
-    }
-    
-    const date = new Date(trDate);
-    const weekEnd = new Date(today);
-    weekEnd.setDate(today.getDate() + 7);
-    return date >= today && date <= weekEnd;
-  });
-  
-  // âœ… NEUE METRIK: Abgeschlossene TRs
-  const trCompleted = activeCards.filter(r => {
-    const hasDate = r["TR_Neu"] || r["TR_Datum"];
-    const isCompleted = toBoolean(r["TR_Completed"]);
-    return hasDate && isCompleted;
-  });
-  
-  // === DUE DATES ===
-  const dueDatesOverdue = activeCards.filter(r => {
-    const dueDate = r["Due Date"];
-    if (!dueDate) return false;
-    const date = new Date(dueDate);
-    date.setHours(0, 0, 0, 0);
-    return date < today;
-  });
-  
-  const dueDatesUpcoming = activeCards.filter(r => {
-    const dueDate = r["Due Date"];
-    if (!dueDate) return false;
-    const date = new Date(dueDate);
-    const weekEnd = new Date(today);
-    weekEnd.setDate(today.getDate() + 7);
-    return date >= today && date <= weekEnd;
-  });
-  
-  // === PERFORMANCE METRIKEN ===
-  // Team Workload
-  const teamWorkload: Record<string, number> = {};
-  activeCards.forEach(card => {
-    const person = String(card["Verantwortlich"] || "Unbekannt").trim();
-    teamWorkload[person] = (teamWorkload[person] || 0) + 1;
-  });
-  
-  const avgCardsPerPerson = Object.keys(teamWorkload).length > 0 
-    ? Math.round(totalCards / Object.keys(teamWorkload).length * 10) / 10 
-    : 0;
-  
-  // Checklisten-Fortschritt
-  const cardsWithChecklists = activeCards.filter(card => {
-    const stage = inferStage(card);
-    const checklist = card.ChecklistDone && card.ChecklistDone[stage];
-    return checklist && Object.keys(checklist).length > 0;
-  }).length;
-  
-  const checklistProgress = totalCards > 0 ? Math.round((cardsWithChecklists / totalCards) * 100) : 0;
-  
-  // TR-Abdeckung
-  const cardsWithTR = activeCards.filter(r => r["TR_Neu"] || r["TR_Datum"]).length;
-  const trCoverage = totalCards > 0 ? Math.round((cardsWithTR / totalCards) * 100) : 0;
-  
-  // Due Dates gesetzt
-  const dueDatesSet = activeCards.filter(r => r["Due Date"]).length;
-  
-  return {
-    // Grundzahlen
-    totalCards,
-    ampelGreen,
-    ampelRed,
-    
-    // Spalten
-    columnDistribution,
-    
-    // Eskalationen
-    lkEscalations,
-    skEscalations,
-    
-    // TR-Termine
-    trOverdue,
-    trToday,
-    trThisWeek,
-    trCompleted, // âœ… NEU!
-    cardsWithTR,
-    trCoverage,
-    
-    // Due Dates
-    dueDatesOverdue,
-    dueDatesUpcoming,
-    dueDatesSet,
-    
-    // Performance
-    teamWorkload,
-    avgCardsPerPerson,
-    cardsWithChecklists,
-    checklistProgress
-  };
-};
-
-// KPI-POPUP KOMPONENTE
-// 2. ERWEITERTE TRKPIPOPUP KOMPONENTE (ersetze deine bestehende)
-interface TRKPIPopupProps {
-  open: boolean;
-  onClose: () => void;
-  cards: any[];
-}
-
-const TRKPIPopup = ({ open, onClose, cards }: TRKPIPopupProps) => {
-  const [activeTab, setActiveTab] = useState(0);
-  const kpis = calculateKPIs();
-  
-
-  return (
-    <Dialog 
-      open={open} 
-      onClose={onClose} 
-      maxWidth="lg" 
-      fullWidth
-      PaperProps={{
-        sx: { 
-          minHeight: '80vh',
-          maxHeight: '90vh'
-        }
-      }}
-    >
-      <DialogTitle sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        backgroundColor: 'primary.main',
-        color: 'white'
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Assessment />
-          <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
-            Projekt-KPIs & Analytics
-          </Typography>
-        </Box>
-        <IconButton onClick={onClose} sx={{ color: 'white' }}>
-          <Close />
-        </IconButton>
-      </DialogTitle>
-
-      <DialogContent sx={{ p: 0 }}>
-        {/* Tab Navigation */}
-        <Tabs 
-          value={activeTab} 
-          onChange={(e, newValue) => setActiveTab(newValue)}
-          sx={{ borderBottom: 1, borderColor: 'divider', backgroundColor: 'grey.50' }}
-        >
-          <Tab label="Ãœbersicht" />
-          <Tab label="Termine & Risiken" />
-          <Tab label="Performance" />
-        </Tabs>
-
-        {/* TAB 0: ÃœBERSICHT */}
-        {activeTab === 0 && (
-          <Box sx={{ p: 3 }}>
-            {/* Haupt-KPIs Grid */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
-              <Grid item xs={6} sm={3}>
-                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'primary.light', color: 'white' }}>
-                  <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
-                    {kpis.totalCards}
-                  </Typography>
-                  <Typography variant="caption">Gesamt Karten</Typography>
-                </Card>
-              </Grid>
-
-              <Grid item xs={6} sm={3}>
-                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'success.main', color: 'white' }}>
-                  <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
-                    {kpis.ampelGreen}
-                  </Typography>
-                  <Typography variant="caption">GrÃ¼n</Typography>
-                </Card>
-              </Grid>
-
-              <Grid item xs={6} sm={3}>
-                <Card sx={{ textAlign: 'center', p: 2, backgroundColor: 'error.main', color: 'white' }}>
-                  <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
-                    {kpis.ampelRed}
-                  </Typography>
-                  <Typography variant="caption">Rot</Typography>
-                </Card>
-              </Grid>
-            </Grid>
-
-            <Grid container spacing={3}>
-              {/* Spalten-Verteilung */}
-              <Grid item xs={12} md={6}>
-                <Card sx={{ p: 2, height: '100%' }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>Spalten-Verteilung</Typography>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {Object.entries(kpis.columnDistribution).map(([column, count]) => (
-                      <Box key={column} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="body2">{column}:</Typography>
-                        <Chip 
-                          label={count} 
-                          color={count > 0 ? "primary" : "default"} 
-                          size="small"
-                        />
-                      </Box>
-                    ))}
-                  </Box>
-                </Card>
-              </Grid>
-
-              {/* Eskalationen */}
-              <Grid item xs={12} md={6}>
-                <Card sx={{ p: 2, height: '100%' }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>Eskalationen</Typography>
-                  
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" sx={{ color: 'error.main', fontWeight: 'bold' }}>
-                      LK-Eskalationen ({kpis.lkEscalations.length})
-                    </Typography>
-                    {kpis.lkEscalations.length > 0 ? (
-                      <Box sx={{ mt: 1, maxHeight: '100px', overflow: 'auto' }}>
-                        {kpis.lkEscalations.map((card, idx) => (
-                          <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'error.main' }}>
-                           {card["Nummer"]} - {card["Teil"]}
-                          </Typography>
-                        ))}
-                      </Box>
-                    ) : (
-                      <Typography variant="caption" color="text.secondary">Keine LK-Eskalationen</Typography>
-                    )}
-                  </Box>
-
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ color: 'warning.main', fontWeight: 'bold' }}>
-                      SK-Eskalationen ({kpis.skEscalations.length})
-                    </Typography>
-                    {kpis.skEscalations.length > 0 ? (
-                      <Box sx={{ mt: 1, maxHeight: '100px', overflow: 'auto' }}>
-                        {kpis.skEscalations.map((card, idx) => (
-                          <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'warning.main' }}>
-                            {card["Nummer"]} - {card["Teil"]}
-                          </Typography>
-                        ))}
-                      </Box>
-                    ) : (
-                      <Typography variant="caption" color="text.secondary">Keine SK-Eskalationen</Typography>
-                    )}
-                  </Box>
-                </Card>
-              </Grid>
-            </Grid>
-          </Box>
-        )}
-
-        {/* TAB 1: TERMINE & RISIKEN */}
-        {activeTab === 1 && (
-          <Box sx={{ p: 3 }}>
-            <Grid container spacing={3}>
-              {/* TR-Termine */}
-              <Grid item xs={12} md={6}>
-                <Card sx={{ p: 2, height: '100%' }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>TR-Termine</Typography>
-                  
-                  {/* Überfällige TR */}
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" sx={{ color: 'error.main', fontWeight: 'bold' }}>
-                      Überfällig ({kpis.trOverdue.length})
-                    </Typography>
-                    {kpis.trOverdue.length > 0 ? (
-                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
-                        {kpis.trOverdue.map((card, idx) => {
-                          const trDate = card["TR_Neu"] || card["TR_Datum"];
-                          return (
-                            <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'error.main' }}>
-                              {card["Nummer"]} - TR: {new Date(trDate).toLocaleDateString('de-DE')}
-                            </Typography>
-                          );
-                        })}
-                      </Box>
-                    ) : (
-                      <Typography variant="caption" color="success.main">Keine Überfälligen TR-Termine</Typography>
-                    )}
-                  </Box>
-
-                  {/* Heutefällige TR */}
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" sx={{ color: 'warning.main', fontWeight: 'bold' }}>
-                      Heutefällig ({kpis.trToday.length})
-                    </Typography>
-                    {kpis.trToday.length > 0 ? (
-                      <Box sx={{ mt: 1 }}>
-                        {kpis.trToday.map((card, idx) => (
-                          <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'warning.main' }}>
-                            {card["Nummer"]} - {card["Teil"]}
-                          </Typography>
-                        ))}
-                      </Box>
-                    ) : (
-                      <Typography variant="caption" color="text.secondary">Keine TR-Termine heute</Typography>
-                    )}
-                  </Box>
-
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ color: 'info.main', fontWeight: 'bold' }}>
-                      Diese Woche ({kpis.trThisWeek.length})
-                    </Typography>
-                    {kpis.trThisWeek.length > 0 ? (
-                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
-                        {kpis.trThisWeek.map((card, idx) => {
-                          const trDate = card["TR_Neu"] || card["TR_Datum"];
-                          return (
-                            <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'info.main' }}>
-                              {card["Nummer"]} - TR: {new Date(trDate).toLocaleDateString('de-DE')}
-                            </Typography>
-                          );
-                        })}
-                      </Box>
-                    ) : (
-                      <Typography variant="caption" color="text.secondary">Keine TR-Termine diese Woche</Typography>
-                    )}
-                  </Box>
-
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="subtitle2" sx={{ color: 'success.main', fontWeight: 'bold' }}>
-                      Abgeschlossen ({kpis.trCompleted.length})
-                    </Typography>
-                    {kpis.trCompleted.length > 0 ? (
-                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
-                        {kpis.trCompleted.map((card, idx) => {
-                          const originalDate = nullableDate(card["TR_Datum"]);
-                          const completedDate = nullableDate(card["TR_Completed_At"] || card["TR_Completed_Date"]);
-                          const diff = originalDate && completedDate
-                            ? Math.round((completedDate.getTime() - originalDate.getTime()) / (1000 * 60 * 60 * 24))
-                            : null;
-                          const diffLabel = diff === null ? '' : ` (${diff >= 0 ? '+' : ''}${diff} Tage)`;
-                          const completedLabel = completedDate
-                            ? completedDate.toLocaleDateString('de-DE')
-                            : 'Datum unbekannt';
-                          return (
-                            <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'success.main' }}>
-                              {card["Nummer"]} - Abschluss: {completedLabel}{diffLabel}
-                            </Typography>
-                          );
-                        })}
-                      </Box>
-                    ) : (
-                      <Typography variant="caption" color="text.secondary">Keine abgeschlossenen TR-Termine</Typography>
-                    )}
-                  </Box>
-                </Card>
-              </Grid>
-
-              {/* Due Dates */}
-              <Grid item xs={12} md={6}>
-                <Card sx={{ p: 2, height: '100%' }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>Due Dates</Typography>
-                  
-                  {/* Überfällige Due Dates */}
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle2" sx={{ color: 'error.main', fontWeight: 'bold' }}>
-                      Überfällig ({kpis.dueDatesOverdue.length})
-                    </Typography>
-                    {kpis.dueDatesOverdue.length > 0 ? (
-                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
-                        {kpis.dueDatesOverdue.map((card, idx) => (
-                          <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'error.main' }}>
-                            {card["Nummer"]} - Due: {new Date(card["Due Date"]).toLocaleDateString('de-DE')}
-                          </Typography>
-                        ))}
-                      </Box>
-                    ) : (
-                      <Typography variant="caption" color="success.main">Keine Überfälligen Due Dates</Typography>
-                    )}
-                  </Box>
-
-                  {/* Kommende Due Dates */}
-                  <Box>
-                    <Typography variant="subtitle2" sx={{ color: 'warning.main', fontWeight: 'bold' }}>
-                      Kommende Woche ({kpis.dueDatesUpcoming.length})
-                    </Typography>
-                    {kpis.dueDatesUpcoming.length > 0 ? (
-                      <Box sx={{ mt: 1, maxHeight: '120px', overflow: 'auto' }}>
-                        {kpis.dueDatesUpcoming.map((card, idx) => (
-                          <Typography key={idx} variant="caption" sx={{ display: 'block', color: 'warning.main' }}>
-                             {card["Nummer"]} - Due: {new Date(card["Due Date"]).toLocaleDateString('de-DE')}
-                          </Typography>
-                        ))}
-                      </Box>
-                    ) : (
-                      <Typography variant="caption" color="text.secondary">Keine Due Dates diese Woche</Typography>
-                    )}
-                  </Box>
-                </Card>
-              </Grid>
-            </Grid>
-          </Box>
-        )}
-
-        {/* TAB 2: PERFORMANCE */}
-        {activeTab === 2 && (
-          <Box sx={{ p: 3 }}>
-            <Grid container spacing={3}>
-              {/* Team Workload */}
-              <Grid item xs={12} md={6}>
-                <Card sx={{ p: 2, height: '100%' }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>Team Workload</Typography>
-                  <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-                    Durchschnitt: {kpis.avgCardsPerPerson} Karten/Person
-                  </Typography>
-                  
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {Object.entries(kpis.teamWorkload)
-                      .sort(([,a], [,b]) => b - a)
-                      .map(([person, count]) => (
-                      <Box key={person} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="body2">{person}:</Typography>
-                        <Chip 
-                          label={count} 
-                          color={count > kpis.avgCardsPerPerson * 1.5 ? "error" : count > kpis.avgCardsPerPerson ? "warning" : "success"} 
-                          size="small"
-                        />
-                      </Box>
-                    ))}
-                  </Box>
-                </Card>
-              </Grid>
-
-              {/* Performance Metriken */}
-              <Grid item xs={12} md={6}>
-                <Card sx={{ p: 2, height: '100%' }}>
-                  <Typography variant="h6" sx={{ mb: 2 }}>Performance Metriken</Typography>
-                  
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="body2">Checklisten-Fortschritt:</Typography>
-                      <Chip 
-                        label={`${kpis.checklistProgress}%`} 
-                        color={kpis.checklistProgress >= 70 ? "success" : kpis.checklistProgress >= 50 ? "warning" : "error"} 
-                        size="small"
-                      />
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="body2">TR-Abdeckung:</Typography>
-                      <Chip 
-                        label={`${kpis.trCoverage}%`} 
-                        color={kpis.trCoverage >= 80 ? "success" : kpis.trCoverage >= 60 ? "warning" : "error"} 
-                        size="small"
-                      />
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="body2">Karten mit TR-Terminen:</Typography>
-                      <Chip 
-                        label={`${kpis.cardsWithTR}/${kpis.totalCards}`} 
-                        color="info" 
-                        size="small"
-                      />
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="body2">Karten mit Checklisten:</Typography>
-                      <Chip 
-                        label={`${kpis.cardsWithChecklists}/${kpis.totalCards}`} 
-                        color="success" 
-                        size="small"
-                      />
-                    </Box>
-                    
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography variant="body2">Due Dates gesetzt:</Typography>
-                      <Chip 
-                        label={`${kpis.dueDatesSet}/${kpis.totalCards}`} 
-                        color="secondary" 
-                        size="small"
-                      />
-                    </Box>
-
-                    {/* Performance Bewertung */}
-                    <Box sx={{ mt: 2, p: 2, backgroundColor: 'grey.100', borderRadius: 1 }}>
-                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Performance Bewertung:</Typography>
-                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                        {kpis.trCoverage >= 80 && (
-                          <Chip label="Gute TR-Abdeckung" size="small" color="success" />
-                        )}
-                        {kpis.checklistProgress >= 70 && (
-                          <Chip label="Guter Checklisten-Fortschritt" size="small" color="success" />
-                        )}
-                        {kpis.avgCardsPerPerson <= 10 && (
-                          <Chip label="Ausgewogene Workload" size="small" color="success" />
-                        )}
-                        {kpis.trCoverage < 50 && (
-                          <Chip label="Niedrige TR-Abdeckung" size="small" color="warning" />
-                        )}
-                        {kpis.avgCardsPerPerson > 15 && (
-                          <Chip label="Hohe Workload" size="small" color="warning" />
-                        )}
-                      </Box>
-                    </Box>
-                  </Box>
-                </Card>
-              </Grid>
-            </Grid>
-          </Box>
-        )}
-      </DialogContent>
-
-      <DialogActions sx={{ p: 2, backgroundColor: 'grey.50' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ flexGrow: 1 }}>
-          Aktualisiert: {new Date().toLocaleString('de-DE')}
-        </Typography>
-        <Button onClick={onClose} variant="contained">
-          Schließen
-        </Button>
-      </DialogActions>
-    </Dialog>
-  );
-};
-  
-  const getEscalationClass = (escalation: string) => {
-    if (escalation === 'LK') return 'esk-lk';
-    if (escalation === 'SK') return 'esk-sk';
-    return '';
-  };
-
- // Drag & Drop Handler
-// KORRIGIERTE onDragEnd FUNKTION:
-const onDragEnd = (result: DropResult) => {
-  if (!canModifyBoard) {
-    return;
-  }
-  const { destination, source, draggableId } = result;
-  
-  if (!destination) return;
-  if (destination.droppableId === source.droppableId && destination.index === source.index) return;
-
-  const card = rows.find(r => idFor(r) === draggableId);
-  if (!card) return;
-
-  console.log('🎯 Drag & Drop:', {
-    cardId: draggableId,
-    from: source.droppableId,
-    to: destination.droppableId,
-    fromIndex: source.index,
-    toIndex: destination.index
-  });
-
-  // ✅ Parse destination für swimlanes - HIER WAR DER FEHLER!
-  let newStage = destination.droppableId;
-  let newResp = null;
-  let newLane = null;
-
-  if (destination.droppableId.includes('||')) {
-    const parts = destination.droppableId.split('||');
-    newStage = parts[0];
-    // Nur wenn viewMode definiert ist
-    if (typeof viewMode !== 'undefined' && viewMode === 'swim') {
-      newResp = parts[1] === ' ' ? '' : parts[1];
-    } else if (typeof viewMode !== 'undefined' && viewMode === 'lane') {
-      newLane = parts[1];
-    }
-  }
-
-  const oldStage = inferStage(card);
-  
-  // Erstelle eine Kopie des Arrays für die Manipulation
-  const newRows = [...rows];
-  
-  // Finde die Karte im Array
-  const cardIndex = newRows.findIndex(r => idFor(r) === draggableId);
-  if (cardIndex === -1) return;
-  
-  // Entferne die Karte aus dem Array
-  const [movedCard] = newRows.splice(cardIndex, 1);
-  
-  // ✅ Update die Karte mit neuen Werten - JETZT IST newStage DEFINIERT!
-  movedCard["Board Stage"] = newStage;
-  if (newResp !== null) movedCard["Verantwortlich"] = newResp;
-  if (newLane !== null) movedCard["Swimlane"] = newLane;
-  
-  // Finde alle Karten in der Ziel-Stage
-  const targetStageCards = newRows.filter(r => inferStage(r) === newStage);
-  
-  // Berechne die neue Position
-  const insertIndex = Math.min(destination.index, targetStageCards.length);
-  
-  // Finde die globale Position zum Einfügen
-  let globalInsertIndex = 0;
-  let stageCardCount = 0;
-  
-  for (let i = 0; i < newRows.length; i++) {
-    if (inferStage(newRows[i]) === newStage) {
-      if (stageCardCount === insertIndex) {
-        globalInsertIndex = i;
-        break;
-      }
-      stageCardCount++;
-    }
-    if (i === newRows.length - 1) {
-      globalInsertIndex = newRows.length;
-    }
-  }
-  
-  // Füge die Karte an der neuen Position ein
-  newRows.splice(globalInsertIndex, 0, movedCard);
-  
-  // Setze grün wenn fertig
-  const doneStages = cols.filter(c => c.done || /fertig/i.test(c.name)).map(c => c.name);
-  if (doneStages.includes(newStage)) {
-    movedCard["Ampel"] = "grün";
-  }
-
-  console.log('✅ Karte verschoben:', {
-    cardId: draggableId,
-    newStage: movedCard["Board Stage"],
-    newPosition: insertIndex
-  });
-  
-  // State aktualisieren
-  setRows(newRows);
-  
-  // Sofort speichern nach Drag & Drop
-  console.log('💾 Speichere nach Drag & Drop...');
-  setTimeout(() => saveCards(), 500);
-};
-
-
-
-  // Toggle escalation
-  const toggleEscalation = (card: any, type: 'LK' | 'SK') => {
-    const currentEscalation = String(card["Eskalation"] || "").toUpperCase();
-    
-    if (currentEscalation === type) {
-      card["Eskalation"] = "";
-      card["Ampel"] = "grün";
-    } else {
-      card["Eskalation"] = type;
-      card["Ampel"] = "rot";
-    }
-    
-    setRows([...rows]);
-  };
-
-  // Toggle card collapse
-  const toggleCollapse = (card: any) => {
-    if (!canModifyBoard) {
-      return;
-    }
-    const wasCollapsed = String(card["Collapsed"] || "") === "1";
-    card["Collapsed"] = wasCollapsed ? "" : "1";
-    setRows([...rows]);
-  };
-
-  // Archive all cards in done columns
   const archiveColumn = (columnName: string) => {
-    if (!canModifyBoard) {
-      return;
-    }
+    if (!canModifyBoard) return;
     if (!window.confirm(`Alle Karten in "${columnName}" archivieren?`)) return;
     
-    rows.forEach(r => {
+    const updatedRows = rows.map(r => {
       if (inferStage(r) === columnName) {
         r["Archived"] = "1";
+        r["ArchivedDate"] = new Date().toLocaleDateString('de-DE'); 
       }
-    });
+      return r;
+    }).filter(r => r["Archived"] !== "1"); 
     
-    setRows([...rows]);
+    setRows(updatedRows);
+    const newlyArchived = rows.filter(r => inferStage(r) === columnName && r["Archived"] === "1");
+    updateArchivedState([...archivedCards, ...newlyArchived]);
   };
 
-  // Add new status entry
   const addStatusEntry = (card: any) => {
-    if (!canModifyBoard) {
-      return;
-    }
     const now = new Date();
     const dateStr = now.toLocaleDateString('de-DE');
-    const newEntry = {
-      date: dateStr,
-      message: { text: '', escalation: false },
-      qualitaet: { text: '', escalation: false },
-      kosten: { text: '', escalation: false },
-      termine: { text: '', escalation: false }
-    };
-
+    const newEntry = { date: dateStr, message: { text: '', escalation: false }, qualitaet: { text: '', escalation: false }, kosten: { text: '', escalation: false }, termine: { text: '', escalation: false } };
     if (!Array.isArray(card.StatusHistory)) card.StatusHistory = [];
     card.StatusHistory.unshift(newEntry);
     setRows([...rows]);
   };
 
-  // Update status summary
   const updateStatusSummary = (card: any) => {
     const hist = Array.isArray(card.StatusHistory) ? card.StatusHistory : [];
     let kurz = '';
     if (hist.length) {
       const latest = hist[0];
       ['message', 'qualitaet', 'kosten', 'termine'].some(key => {
-        const e = latest[key];
-        if (e && e.text && e.text.trim()) {
-          kurz = e.text.trim();
-          return true;
-        }
+        const e = latest[key as keyof typeof latest] as any;
+        if (e && e.text && e.text.trim()) { kurz = e.text.trim(); return true; }
         return false;
       });
     }
     card['Status Kurz'] = kurz;
   };
 
-// Render einzelne Karte - EINHEITLICHE LOGIK
+  const handleTRNeuChange = async (card: any, newDate: string) => {
+    if (!canModifyBoard) return;
+    
+    if (!newDate) {
+      card["TR_Neu"] = "";
+      setRows([...rows]);
+      return;
+    }
+    
+    const { data: authData } = await supabase.auth.getUser();
+    const currentUser = users.find(u => u.id === authData.user?.id)?.full_name || 'System';
+    
+    if (!Array.isArray(card["TR_History"])) card["TR_History"] = [];
+    
+    if (card["TR_Neu"] && card["TR_Neu"] !== newDate) {
+      card["TR_History"].push({ date: card["TR_Neu"], changedBy: currentUser, timestamp: new Date().toISOString(), superseded: true });
+    }
+    
+    card["TR_Neu"] = newDate;
+    card["TR_History"].push({ date: newDate, changedBy: currentUser, timestamp: new Date().toISOString(), superseded: false });
+    setRows([...rows]);
+  };
+
+  // --- Drag & Drop Logic ---
+  const onDragEnd = (result: DropResult) => {
+    if (!canModifyBoard) return;
+    const { destination, source, draggableId } = result;
+    
+    if (!destination) return;
+    if (destination.droppableId === source.droppableId && destination.index === source.index) return;
+
+    const card = rows.find(r => idFor(r) === draggableId);
+    if (!card) return;
+
+    let newStage = destination.droppableId;
+    let newResp = null;
+    let newLane = null;
+
+    if (destination.droppableId.includes('||')) {
+      const parts = destination.droppableId.split('||');
+      newStage = parts[0];
+      if (viewMode === 'swim') newResp = parts[1] === ' ' ? '' : parts[1];
+      else if (viewMode === 'lane') newLane = parts[1];
+    }
+    
+    const newRows = [...rows];
+    const cardIndex = newRows.findIndex(r => idFor(r) === draggableId);
+    if (cardIndex === -1) return;
+    
+    const [movedCard] = newRows.splice(cardIndex, 1);
+    
+    // Update Card Data
+    movedCard["Board Stage"] = newStage;
+    if (newResp !== null) movedCard["Verantwortlich"] = newResp;
+    if (newLane !== null) movedCard["Swimlane"] = newLane;
+    
+    // Find Target Index
+    const targetGroupFilter = (r: any) => {
+        let matches = inferStage(r) === newStage;
+        if (viewMode === 'swim' && newResp !== null) {
+            matches = matches && ((r["Verantwortlich"] || '').trim() || '—') === newResp;
+        } else if (viewMode === 'lane' && newLane !== null) {
+            matches = matches && (r["Swimlane"] || 'Allgemein') === newLane;
+        }
+        return matches;
+    };
+
+    let globalInsertIndex = newRows.length;
+    let targetStageCardCount = 0;
+    
+    for (let i = 0; i < newRows.length; i++) {
+        if (targetGroupFilter(newRows[i])) {
+            if (targetStageCardCount === destination.index) {
+                globalInsertIndex = i;
+                break;
+            }
+            targetStageCardCount++;
+        }
+    }
+    
+    newRows.splice(globalInsertIndex, 0, movedCard);
+    
+    // Status Ampel Logic
+    const doneStageNames = cols.filter(c => c.done || /fertig/i.test(c.name)).map(c => c.name);
+    if (doneStageNames.includes(newStage)) {
+      movedCard["Ampel"] = "grün";
+      movedCard["Eskalation"] = "";
+    }
+    
+    const reindexed = reindexByStage(newRows);
+    setRows(reindexed);
+  };
+  
   const renderCard = useCallback(
     (card: any, index: number) => (
       <KanbanCard
@@ -1822,75 +831,315 @@ const onDragEnd = (result: DropResult) => {
     ),
     [canModifyBoard, density, idFor, inferStage, rows, saveCards, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users]
   );
-
-// ✅ KORRIGIERTE TR-NEU ÄNDERUNGS-HANDLER (ersetze die bisherige Funktion)
-const handleTRNeuChange = (card: any, newDate: string) => {
-  if (!canModifyBoard) {
-    return;
-  }
-  console.log(`📅 TR-Neu Änderung für ${card.Nummer}:`, {
-    alt: card["TR_Neu"],
-    neu: newDate
-  });
   
-  if (!newDate) {
-    // Leeres Datum - TR_Neu löschen, aber Historie behalten
-    card["TR_Neu"] = "";
-    setRows([...rows]);
-    return;
-  }
-  
-  // Aktueller Benutzer
-  const currentUser = users.find(u => u.name === card["Verantwortlich"])?.name || 'System';
-  
-  // Historie initialisieren falls nicht vorhanden
-  if (!Array.isArray(card["TR_History"])) {
-    card["TR_History"] = [];
-  }
-  
-  // Wenn bereits ein TR_Neu existiert, zur Historie hinzufügen
-  if (card["TR_Neu"] && card["TR_Neu"] !== newDate) {
-    console.log(`📅 Füge altes TR_Neu zur Historie hinzu: ${card["TR_Neu"]}`);
-    
-    card["TR_History"].push({
-      date: card["TR_Neu"],
-      changedBy: currentUser,
-      timestamp: new Date().toISOString(),
-      superseded: true
+  const TRKPIPopup = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+    const distribution = Object.entries(kpis.columnDistribution).map(([name, count]) => ({ name, count: count as number }));
+    distribution.sort((a, b) => {
+        const pos = (name: string) => DEFAULT_COLS.findIndex((c) => c.name === name);
+        return pos(a.name) - pos(b.name);
     });
-  }
-  
-  // Neues TR_Neu setzen
-  card["TR_Neu"] = newDate;
-  
-  // Aktuelles TR_Neu auch zur Historie hinzufügen (als letzter Eintrag)
-  card["TR_History"].push({
-    date: newDate,
-    changedBy: currentUser,
-    timestamp: new Date().toISOString(),
-    superseded: false
-  });
-  
-  console.log(`📅 TR neu gesetzt für ${card.Nummer}:`, {
-    neuesDatum: newDate,
-    historieAnzahl: card["TR_History"].length
-  });
-  
-  setRows([...rows]);
-};
+    
+    const percentage = (count: number) => kpis.totalCards > 0 ? Math.round((count / kpis.totalCards) * 100) : 0;
+    const isToday = kpis.trToday.length > 0;
+    const isThisWeek = kpis.trThisWeek.length > 0;
+    const isOverdue = kpis.trOverdue.length > 0;
+    const hasEscalations = kpis.lkEscalations.length > 0 || kpis.skEscalations.length > 0;
 
 
+    return (
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Assessment color="primary" /> 
+            Projekt-KPIs & Metriken
+            <IconButton onClick={onClose} sx={{ ml: 'auto' }}><Close /></IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={3}>
+            <Grid item xs={12} sm={4}>
+                <Card variant="outlined" sx={{ height: '100%', backgroundColor: isOverdue ? '#ffebee' : '#f0f0f0' }}>
+                    <CardContent>
+                        <Typography variant="subtitle2" color="text.secondary">Überfällige TRs</Typography>
+                        <Typography variant="h4" color={isOverdue ? 'error.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
+                            {kpis.trOverdue.length}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">Gesamt {kpis.totalCards} Karten</Typography>
+                    </CardContent>
+                </Card>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+                <Card variant="outlined" sx={{ height: '100%', backgroundColor: hasEscalations ? '#fff3e0' : '#f0f0f0' }}>
+                    <CardContent>
+                        <Typography variant="subtitle2" color="text.secondary">Eskalationen</Typography>
+                        <Typography variant="h4" color={hasEscalations ? 'warning.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
+                            {kpis.lkEscalations.length + kpis.skEscalations.length}
+                        </Typography>
+                         <Typography variant="caption" color="text.secondary">LK: {kpis.lkEscalations.length} / SK: {kpis.skEscalations.length}</Typography>
+                    </CardContent>
+                </Card>
+            </Grid>
+            <Grid item xs={12} sm={4}>
+                <Card variant="outlined" sx={{ height: '100%', backgroundColor: kpis.ampelGreen > 0 ? '#e8f5e8' : '#f0f0f0' }}>
+                    <CardContent>
+                        <Typography variant="subtitle2" color="text.secondary">Ampel Grün</Typography>
+                        <Typography variant="h4" color="success.main" sx={{ fontWeight: 700 }}>
+                            {percentage(kpis.ampelGreen)}%
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">{kpis.ampelGreen} von {kpis.totalCards} Karten</Typography>
+                    </CardContent>
+                </Card>
+            </Grid>
+            
+            <Grid item xs={12}>
+                <Typography variant="h6" gutterBottom sx={{ mt: 1, color: 'text.secondary' }}>Kartenverteilung (Stages)</Typography>
+                <Card variant="outlined">
+                    <CardContent>
+                        <List dense>
+                            {distribution.map((item, index) => (
+                                <ListItem key={index} disableGutters sx={{ py: 0.5 }}>
+                                    <Grid container alignItems="center" spacing={2}>
+                                        <Grid item xs={4}>
+                                            <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.name}</Typography>
+                                        </Grid>
+                                        <Grid item xs={6}>
+                                            <Box sx={{ width: '100%', height: '10px', backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: '4px' }}>
+                                                <Box sx={{ 
+                                                    width: `${percentage(item.count)}%`, 
+                                                    height: '100%', 
+                                                    backgroundColor: DEFAULT_COLS.find(c => c.name === item.name)?.done ? '#4caf50' : '#2196f3',
+                                                    borderRadius: '4px',
+                                                    transition: 'width 0.5s ease',
+                                                }} />
+                                            </Box>
+                                        </Grid>
+                                        <Grid item xs={2} sx={{ textAlign: 'right' }}>
+                                            <Typography variant="caption" sx={{ fontWeight: 600 }}>{item.count} ({percentage(item.count)}%)</Typography>
+                                        </Grid>
+                                    </Grid>
+                                </ListItem>
+                            ))}
+                        </List>
+                    </CardContent>
+                </Card>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions><Button onClick={onClose} variant="outlined">Schließen</Button></DialogActions>
+      </Dialog>
+    );
+  };
 
-  // Main Render
+  const SettingsDialog = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+    const [currentCols, setCurrentCols] = useState(cols);
+    const [currentLanes, setCurrentLanes] = useState(lanes);
+    const [tab, setTab] = useState(0);
+    const [newColName, setNewColName] = useState('');
+    const [newLaneName, setNewLaneName] = useState('');
+
+    useEffect(() => {
+        if (open) {
+            setCurrentCols(cols);
+            setCurrentLanes(lanes);
+        }
+    }, [open, cols, lanes]);
+
+    const handleSave = async () => {
+        setCols(currentCols);
+        setLanes(currentLanes);
+        const success = await saveSettings();
+        if (success) {
+            onClose();
+            loadCards(); 
+        }
+    };
+    
+    const handleMoveColumn = (id: string, direction: 'up' | 'down') => {
+        const index = currentCols.findIndex(c => c.id === id);
+        if (index === -1) return;
+
+        const newCols = [...currentCols];
+        const [removed] = newCols.splice(index, 1);
+        
+        let newIndex = index;
+        if (direction === 'up' && index > 0) {
+            newIndex = index - 1;
+        } else if (direction === 'down' && index < newCols.length) {
+            newIndex = index + 1;
+        } else {
+            return;
+        }
+
+        newCols.splice(newIndex, 0, removed);
+        setCurrentCols(newCols);
+    };
+
+    const handleUpdateColumnName = (id: string, newName: string) => {
+        setCurrentCols(prev => prev.map(c => c.id === id ? { ...c, name: newName } : c));
+    };
+    
+    const handleAddColumn = () => {
+        const trimmedName = newColName.trim();
+        if (trimmedName && !currentCols.some(c => c.name === trimmedName)) {
+            setCurrentCols([...currentCols, { id: `c${Date.now()}`, name: trimmedName, done: false }]);
+            setNewColName('');
+        }
+    };
+
+    const handleDeleteColumn = (id: string) => {
+        if (window.confirm('WARNUNG: Das Löschen einer Spalte verschiebt alle darin enthaltenen Karten in die erste Spalte. Wirklich löschen?')) {
+            setCurrentCols(currentCols.filter(c => c.id !== id));
+        }
+    };
+
+    const handleToggleDone = (id: string) => {
+        setCurrentCols(currentCols.map(c => c.id === id ? { ...c, done: !c.done } : c));
+    }
+
+    const handleAddLane = () => {
+        const trimmedName = newLaneName.trim();
+        if (trimmedName && !currentLanes.includes(trimmedName)) {
+            setCurrentLanes([...currentLanes, trimmedName]);
+            setNewLaneName('');
+        }
+    };
+
+    const handleDeleteLane = (name: string) => {
+        setCurrentLanes(currentLanes.filter(l => l !== name));
+    };
+
+    return (
+        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Settings color="primary" /> 
+                Board Einstellungen
+                <IconButton onClick={onClose} sx={{ ml: 'auto' }}><Close /></IconButton>
+            </DialogTitle>
+            <DialogContent dividers>
+                <Tabs value={tab} onChange={(_, newValue) => setTab(newValue)} sx={{ mb: 2 }}>
+                    <Tab label="Meta-Daten" icon={<Assignment />} />
+                    <Tab label="Spalten (Stages)" icon={<Done />} />
+                    <Tab label="Swimlanes" icon={<People />} />
+                </Tabs>
+
+                {/* Tab 1: Meta-Daten */}
+                {tab === 0 && (
+                    <Box sx={{ pt: 1 }}>
+                        <TextField label="Board-Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} fullWidth sx={{ mt: 2 }} disabled={!canModifyBoard} />
+                        <TextField label="Beschreibung" value={boardDescription} onChange={(e) => setBoardDescription(e.target.value)} fullWidth multiline rows={2} sx={{ mt: 2 }} disabled={!canModifyBoard} />
+                    </Box>
+                )}
+
+                {/* Tab 2: Spalten-Verwaltung */}
+                {tab === 1 && (
+                    <Box sx={{ pt: 1 }}>
+                        <Typography variant="subtitle1" gutterBottom color="text.secondary">Spalten (Stages) definieren</Typography>
+                        <Card variant="outlined">
+                            <List dense>
+                                {currentCols.map((col, index) => (
+                                    <ListItem key={col.id} disableGutters secondaryAction={
+                                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                            <IconButton 
+                                                size="small"
+                                                onClick={() => handleMoveColumn(col.id, 'up')}
+                                                disabled={!canModifyBoard || index === 0}
+                                            >
+                                                <ArrowUpward fontSize="small" />
+                                            </IconButton>
+                                            <IconButton 
+                                                size="small"
+                                                onClick={() => handleMoveColumn(col.id, 'down')}
+                                                disabled={!canModifyBoard || index === currentCols.length - 1}
+                                            >
+                                                <ArrowDownward fontSize="small" />
+                                            </IconButton>
+                                            
+                                            <Button size="small" onClick={() => handleToggleDone(col.id)} disabled={!canModifyBoard} sx={{ ml: 1, mr: 1, color: col.done ? 'success.main' : 'text.secondary', border: `1px solid ${col.done ? '#4caf50' : 'gray'}`, minWidth: '80px' }}>
+                                                {col.done ? 'Fertig' : 'Normal'}
+                                            </Button>
+                                            <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteColumn(col.id)} disabled={!canModifyBoard || currentCols.length === 1}>
+                                                <Delete />
+                                            </IconButton>
+                                        </Box>
+                                    }>
+                                        <TextField 
+                                            value={col.name}
+                                            onChange={(e) => handleUpdateColumnName(col.id, e.target.value)}
+                                            variant="standard"
+                                            size="small"
+                                            fullWidth
+                                            sx={{ mr: 2 }}
+                                            disabled={!canModifyBoard}
+                                            InputProps={{
+                                                disableUnderline: true,
+                                                startAdornment: <InputAdornment position="start"><Edit fontSize="small" sx={{ color: 'text.disabled', mr: 1 }}/></InputAdornment>
+                                            }}
+                                        />
+                                    </ListItem>
+                                ))}
+                            </List>
+                        </Card>
+                        <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                            <TextField size="small" label="Neue Spalte" value={newColName} onChange={(e) => setNewColName(e.target.value)} fullWidth disabled={!canModifyBoard} />
+                            <Button variant="contained" startIcon={<Add />} onClick={handleAddColumn} disabled={!canModifyBoard}>Hinzufügen</Button>
+                        </Box>
+                    </Box>
+                )}
+
+                {/* Tab 3: Swimlanes/Lanes-Verwaltung */}
+                {tab === 2 && (
+                    <Box sx={{ pt: 1 }}>
+                        <Typography variant="subtitle1" gutterBottom color="text.secondary">Swimlanes/Kategorien definieren</Typography>
+                        <Card variant="outlined">
+                            <List dense>
+                                {currentLanes.map((lane, index) => (
+                                    <ListItem key={index} disableGutters secondaryAction={
+                                        <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteLane(lane)} disabled={!canModifyBoard}>
+                                            <Delete />
+                                        </IconButton>
+                                    }>
+                                        <ListItemText primary={lane} />
+                                    </ListItem>
+                                ))}
+                            </List>
+                        </Card>
+                        <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                            <TextField size="small" label="Neue Swimlane" value={newLaneName} onChange={(e) => setNewLaneName(e.target.value)} fullWidth disabled={!canModifyBoard} />
+                            <Button variant="contained" startIcon={<Add />} onClick={handleAddLane} disabled={!canModifyBoard}>Hinzufügen</Button>
+                        </Box>
+                    </Box>
+                )}
+            </DialogContent>
+            <DialogActions>
+                <Button onClick={onClose}>Abbrechen</Button>
+                <Button onClick={handleSave} variant="contained" disabled={!canModifyBoard}>Einstellungen speichern</Button>
+            </DialogActions>
+        </Dialog>
+    );
+  };
+  
+  useImperativeHandle(ref, () => ({
+    openSettings: () => setSettingsOpen(true),
+    openArchive: async () => { 
+        await loadArchivedCards(); 
+        setArchiveOpen(true); 
+    },
+    openKpis: () => setKpiPopupOpen(true),
+  }), [loadArchivedCards]);
+
+// --- Final Render ---
+
 return (
     <Box sx={{ 
       height: 'calc(100vh - 120px)',
       display: 'flex',
       flexDirection: 'column',
       backgroundColor: 'var(--bg)',
-      color: 'var(--ink)'
+      color: 'var(--ink)',
+      // CSS Variables für Spaltenbreite und Layout
+      '&': {
+        '--colw': '300px',
+        '--rowheadw': '260px'
+      } as any
     }}>
-      {/* Header mit Toolbar */}
       <Box sx={{
         position: 'sticky',
         top: 0,
@@ -1899,521 +1148,54 @@ return (
         borderBottom: '1px solid var(--line)',
         p: 2
       }}>
-        {/* Toolbar */}
         <Box sx={{
           display: 'grid',
-          gridTemplateColumns: '1fr auto auto auto auto auto auto auto auto auto auto',
+          gridTemplateColumns: '1fr repeat(3, auto) repeat(3, auto) repeat(3, auto)', 
           gap: 1.5,
           alignItems: 'center',
           mt: 0
         }}>
           {/* Suchfeld */}
-          <TextField
-            size="small"
-            placeholder="Suchen..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            sx={{ minWidth: 220 }}
-          />
+          <TextField size="small" placeholder="Suchen..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} sx={{ minWidth: 220 }} />
 
           {/* Ansichtsmodi */}
-          <Button
-            variant={viewMode === 'columns' ? 'contained' : 'outlined'}
-            onClick={() => setViewMode('columns')}
-            sx={{ minWidth: 'auto', p: 1 }}
-            title="Ansicht: Spalten"
-          >
-            📊
-          </Button>
-          <Button
-            variant={viewMode === 'swim' ? 'contained' : 'outlined'}
-            onClick={() => setViewMode('swim')}
-            sx={{ minWidth: 'auto', p: 1 }}
-            title="Ansicht: Swimlanes (Verantwortlich)"
-          >
-            👥
-          </Button>
-          <Button
-            variant={viewMode === 'lane' ? 'contained' : 'outlined'}
-            onClick={() => setViewMode('lane')}
-            sx={{ minWidth: 'auto', p: 1 }}
-            title="Ansicht: Swimlanes (Kategorie)"
-          >
-            🏷️
-          </Button>
+          <Button variant={viewMode === 'columns' ? 'contained' : 'outlined'} onClick={() => setViewMode('columns')} sx={{ minWidth: 'auto', p: 1 }} title="Ansicht: Spalten">📊</Button>
+          <Button variant={viewMode === 'swim' ? 'contained' : 'outlined'} onClick={() => setViewMode('swim')} sx={{ minWidth: 'auto', p: 1 }} title="Ansicht: Swimlanes (Verantwortlich)">👥</Button>
+          <Button variant={viewMode === 'lane' ? 'contained' : 'outlined'} onClick={() => setViewMode('lane')} sx={{ minWidth: 'auto', p: 1 }} title="Ansicht: Swimlanes (Kategorie)">🏷️</Button>
 
           {/* Layout-Modi */}
-          <Button
-            variant={density === 'compact' ? 'contained' : 'outlined'}
-            onClick={() => setDensity('compact')}
-            sx={{ minWidth: 'auto', p: 1 }}
-            title="Layout: kompakt"
-          >
-            ◼
-          </Button>
-          <Button
-            variant={density === 'xcompact' ? 'contained' : 'outlined'}
-            onClick={() => setDensity('xcompact')}
-            sx={{ minWidth: 'auto', p: 1 }}
-            title="Layout: extrakompakt"
-          >
-            ◻
-          </Button>
-          <Button
-            variant={density === 'large' ? 'contained' : 'outlined'}
-            onClick={() => setDensity('large')}
-            sx={{ minWidth: 'auto', p: 1 }}
-            title="Layout: groß"
-          >
-            ⬜
-          </Button>         
-          <Button
-            variant="contained"
-            size="small"
-            onClick={() => setNewCardOpen(true)}
-            disabled={!canModifyBoard}
-          >
-            Neue Karte
-          </Button>
+          <Button variant={density === 'compact' ? 'contained' : 'outlined'} onClick={() => setDensity('compact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: kompakt">◼</Button>
+          <Button variant={density === 'xcompact' ? 'contained' : 'outlined'} onClick={() => setDensity('xcompact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: extrakompakt">◻</Button>
+          <Button variant={density === 'large' ? 'contained' : 'outlined'} onClick={() => setDensity('large')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: groß">⬜</Button>         
+          
+          <Button variant="contained" size="small" onClick={() => setNewCardOpen(true)} disabled={!canModifyBoard}>Neue Karte</Button>
+          
+          <IconButton onClick={() => setSettingsOpen(true)} title="Board-Einstellungen">⚙️</IconButton>
+          <Badge badgeContent={kpiBadgeCount} color="error" overlap="circular">
+            <IconButton onClick={() => setKpiPopupOpen(true)} title="KPIs & Metriken"><Assessment fontSize="small" /></IconButton>
+          </Badge>
         </Box>
       </Box>
 
-          
-      {/* Board Content */}
-      <Box sx={{ flex: 1, overflow: 'auto' }}>
+      <Box sx={{ flex: 1, overflow: 'hidden' }}>
         {viewMode === 'columns' && (
-          <KanbanColumnsView
-            rows={rows}
-            cols={cols}
-            density={density}
-            searchTerm={searchTerm}
-            onDragEnd={onDragEnd}
-            inferStage={inferStage}
-            archiveColumn={archiveColumn}
-            renderCard={renderCard}
-            allowDrag={canModifyBoard}
-          />
+          <KanbanColumnsView rows={rows} cols={cols} density={density} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} archiveColumn={archiveColumn} renderCard={renderCard} allowDrag={canModifyBoard} />
         )}
         {viewMode === 'swim' && (
-          <KanbanSwimlaneView
-            rows={rows}
-            cols={cols}
-            searchTerm={searchTerm}
-            onDragEnd={onDragEnd}
-            inferStage={inferStage}
-            renderCard={renderCard}
-            allowDrag={canModifyBoard}
-          />
+          <KanbanSwimlaneView rows={rows} cols={cols} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} renderCard={renderCard} allowDrag={canModifyBoard} />
         )}
         {viewMode === 'lane' && (
-          <KanbanLaneView
-            rows={rows}
-            cols={cols}
-            lanes={lanes}
-            searchTerm={searchTerm}
-            onDragEnd={onDragEnd}
-            inferStage={inferStage}
-            renderCard={renderCard}
-            allowDrag={canModifyBoard}
-          />
+          <KanbanLaneView rows={rows} cols={cols} lanes={lanes} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} renderCard={renderCard} allowDrag={canModifyBoard} />
         )}
       </Box>
-{/* Einstellungen Modal */}
-<Dialog 
-  open={settingsOpen} 
-  onClose={() => setSettingsOpen(false)}
-  maxWidth="md"
-  fullWidth
->
-  <DialogTitle sx={{ 
-    borderBottom: '1px solid var(--line)',
-    display: 'flex',
-    alignItems: 'center',
-    gap: 1
-  }}>
-    ⚙️ Board Einstellungen
-  </DialogTitle>
-  
-  <DialogContent sx={{ p: 3 }}>
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
 
-      <Box>
-        <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
-          Allgemein
-        </Typography>
-        <TextField
-          label="Board-Name"
-          value={boardName}
-          onChange={(e) => setBoardName(e.target.value)}
-          fullWidth
-          required
-          error={!!boardMeta && !boardName.trim()}
-          helperText={!!boardMeta && !boardName.trim() ? 'Board-Name darf nicht leer sein.' : ' '}
-          sx={{ mb: 2 }}
-        />
-        <TextField
-          label="Beschreibung"
-          value={boardDescription}
-          onChange={(e) => setBoardDescription(e.target.value)}
-          fullWidth
-          multiline
-          minRows={2}
-          placeholder="Beschreibe das Board..."
-        />
-      </Box>
+      {/* DIALOGE */}
+      <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {/* Spalten Konfiguration */}
-      <Box>
-        <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
-          📋 Spalten
-        </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {cols.map((col, index) => (
-            <Box key={index} sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 1,
-              p: 1,
-              border: '1px solid var(--line)',
-              borderRadius: '8px'
-            }}>
-              <TextField
-                size="small"
-                value={col.name}
-                onChange={(e) => {
-                  const newCols = [...cols];
-                  newCols[index] = { ...col, name: e.target.value };
-                  setCols(newCols);
-                }}
-                sx={{ flex: 1 }}
-              />
-              <IconButton 
-                size="small"
-                onClick={() => {
-                  const newCols = cols.filter((_, i) => i !== index);
-                  setCols(newCols);
-                }}
-                sx={{ color: '#d32f2f' }}
-              >
-                🗑️
-              </IconButton>
-            </Box>
-          ))}
-          <Button 
-            variant="outlined" 
-            size="small"
-            onClick={() =>
-              setCols([
-                ...cols,
-                { id: `new-${Date.now()}`, name: `Neue Spalte ${cols.length + 1}`, done: false },
-              ])
-            }
-            sx={{ alignSelf: 'flex-start' }}
-          >
-            + Spalte hinzufügen
-          </Button>
-        </Box>
-      </Box>
-
-      {/* Verfügbare Benutzer (nur Anzeige) */}
-      <Box>
-        <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
-          Verfügbare Benutzer ({users.length})
-        </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: '200px', overflow: 'auto' }}>
-          {users.length === 0 ? (
-            <Typography sx={{ color: 'text.secondary', fontStyle: 'italic', p: 2 }}>
-              Keine Benutzer gefunden. Benutzer werden automatisch aus der Datenbank geladen.
-            </Typography>
-          ) : (
-            users.map((user, index) => (
-              <Box key={user.id} sx={{ 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: 2,
-                p: 2,
-                border: '1px solid var(--line)',
-                borderRadius: '8px',
-                backgroundColor: 'var(--panel)'
-              }}>
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {user.name}
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
-                    {user.email}
-                  </Typography>
-                </Box>
-                <Chip 
-                  label="Aktiv" 
-                  size="small" 
-                  color="success"
-                  sx={{ fontSize: '10px' }}
-                />
-              </Box>
-            ))
-          )}
-        </Box>
-        <Typography variant="caption" sx={{ color: 'var(--muted)', mt: 1, display: 'block' }}>
-          💡 Benutzer werden automatisch aus der Authentifizierung geladen und können als Verantwortliche zugewiesen werden.
-        </Typography>
-      </Box>
-
-      {/* Swimlanes */}
-      <Box>
-        <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
-          🏊 Swimlanes
-        </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-          {lanes.map((lane, index) => (
-            <Box key={index} sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: 1,
-              p: 1,
-              border: '1px solid var(--line)',
-              borderRadius: '8px'
-            }}>
-              <TextField
-                size="small"
-                value={lane}
-                onChange={(e) => {
-                  const newLanes = [...lanes];
-                  newLanes[index] = e.target.value;
-                  setLanes(newLanes);
-                }}
-                sx={{ flex: 1 }}
-              />
-              <IconButton 
-                size="small"
-                onClick={() => {
-                  const newLanes = lanes.filter((_, i) => i !== index);
-                  setLanes(newLanes);
-                }}
-                sx={{ color: '#d32f2f' }}
-              >
-                🗑️
-              </IconButton>
-            </Box>
-          ))}
-          <Button 
-            variant="outlined" 
-            size="small"
-            onClick={() => setLanes([...lanes, `Swimlane ${lanes.length + 1}`])}
-            sx={{ alignSelf: 'flex-start' }}
-          >
-            + Swimlane hinzufügen
-          </Button>
-        </Box>
-      </Box>
-
-      {/* Checklisten Templates */}
-<Box>
-  <Typography variant="h6" sx={{ mb: 2, color: 'var(--ink)' }}>
-    ✅ Checklisten Templates (pro Spalte)
-  </Typography>
-  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-    {cols.map((col) => (
-      <Box key={col.name} sx={{ 
-        border: '1px solid var(--line)',
-        borderRadius: '8px',
-        p: 2
-      }}>
-        <Typography variant="subtitle1" sx={{ 
-          mb: 1, 
-          fontWeight: 600,
-          color: 'var(--ink)'
-        }}>
-          📋 {col.name}
-        </Typography>
-        
-        {/* Checklisten Items für diese Spalte */}
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, ml: 2 }}>
-          {(checklistTemplates[col.name] || []).map((item, itemIndex) => (
-            <Box key={itemIndex} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <TextField
-                size="small"
-                value={item}
-                onChange={(e) => {
-                  const newTemplates = { ...checklistTemplates };
-                  if (!newTemplates[col.name]) newTemplates[col.name] = [];
-                  const newItems = [...newTemplates[col.name]];
-                  newItems[itemIndex] = e.target.value;
-                  newTemplates[col.name] = newItems;
-                  setChecklistTemplates(newTemplates);
-                }}
-                sx={{ flex: 1 }}
-              />
-              <IconButton 
-                size="small"
-                onClick={() => {
-                  const newTemplates = { ...checklistTemplates };
-                  if (!newTemplates[col.name]) return;
-                  const newItems = newTemplates[col.name].filter((_, i) => i !== itemIndex);
-                  newTemplates[col.name] = newItems;
-                  setChecklistTemplates(newTemplates);
-                }}
-                sx={{ color: '#d32f2f' }}
-              >
-                ➖
-              </IconButton>
-            </Box>
-          ))}
-          <Button 
-            variant="text" 
-            size="small"
-            onClick={() => {
-              const newTemplates = { ...checklistTemplates };
-              if (!newTemplates[col.name]) newTemplates[col.name] = [];
-              const newItems = [...newTemplates[col.name], `Neuer Punkt ${newTemplates[col.name].length + 1}`];
-              newTemplates[col.name] = newItems;
-              setChecklistTemplates(newTemplates);
-            }}
-            sx={{ alignSelf: 'flex-start', fontSize: '12px' }}
-          >
-            + Punkt hinzufügen
-          </Button>
-        </Box>
-      </Box>
-    ))}
-
-
-          
-          <Button 
-            variant="outlined" 
-            size="small"
-            onClick={() => {
-              const newName = `Template ${Object.keys(checklistTemplates).length + 1}`;
-              setChecklistTemplates({
-                ...checklistTemplates,
-                [newName]: ['Punkt 1', 'Punkt 2']
-              });
-            }}
-            sx={{ alignSelf: 'flex-start' }}
-          >
-            + Template hinzufügen
-          </Button>
-        </Box>
-      </Box>
-
-    </Box>
-
-  </DialogContent>
-  <DialogActions sx={{ borderTop: '1px solid var(--line)', p: 2 }}>
-    <Button onClick={() => setSettingsOpen(false)}>
-      Abbrechen
-    </Button>
-<Button 
-  variant="contained" 
-  onClick={async () => {
-    const success = await saveSettings();
-    if (success) {
-      setSettingsOpen(false);
-      alert('✅ Einstellungen wurden in Supabase gespeichert!');
-    }
-  }}
-
-      sx={{ 
-        backgroundColor: '#14c38e',
-        '&:hover': { backgroundColor: '#0ea770' }
-      }}
-    >
-      Speichern
-    </Button>
-  </DialogActions>
-</Dialog>
-
-      <EditCardDialog
-        selectedCard={selectedCard}
-        editModalOpen={editModalOpen}
-        setEditModalOpen={setEditModalOpen}
-        editTabValue={editTabValue}
-        setEditTabValue={setEditTabValue}
-        rows={rows}
-        setRows={setRows}
-        users={users}
-        lanes={lanes}
-        checklistTemplates={checklistTemplates}
-        inferStage={inferStage}
-        addStatusEntry={addStatusEntry}
-        updateStatusSummary={updateStatusSummary}
-        handleTRNeuChange={handleTRNeuChange}
-        saveCards={saveCards}
-        idFor={idFor}
-        setSelectedCard={setSelectedCard}
-      />
-
-      <NewCardDialog
-        newCardOpen={newCardOpen}
-        setNewCardOpen={setNewCardOpen}
-        cols={cols}
-        lanes={lanes}
-        rows={rows}
-        setRows={setRows}
-        users={users}
-      />
-
-      <ArchiveDialog
-        archiveOpen={archiveOpen}
-        setArchiveOpen={setArchiveOpen}
-        archivedCards={archivedCards}
-        restoreCard={restoreCard}
-        deleteCardPermanently={deleteCardPermanently}
-      />
-
-      {/* CSS Variables für dein ursprüngliches Design */}
-      <style jsx global>{`
-        :root {
-          --bg: #0f1117;
-          --panel: #141a22;
-          --ink: #e6e8ee;
-          --muted: #9aa3b2;
-          --accent: #4aa3ff;
-          --line: #243042;
-          --chip: #1a2230;
-          --alert: #5a1b1b;
-          --alertBorder: #a33;
-          --ok: #19c37d;
-          --colw: 320px;
-          --rowheadw: 200px;
-        }
-        
-        @media (prefers-color-scheme: light) {
-          :root {
-            --bg: #f5f7fb;
-            --panel: #ffffff;
-            --ink: #0b1220;
-            --muted: #566175;
-            --accent: #2458ff;
-            --line: #e6eaf2;
-            --chip: #eef3ff;
-            --alert: #ffe8e8;
-            --alertBorder: #ff6b6b;
-            --ok: #0ea667;
-          }
-        }
-        
-        .card.esk-lk {
-          background: #fff3e0 !important;
-          border-color: #ef6c00 !important;
-        }
-        
-        .card.esk-sk {
-          background: #ffebee !important;
-          border-color: #c62828 !important;
-        }
-        
-        .card.due-today {
-          background: var(--alert) !important;
-          border-color: var(--alertBorder) !important;
-        }
-      `}</style>
-{/* SCHRITT 4: TRKPIPopup hinzufügen */}
-    <TRKPIPopup
-      open={kpiPopupOpen}
-      onClose={() => setKpiPopupOpen(false)}
-      cards={rows}
-    />
+      <EditCardDialog selectedCard={selectedCard} editModalOpen={editModalOpen} setEditModalOpen={setEditModalOpen} editTabValue={editTabValue} setEditTabValue={setEditTabValue} rows={rows} setRows={setRows} users={users} lanes={lanes} checklistTemplates={checklistTemplates} inferStage={inferStage} addStatusEntry={addStatusEntry} updateStatusSummary={updateStatusSummary} handleTRNeuChange={handleTRNeuChange} saveCards={saveCards} idFor={idFor} setSelectedCard={setSelectedCard} />
+      <NewCardDialog newCardOpen={newCardOpen} setNewCardOpen={setNewCardOpen} cols={cols} lanes={lanes} rows={rows} setRows={setRows} users={users} />
+      <ArchiveDialog archiveOpen={archiveOpen} setArchiveOpen={setArchiveOpen} archivedCards={archivedCards} restoreCard={restoreCard} deleteCardPermanently={deleteCardPermanently} />
+      <TRKPIPopup open={kpiPopupOpen} onClose={() => setKpiPopupOpen(false)} />
     </Box>
   );
 });
