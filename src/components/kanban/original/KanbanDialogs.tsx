@@ -964,45 +964,12 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
             type="date"
             value={newCard['Due Date']}
             onChange={(e) => setNewCard({ ...newCard, 'Due Date': e.target.value })}
-            InputLabelProps={{ shrink: true }}
-          />
-          <FormControlLabel
-            control={(
-              <Checkbox
-                checked={Boolean(newCard['Priorität'])}
-                onChange={(e) =>
-                  setNewCard({ ...newCard, 'Priorität': e.target.checked })
-                }
-              />
-            )}
-            label="Priorität"
-          />
-          <TextField
-            label="SOP Datum"
-            type="date"
-            value={newCard.SOP_Datum}
-            onChange={(e) => setNewCard({ ...newCard, SOP_Datum: e.target.value })}
-            InputLabelProps={{ shrink: true }}
-          />
-          <TextField
-            label="Status"
-            value={newCard['Status Kurz']}
-            onChange={(e) => setNewCard({ ...newCard, 'Status Kurz': e.target.value })}
-            fullWidth
-            multiline
-            rows={2}
           />
         </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setNewCardOpen(false)}>Abbrechen</Button>
-        <Button
-          variant="contained"
-          onClick={handleSave}
-          sx={{ backgroundColor: '#14c38e', '&:hover': { backgroundColor: '#0ea770' } }}
-        >
-          Karte erstellen
-        </Button>
+        <Button variant="contained" onClick={handleSave}>Erstellen</Button>
       </DialogActions>
     </Dialog>
   );

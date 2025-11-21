@@ -41,6 +41,7 @@ export interface BoardColumn {
   cards?: Card[];
 }
 
+// Generische Karte (Datenbank-Sicht)
 export interface Card {
   id: string;
   board_id: string;
@@ -60,43 +61,80 @@ export interface Card {
   assignee?: UserProfile;
 }
 
-export interface CardAttachment {
-  id: string;
-  card_id: string;
-  filename: string;
-  file_url: string;
-  file_size?: number;
-  mime_type?: string;
-  uploaded_by: string;
-  created_at: string;
-}
-
-export interface Activity {
-  id: string;
-  board_id: string;
-  card_id?: string;
-  user_id: string;
-  action: string;
-  details: Record<string, any>;
-  created_at: string;
-}
-
-// Erweiterte Typen für UI-Features
-export interface ExtendedCard extends Card {
-  collapsed?: boolean;
-  escalation?: 'LK' | 'SK' | null;
-  swimlane?: string;
-  status_history?: StatusEntry[];
-  checklist_done?: Record<string, boolean[]>;
-}
+// --- SPEZIFISCHE TYPEN FÜR DAS PROJEKT-BOARD (Legacy Support) ---
 
 export interface StatusEntry {
   date: string;
   message: { text: string; escalation: boolean };
-  quality: { text: string; escalation: boolean };
+  qualitaet: { text: string; escalation: boolean };
   costs: { text: string; escalation: boolean };
-  deadlines: { text: string; escalation: boolean };
+  termine: { text: string; escalation: boolean };
 }
 
-export type ViewMode = 'columns' | 'swimlanes-responsible' | 'swimlanes-category';
-export type LayoutDensity = 'compact' | 'normal' | 'large';
+export interface ProjectBoardCard {
+  // Identifikatoren (Supabase + Legacy)
+  id?: string;       // Supabase Row ID
+  card_id?: string;  // Supabase Card UUID
+  UID?: string;      // Legacy ID
+
+  // Kern-Daten (Deutsch, wie im Original-Code)
+  Nummer: string;
+  Teil: string;
+  "Board Stage": string;
+  "Status Kurz"?: string;
+  Beschreibung?: string;
+  
+  // Zuweisung & Termine
+  Verantwortlich?: string;
+  "Due Date"?: string;
+  Swimlane?: string;
+  
+  // Status & Flags
+  Ampel?: string;         // "rot", "gelb", "grün"
+  Eskalation?: string;    // "LK", "SK", ""
+  Priorität?: boolean | string;
+  Collapsed?: string;     // "1" = collapsed, "" = expanded
+  Archived?: string;      // "1" = archived
+  ArchivedDate?: string;
+
+  // Technical Review (TR)
+  TR_Datum?: string;
+  TR_Neu?: string;
+  TR_Completed?: boolean | string;
+  TR_Completed_At?: string;
+  TR_Completed_Date?: string;
+  TR_History?: Array<{
+    date: string;
+    changedBy: string;
+    timestamp: string;
+    superseded: boolean;
+  }>;
+
+  // Start of Production
+  SOP_Datum?: string;
+  
+  // Medien & Anhänge
+  Bild?: string;
+  
+  // Team & Verlauf
+  Team?: Array<{
+    userId?: string;
+    name?: string;
+    email?: string;
+    department?: string;
+    company?: string;
+    role?: string;
+  }>;
+  
+  StatusHistory?: StatusEntry[];
+  
+  // Checklisten: Stage -> Item -> Boolean
+  ChecklistDone?: Record<string, Record<string, boolean>>; 
+  
+  // Frontend-Only (wird zur Laufzeit berechnet)
+  position?: number;
+  order?: number;
+}
+
+export type ViewMode = 'columns' | 'swim' | 'lane';
+export type LayoutDensity = 'compact' | 'xcompact' | 'large';

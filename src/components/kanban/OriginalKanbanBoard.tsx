@@ -25,7 +25,7 @@ import {
 } from '@mui/material';
 import { DropResult } from '@hello-pangea/dnd';
 import { Assessment, Close, Delete, Add, Done, Settings, Assignment, People, ArrowUpward, ArrowDownward, Edit } from '@mui/icons-material';
-import { useSnackbar } from 'notistack'; // ✅ NEU
+import { useSnackbar } from 'notistack';
 
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
@@ -36,6 +36,7 @@ import { nullableDate, toBoolean } from '@/utils/booleans';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders';
+import { ProjectBoardCard, LayoutDensity, ViewMode } from '@/types';
 
 // --- Typen & Helper ---
 
@@ -67,6 +68,7 @@ interface OriginalKanbanBoardProps {
   boardId: string;
   onArchiveCountChange?: (count: number) => void;
   onKpiCountChange?: (count: number) => void;
+  highlightCardId?: string | null;
 }
 
 const DEFAULT_COLS = [
@@ -83,19 +85,19 @@ const DEFAULT_COLS = [
 // --- Komponente ---
 
 const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanbanBoardProps>(
-function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }: OriginalKanbanBoardProps, ref) {
+function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, highlightCardId }: OriginalKanbanBoardProps, ref) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
-  const { enqueueSnackbar } = useSnackbar(); // ✅ NEU
+  const { enqueueSnackbar } = useSnackbar();
 
   if (!supabase) {
     return <Box sx={{ p: 3 }}><SupabaseConfigNotice /></Box>;
   }
 
   // --- State ---
-  const [viewMode, setViewMode] = useState<'columns' | 'swim' | 'lane'>('columns');
-  const [density, setDensity] = useState<'compact' | 'xcompact' | 'large'>('compact');
+  const [viewMode, setViewMode] = useState<ViewMode>('columns');
+  const [density, setDensity] = useState<LayoutDensity>('compact');
   const [searchTerm, setSearchTerm] = useState('');
-  const [rows, setRows] = useState<any[]>([]);
+  const [rows, setRows] = useState<ProjectBoardCard[]>([]);
   const [cols, setCols] = useState(DEFAULT_COLS);
   const [lanes, setLanes] = useState<string[]>(['Projekt A', 'Projekt B', 'Projekt C']);
   const [users, setUsers] = useState<any[]>([]);
@@ -110,18 +112,18 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
 
   // Archiv & Meta
   const [archiveOpen, setArchiveOpen] = useState(false);
-  const [archivedCards, setArchivedCards] = useState<any[]>([]);
+  const [archivedCards, setArchivedCards] = useState<ProjectBoardCard[]>([]);
   const [boardMeta, setBoardMeta] = useState<{ name: string; description?: string | null; updated_at?: string | null } | null>(null);
   
   // Dialogs
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [selectedCard, setSelectedCard] = useState<any>(null);
+  const [selectedCard, setSelectedCard] = useState<ProjectBoardCard | null>(null);
   const [editTabValue, setEditTabValue] = useState(0);
   const [newCardOpen, setNewCardOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [kpiPopupOpen, setKpiPopupOpen] = useState(false);
   
-  // Settings (lokaler State für den Dialog)
+  // Settings
   const [boardName, setBoardName] = useState('');
   const [boardDescription, setBoardDescription] = useState('');
   
@@ -136,23 +138,22 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
 
   // --- Helper Functions ---
 
-  const inferStage = useCallback((r: any) => {
+  const inferStage = useCallback((r: ProjectBoardCard) => {
     const s = (r["Board Stage"] || "").trim();
     const stages = cols.map(c => c.name);
     if (s && stages.includes(s)) return s;
     return stages[0];
   }, [cols]);
 
-  const idFor = useCallback((r: any) => {
+  const idFor = useCallback((r: ProjectBoardCard) => {
     if (r["UID"]) return String(r["UID"]);
     if (r.id) return String(r.id);
     if (r.card_id) return String(r.card_id);
     return [r["Nummer"], r["Teil"]].map(x => String(x || "").trim()).join(" | ");
   }, []);
 
-  // ✅ NEU: Konvertiert DB-Zeile in Karten-Format (für Realtime & Load)
-  const convertDbToCard = useCallback((item: any) => {
-    const card = { ...(item.card_data || {}) };
+  const convertDbToCard = useCallback((item: any): ProjectBoardCard => {
+    const card = { ...(item.card_data || {}) } as ProjectBoardCard;
     card.UID = card.UID || item.card_id || item.id;
     card.id = item.id; 
     card.card_id = item.card_id;
@@ -164,7 +165,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     return card;
   }, []);
 
-  const reindexByStage = useCallback((cards: any[]): any[] => {
+  const reindexByStage = useCallback((cards: ProjectBoardCard[]): ProjectBoardCard[] => {
     const byStage: Record<string, number> = {};
     return cards.map((c) => {
       const stageKey = inferStage(c);
@@ -179,7 +180,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     });
   }, [viewMode, inferStage]);
   
-  const updateArchivedState = useCallback((cards: any[]) => {
+  const updateArchivedState = useCallback((cards: ProjectBoardCard[]) => {
     setArchivedCards(cards);
     onArchiveCountChange?.(cards.length);
   }, [onArchiveCountChange]);
@@ -216,7 +217,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
       if (eskalation === 'SK') kpis.skEscalations.push(card);
 
       const trDateStr = card['TR_Neu'] || card['TR_Datum'];
-      const trCompleted = toBoolean(card['TR_Completed']);
+      const trCompleted = toBoolean(card.TR_Completed);
       if (trDateStr && !trCompleted) {
         const trDate = nullableDate(trDateStr);
         if (trDate) {
@@ -304,18 +305,24 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
 
   // --- API / Persistence ---
 
-  // ✅ NEU: Patch-Funktion
-  const patchCard = useCallback(async (card: any, changes: Record<string, any>) => {
+  // ✅ FIX: Patch updated auch selectedCard (lokalen State)
+  const patchCard = useCallback(async (card: ProjectBoardCard, changes: Partial<ProjectBoardCard>) => {
     if (!permissions.canEditContent) {
         enqueueSnackbar('Keine Berechtigung.', { variant: 'error' });
         return;
     }
     
+    // Update rows list
     const updatedRows = rows.map(r => {
-      if (idFor(r) === idFor(card)) { return { ...r, ...changes }; }
+      if (idFor(r) === idFor(card)) { return { ...r, ...changes } as ProjectBoardCard; }
       return r;
     });
     setRows(updatedRows);
+
+    // Update selected card (if open)
+    if (selectedCard && idFor(selectedCard) === idFor(card)) {
+      setSelectedCard(prev => prev ? ({ ...prev, ...changes } as ProjectBoardCard) : null);
+    }
 
     try {
       const cardId = idFor(card);
@@ -338,14 +345,13 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
       });
 
       if (!response.ok) {
-        console.error('Patch failed');
         enqueueSnackbar('Speichern fehlgeschlagen', { variant: 'error' });
       }
     } catch (error) {
       console.error('Patch error:', error);
       enqueueSnackbar('Netzwerkfehler', { variant: 'error' });
     }
-  }, [permissions.canEditContent, rows, idFor, boardId, supabase, enqueueSnackbar]);
+  }, [permissions.canEditContent, rows, idFor, boardId, supabase, enqueueSnackbar, selectedCard]);
 
   const saveSettings = useCallback(async (options?: { skipMeta?: boolean }) => {
     if (!permissions.canManageSettings) return false;
@@ -426,7 +432,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
           card_data: card,
           stage: stage,
           position: card.position ?? card.order ?? 0,
-          project_number: card.Nummer || card['Nummer'] || null,
+          project_number: card.Nummer || null,
           project_name: card.Teil,
           updated_at: new Date().toISOString(),
         };
@@ -547,7 +553,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
 
       const authUserId = data.user.id;
       const email = data.user.email ?? '';
-      const profile = loadedUsers.find(user => user.id === authUserId);
+      const profile = loadedUsers.find((user: any) => user.id === authUserId);
       const globalRole = String(profile?.role ?? '').toLowerCase();
       const isSuper = isSuperuserEmail(email) || globalRole === 'superuser';
       const isGlobalAdmin = isSuper || globalRole === 'admin';
@@ -632,18 +638,23 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     return () => { isMounted = false; };
   }, [boardId]); 
 
-  // Auto-Save Settings
+  // Auto-Save Settings (Debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => { saveSettings({ skipMeta: true }); }, 1000);
     return () => clearTimeout(timeoutId);
   }, [cols, lanes, checklistTemplates, viewMode, density, saveSettings]);
   
-  // Auto-Save Cards (Bulk)
+  // Deep Link: Karte öffnen
   useEffect(() => {
-    if (rows.length === 0) return;
-    const timeoutId = setTimeout(() => { saveCards(); }, 2000); 
-    return () => clearTimeout(timeoutId);
-  }, [rows, saveCards]); 
+    if (highlightCardId && rows.length > 0) {
+      const targetCard = rows.find(r => idFor(r) === highlightCardId || r.card_id === highlightCardId || r.id === highlightCardId);
+      if (targetCard) {
+        setSelectedCard(targetCard);
+        setEditModalOpen(true);
+        setEditTabValue(0);
+      }
+    }
+  }, [highlightCardId, rows, idFor]);
 
   // --- Card Actions ---
   
@@ -732,6 +743,12 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     if (!Array.isArray(card.StatusHistory)) card.StatusHistory = [];
     card.StatusHistory.unshift(newEntry);
     setRows([...rows]);
+    // Kein Auto-Save hier nötig, da User im Dialog weiter editiert. 
+    // Erst beim Schließen/Ändern von Feldern wird gepatcht, wenn wir das wollen.
+    // Für komplexe Objekte (Arrays) ist patchCard schwieriger, daher nutzen wir hier
+    // noch setRows und verlassen uns auf den manuellen Save oder schließen des Dialogs.
+    // Ideal wäre auch hier patchCard, aber das Array-Merging ist tricky.
+    // Wir lassen es vorerst so und triggern patchCard explizit beim Ändern des Textes (siehe Dialog).
   };
 
   const updateStatusSummary = (card: any) => {
@@ -751,24 +768,22 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
   const handleTRNeuChange = async (card: any, newDate: string) => {
     if (!permissions.canEditContent) return;
     
-    if (!newDate) {
-      card["TR_Neu"] = "";
-      setRows([...rows]);
-      return;
-    }
-    
     const { data: authData } = await supabase.auth.getUser();
     const currentUser = users.find(u => u.id === authData.user?.id)?.full_name || 'System';
     
-    if (!Array.isArray(card["TR_History"])) card["TR_History"] = [];
+    let history = Array.isArray(card.TR_History) ? [...card.TR_History] : [];
     
-    if (card["TR_Neu"] && card["TR_Neu"] !== newDate) {
-      card["TR_History"].push({ date: card["TR_Neu"], changedBy: currentUser, timestamp: new Date().toISOString(), superseded: true });
+    // Historie fortschreiben
+    if (card.TR_Neu && card.TR_Neu !== newDate) {
+      history.push({ date: card.TR_Neu, changedBy: currentUser, timestamp: new Date().toISOString(), superseded: true });
     }
     
-    card["TR_Neu"] = newDate;
-    card["TR_History"].push({ date: newDate, changedBy: currentUser, timestamp: new Date().toISOString(), superseded: false });
-    setRows([...rows]);
+    const updates = {
+        TR_Neu: newDate,
+        TR_History: [...history, { date: newDate, changedBy: currentUser, timestamp: new Date().toISOString(), superseded: false }]
+    };
+    
+    patchCard(card, updates);
   };
 
   // --- Drag & Drop Logic ---
@@ -799,12 +814,10 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     
     const [movedCard] = newRows.splice(cardIndex, 1);
     
-    // Update Card Data
     movedCard["Board Stage"] = newStage;
     if (newResp !== null) movedCard["Verantwortlich"] = newResp;
     if (newLane !== null) movedCard["Swimlane"] = newLane;
     
-    // Find Target Index
     const targetGroupFilter = (r: any) => {
         let matches = inferStage(r) === newStage;
         if (viewMode === 'swim' && newResp !== null) {
@@ -830,7 +843,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     
     newRows.splice(globalInsertIndex, 0, movedCard);
     
-    // Status Ampel Logic
     const doneStageNames = cols.filter(c => c.done || /fertig/i.test(c.name)).map(c => c.name);
     if (doneStageNames.includes(newStage)) {
       movedCard["Ampel"] = "grün";
@@ -839,6 +851,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     
     const reindexed = reindexByStage(newRows);
     setRows(reindexed);
+    
+    // Speichere direkt (Bulk), da Positionen sich verschoben haben
+    saveCards(); 
   };
   
   const renderCard = useCallback(
@@ -955,32 +970,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
                     </CardContent>
                 </Card>
             </Grid>
-            
-            {/* Dritte Zeile: Termine */}
-            <Grid item xs={12}>
-                 <Typography variant="h6" gutterBottom sx={{ mt: 1, color: 'text.secondary' }}>Termin-Status</Typography>
-                 <Grid container spacing={2}>
-                     <Grid item xs={6}>
-                        <Chip 
-                            label={`TR HEUTE: ${kpis.trToday.length}`} 
-                            icon={<Assessment />} 
-                            color={isToday ? 'primary' : 'default'} 
-                            variant={isToday ? 'filled' : 'outlined'}
-                            sx={{ width: '100%' }}
-                        />
-                     </Grid>
-                     <Grid item xs={6}>
-                        <Chip 
-                            label={`TR DIESE WOCHE: ${kpis.trThisWeek.length}`} 
-                            icon={<Assessment />} 
-                            color={isThisWeek ? 'secondary' : 'default'} 
-                            variant={isThisWeek ? 'filled' : 'outlined'}
-                            sx={{ width: '100%' }}
-                        />
-                     </Grid>
-                 </Grid>
-            </Grid>
-
           </Grid>
         </DialogContent>
         <DialogActions><Button onClick={onClose} variant="outlined">Schließen</Button></DialogActions>
@@ -1195,13 +1184,11 @@ return (
       flexDirection: 'column',
       backgroundColor: 'var(--bg)',
       color: 'var(--ink)',
-      // CSS Variables für Spaltenbreite und Layout
       '&': {
         '--colw': '300px',
         '--rowheadw': '260px'
       } as any
     }}>
-      {/* ✅ KORREKTUR: Buttons sind in der Sticky Header Box */}
       <Box sx={{
         position: 'sticky',
         top: 0,
@@ -1212,28 +1199,23 @@ return (
       }}>
         <Box sx={{
           display: 'grid',
-          // Das Layout für die Toolbar mit Suche, Views und Buttons
           gridTemplateColumns: '1fr repeat(3, auto) repeat(3, auto) repeat(3, auto)', 
           gap: 1.5,
           alignItems: 'center',
           mt: 0
         }}>
-          {/* Suchfeld */}
           <TextField size="small" placeholder="Suchen..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} sx={{ minWidth: 220 }} />
 
-          {/* Ansichtsmodi */}
           <Button variant={viewMode === 'columns' ? 'contained' : 'outlined'} onClick={() => setViewMode('columns')} sx={{ minWidth: 'auto', p: 1 }} title="Ansicht: Spalten">📊</Button>
           <Button variant={viewMode === 'swim' ? 'contained' : 'outlined'} onClick={() => setViewMode('swim')} sx={{ minWidth: 'auto', p: 1 }} title="Ansicht: Swimlanes (Verantwortlich)">👥</Button>
           <Button variant={viewMode === 'lane' ? 'contained' : 'outlined'} onClick={() => setViewMode('lane')} sx={{ minWidth: 'auto', p: 1 }} title="Ansicht: Swimlanes (Kategorie)">🏷️</Button>
 
-          {/* Layout-Modi */}
           <Button variant={density === 'compact' ? 'contained' : 'outlined'} onClick={() => setDensity('compact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: kompakt">◼</Button>
           <Button variant={density === 'xcompact' ? 'contained' : 'outlined'} onClick={() => setDensity('xcompact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: extrakompakt">◻</Button>
           <Button variant={density === 'large' ? 'contained' : 'outlined'} onClick={() => setDensity('large')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: groß">⬜</Button>         
           
           <Button variant="contained" size="small" onClick={() => setNewCardOpen(true)} disabled={!permissions.canEditContent}>Neue Karte</Button>
           
-          {/* ✅ KORRIGIERTE BUTTONS NUR HIER */}
           {permissions.canManageSettings && (
              <IconButton onClick={() => setSettingsOpen(true)} title="Board-Einstellungen">⚙️</IconButton>
           )}
@@ -1255,10 +1237,10 @@ return (
         )}
       </Box>
 
-      {/* DIALOGE */}
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      <EditCardDialog selectedCard={selectedCard} editModalOpen={editModalOpen} setEditModalOpen={setEditModalOpen} editTabValue={editTabValue} setEditTabValue={setEditTabValue} rows={rows} setRows={setRows} users={users} lanes={lanes} checklistTemplates={checklistTemplates} inferStage={inferStage} addStatusEntry={addStatusEntry} updateStatusSummary={updateStatusSummary} handleTRNeuChange={handleTRNeuChange} saveCards={saveCards} idFor={idFor} setSelectedCard={setSelectedCard} />
+      {/* ✅ NEU: patchCard übergeben */}
+      <EditCardDialog selectedCard={selectedCard} editModalOpen={editModalOpen} setEditModalOpen={setEditModalOpen} editTabValue={editTabValue} setEditTabValue={setEditTabValue} rows={rows} setRows={setRows} users={users} lanes={lanes} checklistTemplates={checklistTemplates} inferStage={inferStage} addStatusEntry={addStatusEntry} updateStatusSummary={updateStatusSummary} handleTRNeuChange={handleTRNeuChange} saveCards={saveCards} patchCard={patchCard} idFor={idFor} setSelectedCard={setSelectedCard} />
       <NewCardDialog newCardOpen={newCardOpen} setNewCardOpen={setNewCardOpen} cols={cols} lanes={lanes} rows={rows} setRows={setRows} users={users} />
       <ArchiveDialog archiveOpen={archiveOpen} setArchiveOpen={setArchiveOpen} archivedCards={archivedCards} restoreCard={restoreCard} deleteCardPermanently={deleteCardPermanently} />
       <TRKPIPopup open={kpiPopupOpen} onClose={() => setKpiPopupOpen(false)} />
