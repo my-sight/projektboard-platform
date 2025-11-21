@@ -23,12 +23,15 @@ import {
 import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
+import { useSnackbar } from 'notistack'; // ✅ NEU: Für Toasts
 
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { fetchClientProfiles, ClientProfile } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders';
+
+// --- TYPEN ---
 
 interface BoardMember {
   id: string;
@@ -70,6 +73,8 @@ interface DroppableInfo {
   status: TeamBoardStatus;
 }
 
+// --- KONSTANTEN ---
+
 const statusLabels: Record<TeamBoardStatus, string> = {
   backlog: 'Aufgabenspeicher',
   flow1: 'Flow-1',
@@ -87,6 +92,8 @@ const defaultDraft: TaskDraft = {
   assigneeId: null,
   status: 'backlog',
 };
+
+// --- HELPER ---
 
 const getInitials = (name: string) => {
   return name
@@ -163,6 +170,7 @@ const buildPersistPayload = (boardId: string, cards: TeamBoardCard[]) =>
 const normalizeCard = (row: any): TeamBoardCard | null => {
   const stageInfo = typeof row.stage === 'string' ? parseDroppableKey(row.stage) : { assigneeId: null, status: 'backlog' as TeamBoardStatus };
   const payload = (row.card_data ?? {}) as Record<string, unknown>;
+  
   if (payload && payload.type && payload.type !== 'teamTask' && !String(row.stage || '').startsWith('team|')) {
     return null;
   }
@@ -197,12 +205,16 @@ const normalizeCard = (row: any): TeamBoardCard | null => {
   };
 };
 
+// --- KOMPONENTE ---
+
 export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const { enqueueSnackbar } = useSnackbar(); // ✅ NEU: Snackbar Hook
+  
+  // State
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
   const [cards, setCards] = useState<TeamBoardCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [canModify, setCanModify] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(defaultDraft);
@@ -213,6 +225,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const [boardSettings, setBoardSettings] = useState<Record<string, any>>({});
   const [completedCount, setCompletedCount] = useState(0);
   const [users, setUsers] = useState<any[]>([]);
+
+  // --- DATA LOADING & PERSISTENCE ---
 
   const persistAllCards = useCallback(
     async (entries: TeamBoardCard[]) => {
@@ -229,8 +243,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload?.error ?? `HTTP ${response.status}`);
+        throw new Error(`HTTP ${response.status}`);
       }
     },
     [boardId, supabase],
@@ -245,8 +258,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
     });
 
     if (!response.ok && response.status !== 404) {
-      const payload = (await response.json().catch(() => ({}))) as { error?: string };
-      throw new Error(payload?.error ?? `HTTP ${response.status}`);
+      throw new Error(`HTTP ${response.status}`);
     }
 
     if (response.status === 404) {
@@ -255,20 +267,10 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       return;
     }
 
-    const payload = (await response.json().catch(() => ({}))) as {
-      settings?: Record<string, unknown> | null;
-    };
-
-    const settings = (payload.settings as Record<string, any> | null) ?? {};
+    const payload = await response.json();
+    const settings = payload.settings ?? {};
     setBoardSettings(settings);
-
-    const rawCount = Number(
-      settings?.teamBoard && typeof settings.teamBoard.completedCount === 'number'
-        ? settings.teamBoard.completedCount
-        : 0,
-    );
-
-    setCompletedCount(Number.isFinite(rawCount) ? rawCount : 0);
+    setCompletedCount(Number(settings?.teamBoard?.completedCount || 0));
   }, [boardId, supabase]);
 
   const persistCompletedCount = useCallback(
@@ -294,8 +296,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload?.error ?? `HTTP ${response.status}`);
+        throw new Error(`HTTP ${response.status}`);
       }
 
       setBoardSettings(nextSettings);
@@ -315,54 +316,16 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
     }
   }, []);
 
-  useEffect(() => {
-    if (!supabase) {
-      return;
-    }
-
-    let active = true;
-
-    const loadAll = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const loadedProfiles = await loadAllUsers();
-        if (!active) return;
-
-        await loadBoardSettings();
-        await loadMembers(loadedProfiles);
-        await loadCards();
-        await evaluatePermissions(loadedProfiles);
-      } catch (cause) {
-        if (!active) return;
-        console.error('❌ Fehler beim Laden des Teamboards', cause);
-        setError('Fehler beim Laden des Teamboards.');
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    };
-
-    loadAll();
-
-    return () => {
-      active = false;
-    };
-  }, [boardId, supabase, loadBoardSettings]);
-
   const loadMembers = useCallback(
     async (availableProfiles: ClientProfile[]) => {
-      if (!supabase) return;
+      if (!supabase) return [];
       const { data, error: membershipError } = await supabase
         .from('board_members')
         .select('id, profile_id')
         .eq('board_id', boardId)
         .order('created_at', { ascending: true });
 
-      if (membershipError) {
-        throw membershipError;
-      }
+      if (membershipError) throw membershipError;
 
       const rows = (data as BoardMember[] | null) ?? [];
       const mapped: MemberWithProfile[] = rows
@@ -371,14 +334,12 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           if (profile && (profile.is_active ?? true) && !isSuperuserEmail(profile.email)) {
             return { ...entry, profile };
           }
-          if (!profile) {
-            return { ...entry, profile: null };
-          }
           return null;
         })
         .filter((entry): entry is MemberWithProfile => Boolean(entry));
 
       setMembers(mapped);
+      return mapped;
     },
     [boardId, supabase],
   );
@@ -391,9 +352,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       .eq('board_id', boardId)
       .order('position', { ascending: true });
 
-    if (cardsError) {
-      throw cardsError;
-    }
+    if (cardsError) throw cardsError;
 
     const rows = (data as any[] | null) ?? [];
     const normalized = rows
@@ -417,7 +376,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   }, [boardId, supabase]);
 
   const evaluatePermissions = useCallback(
-    async (availableProfiles: ClientProfile[]) => {
+    async (availableProfiles: ClientProfile[], currentMembers: MemberWithProfile[]) => {
       if (!supabase) {
         setCanModify(false);
         return;
@@ -425,18 +384,12 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
 
       try {
         const { data: authData, error: authError } = await supabase.auth.getUser();
-        if (authError) {
-          console.error('⚠️ Fehler bei auth.getUser', authError);
+        if (authError || !authData.user) {
           setCanModify(false);
           return;
         }
 
         const authUser = authData.user;
-        if (!authUser) {
-          setCanModify(false);
-          return;
-        }
-
         const email = authUser.email ?? '';
         const profile = availableProfiles.find((candidate) => candidate.id === authUser.id);
         const role = String(profile?.role ?? '').toLowerCase();
@@ -448,42 +401,73 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           role === 'superuser' ||
           isSuperuserEmail(email);
 
-        const member = members.some((entry) => entry.profile_id === authUser.id);
+        const member = currentMembers.some((entry) => entry.profile_id === authUser.id);
 
         let ownsBoard = false;
         let isBoardAdmin = false;
         try {
-          const { data: boardRow, error: boardError } = await supabase
+          const { data: boardRow } = await supabase
             .from('kanban_boards')
             .select('owner_id, board_admin_id')
             .eq('id', boardId)
             .maybeSingle();
 
-          if (boardError) {
-            console.error('⚠️ Fehler beim Laden der Board-Berechtigungen', boardError);
-          } else if (boardRow) {
+          if (boardRow) {
             ownsBoard = boardRow.owner_id === authUser.id;
             isBoardAdmin = boardRow.board_admin_id === authUser.id;
           }
-        } catch (boardError) {
-          console.error('⚠️ Konnte Board-Berechtigungen nicht ermitteln', boardError);
-        }
+        } catch (e) { /* Ignore */ }
 
         setCanModify(elevated || member || ownsBoard || isBoardAdmin);
       } catch (cause) {
-        console.error('⚠️ Konnte Berechtigungen nicht auswerten', cause);
         setCanModify(false);
       }
     },
-    [boardId, members, supabase],
+    [boardId, supabase],
   );
+
+  // --- INITIALISIERUNG ---
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    let active = true;
+
+    const loadAll = async () => {
+      setLoading(true);
+      try {
+        const loadedProfiles = await loadAllUsers();
+        if (!active) return;
+
+        await loadBoardSettings();
+        const currentMembers = await loadMembers(loadedProfiles);
+        await loadCards();
+        await evaluatePermissions(loadedProfiles, currentMembers);
+      } catch (cause) {
+        if (!active) return;
+        console.error('❌ Fehler beim Laden des Teamboards', cause);
+        enqueueSnackbar('Fehler beim Laden der Daten.', { variant: 'error' });
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadAll();
+
+    return () => {
+      active = false;
+    };
+  }, [boardId]); // Abhängigkeiten reduziert auf boardId
+
+  // --- ACTIONS ---
 
   const openCreateDialog = () => {
     if (!canModify) return;
     setEditingCard(null);
     setDraft(defaultDraft);
     setDueDateError(false);
-    setError(null);
     setDialogOpen(true);
   };
 
@@ -498,7 +482,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       status: card.status,
     });
     setDueDateError(false);
-    setError(null);
     setDialogOpen(true);
   };
 
@@ -513,55 +496,39 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const handleDraftChange = <K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) => {
     setDraft(prev => ({ ...prev, [key]: value }));
     if (key === 'dueDate') {
-      const missing = !value;
-      setDueDateError(missing);
-      if (!missing) {
-        setError(null);
-      }
+      setDueDateError(!value);
     }
   };
 
   const handleDragEnd = async (result: DropResult) => {
-    if (!canModify) return;
-    if (!result.destination) return;
-
-    const sourceId = result.source.droppableId;
-    const destId = result.destination.droppableId;
-
-    if (sourceId === destId && result.source.index === result.destination.index) {
-      return;
-    }
+    if (!canModify || !result.destination) return;
+    const { source, destination } = result;
+    
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
 
     const working = createColumnsMapFromCards(cards);
-    const sourceEntries = [...(working.get(sourceId) ?? [])];
+    const sourceEntries = [...(working.get(source.droppableId) ?? [])];
+    const [removed] = sourceEntries.splice(source.index, 1);
+    working.set(source.droppableId, sourceEntries);
 
-    if (result.source.index < 0 || result.source.index >= sourceEntries.length) {
-      return;
-    }
-
-    const [removed] = sourceEntries.splice(result.source.index, 1);
-    working.set(sourceId, sourceEntries);
-
-    const destInfo = parseDroppableKey(destId);
+    const destInfo = parseDroppableKey(destination.droppableId);
     const updatedCard: TeamBoardCard = {
       ...removed,
       assigneeId: destInfo.assigneeId,
       status: destInfo.status,
     };
 
-    const destEntries =
-      sourceId === destId ? sourceEntries : [...(working.get(destId) ?? [])];
-
-    destEntries.splice(result.destination.index, 0, updatedCard);
-    working.set(destId, destEntries);
+    const destEntries = source.droppableId === destination.droppableId ? sourceEntries : [...(working.get(destination.droppableId) ?? [])];
+    destEntries.splice(destination.index, 0, updatedCard);
+    working.set(destination.droppableId, destEntries);
 
     const flattened = flattenColumnsMap(working);
     setCards(flattened);
+    
     try {
       await persistAllCards(flattened);
     } catch (cause) {
-      console.error('❌ Fehler beim Aktualisieren nach Drag & Drop', cause);
-      setError('Fehler beim Speichern der Aufgabenpositionen.');
+      enqueueSnackbar('Fehler beim Speichern der Position.', { variant: 'error' });
       await loadCards();
     }
   };
@@ -569,23 +536,20 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const saveTask = async () => {
     if (!supabase) return;
     if (!draft.description.trim()) {
-      setError('Bitte eine Aufgabenbeschreibung eingeben.');
+      enqueueSnackbar('Bitte eine Beschreibung eingeben.', { variant: 'warning' });
       return;
     }
-
     if (!draft.dueDate) {
       setDueDateError(true);
-      setError('Bitte einen Zieltermin festlegen.');
+      enqueueSnackbar('Bitte einen Zieltermin festlegen.', { variant: 'warning' });
       return;
     }
-
     if (draft.status !== 'backlog' && !draft.assigneeId) {
-      setError('Bitte ein Teammitglied auswählen, um den Status zu setzen.');
+      enqueueSnackbar('Bitte ein Teammitglied zuweisen.', { variant: 'warning' });
       return;
     }
 
     setSaving(true);
-    setError(null);
 
     try {
       const working = createColumnsMapFromCards(cards);
@@ -611,9 +575,8 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
         working.set(previousKey, previousEntries);
 
         const nextKey = droppableKey(updatedCard.assigneeId, updatedCard.status);
-        const targetEntries =
-          nextKey === previousKey ? previousEntries : [...(working.get(nextKey) ?? [])];
-
+        const targetEntries = nextKey === previousKey ? previousEntries : [...(working.get(nextKey) ?? [])];
+        
         const insertIndex = nextKey === previousKey && previousIndex >= 0 ? previousIndex : targetEntries.length;
         targetEntries.splice(insertIndex, 0, updatedCard);
         working.set(nextKey, targetEntries);
@@ -642,10 +605,11 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       const nextCards = flattenColumnsMap(working);
       setCards(nextCards);
       await persistAllCards(nextCards);
+      enqueueSnackbar('Aufgabe gespeichert', { variant: 'success' });
       closeDialog();
     } catch (cause) {
-      console.error('❌ Fehler beim Speichern der Aufgabe', cause);
-      setError('Fehler beim Speichern der Aufgabe.');
+      console.error('❌ Fehler beim Speichern', cause);
+      enqueueSnackbar('Fehler beim Speichern der Aufgabe.', { variant: 'error' });
       await loadCards();
     } finally {
       setSaving(false);
@@ -655,16 +619,13 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const deleteTask = async () => {
     if (!supabase || !editingCard) return;
     setSaving(true);
-    setError(null);
     try {
       const working = createColumnsMapFromCards(cards);
       const previousKey = droppableKey(editingCard.assigneeId, editingCard.status);
       const previousEntries = [...(working.get(previousKey) ?? [])];
       const index = previousEntries.findIndex((entry) => entry.cardId === editingCard.cardId);
 
-      if (index === -1) {
-        throw new Error('Aufgabe konnte nicht gefunden werden.');
-      }
+      if (index === -1) throw new Error('Aufgabe nicht gefunden');
 
       previousEntries.splice(index, 1);
       working.set(previousKey, previousEntries);
@@ -672,15 +633,39 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
       const nextCards = flattenColumnsMap(working);
       setCards(nextCards);
       await persistAllCards(nextCards);
+      enqueueSnackbar('Aufgabe gelöscht', { variant: 'success' });
       closeDialog();
     } catch (cause) {
-      console.error('❌ Fehler beim Löschen der Aufgabe', cause);
-      setError('Fehler beim Löschen der Aufgabe.');
+      enqueueSnackbar('Fehler beim Löschen der Aufgabe.', { variant: 'error' });
       await loadCards();
     } finally {
       setSaving(false);
     }
   };
+
+  const handleCompleteFlow = useCallback(async () => {
+    if (!canModify || flowSaving) return;
+
+    const finishedCards = cards.filter((card) => card.status === 'done');
+    if (finishedCards.length === 0) return;
+
+    setFlowSaving(true);
+
+    try {
+      const remainingCards = cards.filter((card) => card.status !== 'done');
+      await persistAllCards(remainingCards);
+      await persistCompletedCount(completedCount + finishedCards.length);
+      setCards(remainingCards);
+      enqueueSnackbar('Flow abgeschlossen & archiviert', { variant: 'success' });
+    } catch (cause) {
+      enqueueSnackbar('Fehler beim Abschließen des Flows.', { variant: 'error' });
+      await loadCards();
+    } finally {
+      setFlowSaving(false);
+    }
+  }, [canModify, cards, completedCount, flowSaving, loadCards, persistAllCards, persistCompletedCount, enqueueSnackbar]);
+
+  // --- RENDER ---
 
   const backlogCards = useMemo(
     () => cards.filter((card) => card.status === 'backlog').sort((a, b) => a.position - b.position),
@@ -703,34 +688,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
     () => cards.filter((card) => card.status === 'done').length,
     [cards],
   );
-
-  const handleCompleteFlow = useCallback(async () => {
-    if (!canModify || flowSaving) {
-      return;
-    }
-
-    const finishedCards = cards.filter((card) => card.status === 'done');
-
-    if (finishedCards.length === 0) {
-      return;
-    }
-
-    setFlowSaving(true);
-    setError(null);
-
-    try {
-      const remainingCards = cards.filter((card) => card.status !== 'done');
-      await persistAllCards(remainingCards);
-      await persistCompletedCount(completedCount + finishedCards.length);
-      setCards(remainingCards);
-    } catch (cause) {
-      console.error('❌ Fehler beim Abschließen des Flows', cause);
-      setError('Flow konnte nicht abgeschlossen werden.');
-      await loadCards();
-    } finally {
-      setFlowSaving(false);
-    }
-  }, [canModify, cards, completedCount, flowSaving, loadCards, persistAllCards, persistCompletedCount]);
 
   const renderCard = (card: TeamBoardCard, index: number) => {
     const dueDateLabel = card.dueDate ? new Date(card.dueDate).toLocaleDateString('de-DE') : null;
@@ -759,7 +716,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
               transition: 'transform 0.14s ease, box-shadow 0.14s ease',
               border: '1px solid',
               borderColor: card.important ? 'error.light' : 'rgba(148, 163, 184, 0.35)',
-              // ✅ FIX: Flexible Höhe (kein Abschneiden mehr), aber Mindesthöhe
               height: 'auto',
               minHeight: MIN_CARD_HEIGHT,
               display: 'flex',
@@ -807,15 +763,15 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                 enterDelay={1000}
               >
                 <Typography
-                  variant="body2" // ✅ FIX: Normale Schriftart
+                  variant="body2"
                   sx={{
-                    fontWeight: 400, // ✅ FIX: Nicht fett
+                    fontWeight: 400,
                     fontSize: '0.9rem',
                     lineHeight: 1.4,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     display: '-webkit-box',
-                    WebkitLineClamp: 2, // ✅ FIX: Max 2 Zeilen
+                    WebkitLineClamp: 2,
                     WebkitBoxOrient: 'vertical',
                     whiteSpace: 'normal',
                     textTransform: 'none',
@@ -892,14 +848,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
         overflow: 'hidden', // ✅ FIX: Kein Scrollen im Hauptcontainer
       }}
     >
-      {error && (
-        <Card sx={{ mb: 3, flexShrink: 0 }}>
-          <CardContent>
-            <Typography color="error">{error}</Typography>
-          </CardContent>
-        </Card>
-      )}
-
       <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'hidden' }}>
         <DragDropContext onDragEnd={handleDragEnd}>
           <Grid container spacing={3} sx={{ height: '100%' }} alignItems="flex-start" wrap="nowrap">
@@ -938,7 +886,7 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                           alignItems: 'stretch',
                           gap: 1,
                           flex: 1,
-                          overflowY: 'auto', // SCROLLBAR
+                          overflowY: 'auto',
                           border: '1px solid',
                           borderColor: 'rgba(148, 163, 184, 0.22)',
                           borderRadius: 2,
@@ -983,7 +931,6 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                   {/* ✅ FIX: Tabelle scrollbar */}
                   <Box sx={{ flex: 1, overflowY: 'auto' }}>
                     <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
-                      {/* Sticky Header */}
                       <Box component="thead" sx={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'background.paper' }}>
                         <Box
                           component="tr"

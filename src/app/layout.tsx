@@ -3,7 +3,8 @@ import { Inter } from 'next/font/google';
 import { AppRouterCacheProvider } from '@mui/material-nextjs/v13-appRouter';
 import { ThemeRegistry } from './ThemeRegistry';
 import CssBaseline from '@mui/material/CssBaseline';
-import { AuthProvider } from '../contexts/AuthContext';  // ← KORRIGIERT!
+import { AuthProvider } from '../contexts/AuthContext';
+import SnackbarProviderWrapper from '@/components/SnackbarProviderWrapper'; // ✅ NEU: Import für Toasts
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -22,10 +23,13 @@ export default function RootLayout({
       <body className={inter.className}>
         <AppRouterCacheProvider>
           <ThemeRegistry>
-            <AuthProvider>
-              <CssBaseline />
-              {children}
-            </AuthProvider>
+            {/* ✅ Wrapper um AuthProvider und Content legen */}
+            <SnackbarProviderWrapper>
+              <AuthProvider>
+                <CssBaseline />
+                {children}
+              </AuthProvider>
+            </SnackbarProviderWrapper>
           </ThemeRegistry>
         </AppRouterCacheProvider>
       </body>

@@ -21,11 +21,12 @@ import {
   List,
   ListItem,
   ListItemText,
-  Divider,
   InputAdornment,
 } from '@mui/material';
 import { DropResult } from '@hello-pangea/dnd';
 import { Assessment, Close, Delete, Add, Done, Settings, Assignment, People, ArrowUpward, ArrowDownward, Edit } from '@mui/icons-material';
+import { useSnackbar } from 'notistack'; // ✅ NEU
+
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { KanbanCard } from './original/KanbanCard';
@@ -84,6 +85,7 @@ const DEFAULT_COLS = [
 const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanbanBoardProps>(
 function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }: OriginalKanbanBoardProps, ref) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const { enqueueSnackbar } = useSnackbar(); // ✅ NEU
 
   if (!supabase) {
     return <Box sx={{ p: 3 }}><SupabaseConfigNotice /></Box>;
@@ -99,6 +101,13 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
   const [users, setUsers] = useState<any[]>([]);
   const [canModifyBoard, setCanModifyBoard] = useState(false);
   
+  // Permissions
+  const [permissions, setPermissions] = useState({
+    canEditContent: false,
+    canManageSettings: false,
+    canManageAttendance: false
+  });
+
   // Archiv & Meta
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archivedCards, setArchivedCards] = useState<any[]>([]);
@@ -144,14 +153,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
   // ✅ NEU: Konvertiert DB-Zeile in Karten-Format (für Realtime & Load)
   const convertDbToCard = useCallback((item: any) => {
     const card = { ...(item.card_data || {}) };
-    
-    // IDs konsolidieren
     card.UID = card.UID || item.card_id || item.id;
-    // Supabase ID für Updates sichern
     card.id = item.id; 
     card.card_id = item.card_id;
-
-    // Stage/Position aus Spalten übernehmen
     if (item.stage) card["Board Stage"] = item.stage;
     if (item.position !== undefined && item.position !== null) {
        card.position = item.position;
@@ -242,11 +246,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     onKpiCountChange?.(kpiBadgeCount);
   }, [kpiBadgeCount, onKpiCountChange]);
 
-  // --- REALTIME SUBSCRIPTION (STEP 1) ---
+  // --- REALTIME SUBSCRIPTION ---
   useEffect(() => {
     if (!supabase || !boardId) return;
-
-    console.log('🔌 Starte Realtime-Verbindung für Board:', boardId);
 
     const channel = supabase
       .channel(`board:${boardId}`)
@@ -259,12 +261,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
           filter: `board_id=eq.${boardId}`,
         },
         (payload) => {
-          console.log('⚡ Realtime Event:', payload.eventType, payload);
-
           if (payload.eventType === 'INSERT') {
             const newCard = convertDbToCard(payload.new);
             setRows((prev) => {
-              // Verhindere Duplikate, falls das Event durch eigenes Speichern kommt
               if (prev.some((r) => idFor(r) === idFor(newCard))) return prev;
               return reindexByStage([...prev, newCard]);
             });
@@ -273,55 +272,83 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
           if (payload.eventType === 'UPDATE') {
             const updatedCard = convertDbToCard(payload.new);
             setRows((prev) => {
-               // Ist es eine archivierte Karte?
                const isArchived = updatedCard["Archived"] === "1";
                if (isArchived) {
-                 // Aus aktiver Liste entfernen
                  return prev.filter(r => idFor(r) !== idFor(updatedCard));
                }
-               
-               // Karte aktualisieren oder hinzufügen, falls sie neu reingekommen ist (z.B. aus Archiv wiederhergestellt)
                const index = prev.findIndex(r => idFor(r) === idFor(updatedCard));
                if (index === -1) {
                  return reindexByStage([...prev, updatedCard]);
                }
-               
                const newRows = [...prev];
                newRows[index] = updatedCard;
-               // Wir sortieren hier nicht neu, um Springen während Drag&Drop anderer User zu vermeiden,
-               // außer die Position hat sich drastisch geändert.
                return newRows; 
             });
-            
-            // Auch Archiv aktualisieren falls nötig
             if (updatedCard["Archived"] === "1") {
                updateArchivedState([...archivedCards.filter(c => idFor(c) !== idFor(updatedCard)), updatedCard]);
             }
           }
 
           if (payload.eventType === 'DELETE') {
-            // Payload.old enthält nur die ID (wenn replica identity default ist)
             const deletedId = payload.old.id; 
             setRows((prev) => prev.filter((r) => r.id !== deletedId));
           }
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Realtime: Verbunden!');
-        }
-      });
+      .subscribe();
 
     return () => {
-      console.log('🔌 Trenne Realtime-Verbindung...');
       supabase.removeChannel(channel);
     };
   }, [boardId, supabase, convertDbToCard, reindexByStage, idFor, updateArchivedState, archivedCards]);
 
   // --- API / Persistence ---
 
+  // ✅ NEU: Patch-Funktion
+  const patchCard = useCallback(async (card: any, changes: Record<string, any>) => {
+    if (!permissions.canEditContent) {
+        enqueueSnackbar('Keine Berechtigung.', { variant: 'error' });
+        return;
+    }
+    
+    const updatedRows = rows.map(r => {
+      if (idFor(r) === idFor(card)) { return { ...r, ...changes }; }
+      return r;
+    });
+    setRows(updatedRows);
+
+    try {
+      const cardId = idFor(card);
+      const fullUpdatedCard = { ...card, ...changes };
+      const payload = {
+        card_id: cardId,
+        updates: {
+          card_data: fullUpdatedCard,
+          ...(changes['Board Stage'] ? { stage: changes['Board Stage'] } : {}),
+          ...(changes.position !== undefined ? { position: changes.position } : {})
+        }
+      };
+
+      const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
+      const response = await fetch(`/api/boards/${boardId}/cards`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        console.error('Patch failed');
+        enqueueSnackbar('Speichern fehlgeschlagen', { variant: 'error' });
+      }
+    } catch (error) {
+      console.error('Patch error:', error);
+      enqueueSnackbar('Netzwerkfehler', { variant: 'error' });
+    }
+  }, [permissions.canEditContent, rows, idFor, boardId, supabase, enqueueSnackbar]);
+
   const saveSettings = useCallback(async (options?: { skipMeta?: boolean }) => {
-    if (!canModifyBoard) return false;
+    if (!permissions.canManageSettings) return false;
 
     try {
       const settings = {
@@ -367,7 +394,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        alert(formatSupabaseActionError('Einstellungen speichern', payload?.error));
+        enqueueSnackbar(formatSupabaseActionError('Einstellungen speichern', payload?.error), { variant: 'error' });
         return false;
       }
       
@@ -377,15 +404,18 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
         window.dispatchEvent(new CustomEvent('board-meta-updated', { detail: { id: boardId, name: payload.meta.name, description: payload.meta.description } }));
       }
       
+      if (!options?.skipMeta) {
+          enqueueSnackbar('Einstellungen gespeichert', { variant: 'success' });
+      }
       return true;
     } catch (error) {
-      alert(formatSupabaseActionError('Einstellungen speichern', getErrorMessage(error)));
+      enqueueSnackbar(formatSupabaseActionError('Einstellungen speichern', getErrorMessage(error)), { variant: 'error' });
       return false;
     }
-  }, [canModifyBoard, boardId, supabase, cols, lanes, checklistTemplates, viewMode, density, boardName, boardDescription, boardMeta]);
+  }, [permissions.canManageSettings, boardId, supabase, cols, lanes, checklistTemplates, viewMode, density, boardName, boardDescription, boardMeta, enqueueSnackbar]);
 
   const saveCards = useCallback(async () => {
-    if (!canModifyBoard) return false;
+    if (!permissions.canEditContent) return false;
 
     try {
       const cardsToSave = rows.map((card) => {
@@ -420,7 +450,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
       console.error('Karten speichern Fehler:', getErrorMessage(error));
       return false;
     }
-  }, [canModifyBoard, boardId, rows, supabase, inferStage, idFor]);
+  }, [permissions.canEditContent, boardId, rows, supabase, inferStage, idFor]);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -511,6 +541,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
       const { data, error } = await supabase.auth.getUser();
       if (error || !data.user) { 
         setCanModifyBoard(false); 
+        setPermissions({ canEditContent: false, canManageSettings: false, canManageAttendance: false });
         return; 
       }
 
@@ -519,10 +550,11 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
       const profile = loadedUsers.find(user => user.id === authUserId);
       const globalRole = String(profile?.role ?? '').toLowerCase();
       const isSuper = isSuperuserEmail(email) || globalRole === 'superuser';
-      
-      // Wenn Global Admin: Darf alles
-      if (isSuper || globalRole === 'admin') {
+      const isGlobalAdmin = isSuper || globalRole === 'admin';
+
+      if (isGlobalAdmin) {
         setCanModifyBoard(true);
+        setPermissions({ canEditContent: true, canManageSettings: true, canManageAttendance: true });
         return;
       }
 
@@ -543,14 +575,19 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
         .maybeSingle();
       
       const isMember = !!memberRow;
-      
-      // Für Phase A/B nutzen wir noch das einfache "canModifyBoard"
-      // In Phase C wird das verfeinert
+      const memberRole = memberRow?.role;
+
       setCanModifyBoard(isOwner || isBoardAdmin || isMember);
+      setPermissions({
+        canEditContent: isOwner || isBoardAdmin || isMember,
+        canManageSettings: isOwner || isBoardAdmin || memberRole === 'admin',
+        canManageAttendance: isOwner || isBoardAdmin // Nur Admins
+      });
 
     } catch (error) {
       console.error('❌ Berechtigungsprüfung fehlgeschlagen:', error);
       setCanModifyBoard(false);
+      setPermissions({ canEditContent: false, canManageSettings: false, canManageAttendance: false });
     }
   }, [boardId, supabase]);
 
@@ -573,21 +610,8 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
   const loadUsers = useCallback(async (): Promise<any[]> => {
     try {
       const profiles = await fetchClientProfiles();
-      const normalized = profiles
-        .filter(profile => !isSuperuserEmail(profile.email))
-        .filter(profile => profile.is_active)
-        .map(profile => ({
-          id: profile.id,
-          email: profile.email ?? '',
-          name: profile.full_name || (profile.email ? profile.email.split('@')[0] : 'Unbekannt'),
-          full_name: profile.full_name || '',
-          department: profile.company ?? null,
-          company: profile.company || '',
-          role: (profile.role || 'user') as string,
-          isActive: profile.is_active,
-        }));
-      setUsers(normalized);
-      return normalized;
+      setUsers(profiles);
+      return profiles;
     } catch (error) {
       console.error('❌ Fehler beim Laden der Benutzer:', error);
       return [];
@@ -614,7 +638,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     return () => clearTimeout(timeoutId);
   }, [cols, lanes, checklistTemplates, viewMode, density, saveSettings]);
   
-  // Auto-Save Cards
+  // Auto-Save Cards (Bulk)
   useEffect(() => {
     if (rows.length === 0) return;
     const timeoutId = setTimeout(() => { saveCards(); }, 2000); 
@@ -644,6 +668,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
   }, [boardId, supabase, updateArchivedState]);
   
   const restoreCard = async (card: any) => {
+    if (!permissions.canEditContent) return;
     if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" wiederherstellen?`)) return;
     
     card["Archived"] = "";
@@ -652,11 +677,15 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     setRows(updatedRows);
     updateArchivedState(archivedCards.filter(c => idFor(c) !== idFor(card)));
     await saveCards();
+    enqueueSnackbar('Karte wiederhergestellt', { variant: 'success' });
   };
 
   const deleteCardPermanently = async (card: any) => {
+    if (!permissions.canManageSettings) {
+        enqueueSnackbar('Nur Admins können Karten löschen.', { variant: 'warning' });
+        return;
+    }
     if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" ENDGÜLTIG löschen?`)) return;
-    if (!window.confirm('Diese Aktion kann nicht rückgängig gemacht werden. Wirklich löschen?')) return;
     
     try {
       const headers = await buildSupabaseAuthHeaders(supabase);
@@ -667,18 +696,19 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        alert(formatSupabaseActionError('Karte löschen', payload?.error));
+        enqueueSnackbar(formatSupabaseActionError('Karte löschen', payload?.error), { variant: 'error' });
         return;
       }
 
       updateArchivedState(archivedCards.filter(c => idFor(c) !== idFor(card)));
+      enqueueSnackbar('Karte endgültig gelöscht', { variant: 'success' });
     } catch (error) {
-      alert(formatSupabaseActionError('Karte löschen', getErrorMessage(error)));
+      enqueueSnackbar(formatSupabaseActionError('Karte löschen', getErrorMessage(error)), { variant: 'error' });
     }
   };
 
   const archiveColumn = (columnName: string) => {
-    if (!canModifyBoard) return;
+    if (!permissions.canEditContent) return;
     if (!window.confirm(`Alle Karten in "${columnName}" archivieren?`)) return;
     
     const updatedRows = rows.map(r => {
@@ -692,6 +722,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
     setRows(updatedRows);
     const newlyArchived = rows.filter(r => inferStage(r) === columnName && r["Archived"] === "1");
     updateArchivedState([...archivedCards, ...newlyArchived]);
+    enqueueSnackbar(`${newlyArchived.length} Karten archiviert`, { variant: 'info' });
   };
 
   const addStatusEntry = (card: any) => {
@@ -718,7 +749,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
   };
 
   const handleTRNeuChange = async (card: any, newDate: string) => {
-    if (!canModifyBoard) return;
+    if (!permissions.canEditContent) return;
     
     if (!newDate) {
       card["TR_Neu"] = "";
@@ -742,7 +773,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
 
   // --- Drag & Drop Logic ---
   const onDragEnd = (result: DropResult) => {
-    if (!canModifyBoard) return;
+    if (!permissions.canEditContent) return;
     const { destination, source, draggableId } = result;
     
     if (!destination) return;
@@ -820,16 +851,17 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
         rows={rows}
         setRows={setRows}
         saveCards={saveCards}
+        patchCard={patchCard} // ✅ PatchCard wird übergeben
         setSelectedCard={setSelectedCard}
         setEditModalOpen={setEditModalOpen}
         setEditTabValue={setEditTabValue}
         inferStage={inferStage}
         idFor={idFor}
         users={users}
-        canModify={canModifyBoard}
+        canModify={permissions.canEditContent}
       />
     ),
-    [canModifyBoard, density, idFor, inferStage, rows, saveCards, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users]
+    [permissions.canEditContent, density, idFor, inferStage, rows, saveCards, patchCard, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users]
   );
   
   const TRKPIPopup = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
@@ -855,6 +887,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
         </DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={3}>
+            {/* Erste Zeile: Haupt-Status */}
             <Grid item xs={12} sm={4}>
                 <Card variant="outlined" sx={{ height: '100%', backgroundColor: isOverdue ? '#ffebee' : '#f0f0f0' }}>
                     <CardContent>
@@ -889,6 +922,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
                 </Card>
             </Grid>
             
+            {/* Zweite Zeile: Verteilung */}
             <Grid item xs={12}>
                 <Typography variant="h6" gutterBottom sx={{ mt: 1, color: 'text.secondary' }}>Kartenverteilung (Stages)</Typography>
                 <Card variant="outlined">
@@ -921,6 +955,32 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
                     </CardContent>
                 </Card>
             </Grid>
+            
+            {/* Dritte Zeile: Termine */}
+            <Grid item xs={12}>
+                 <Typography variant="h6" gutterBottom sx={{ mt: 1, color: 'text.secondary' }}>Termin-Status</Typography>
+                 <Grid container spacing={2}>
+                     <Grid item xs={6}>
+                        <Chip 
+                            label={`TR HEUTE: ${kpis.trToday.length}`} 
+                            icon={<Assessment />} 
+                            color={isToday ? 'primary' : 'default'} 
+                            variant={isToday ? 'filled' : 'outlined'}
+                            sx={{ width: '100%' }}
+                        />
+                     </Grid>
+                     <Grid item xs={6}>
+                        <Chip 
+                            label={`TR DIESE WOCHE: ${kpis.trThisWeek.length}`} 
+                            icon={<Assessment />} 
+                            color={isThisWeek ? 'secondary' : 'default'} 
+                            variant={isThisWeek ? 'filled' : 'outlined'}
+                            sx={{ width: '100%' }}
+                        />
+                     </Grid>
+                 </Grid>
+            </Grid>
+
           </Grid>
         </DialogContent>
         <DialogActions><Button onClick={onClose} variant="outlined">Schließen</Button></DialogActions>
@@ -1023,8 +1083,8 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
                 {/* Tab 1: Meta-Daten */}
                 {tab === 0 && (
                     <Box sx={{ pt: 1 }}>
-                        <TextField label="Board-Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} fullWidth sx={{ mt: 2 }} disabled={!canModifyBoard} />
-                        <TextField label="Beschreibung" value={boardDescription} onChange={(e) => setBoardDescription(e.target.value)} fullWidth multiline rows={2} sx={{ mt: 2 }} disabled={!canModifyBoard} />
+                        <TextField label="Board-Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} fullWidth sx={{ mt: 2 }} disabled={!permissions.canManageSettings} />
+                        <TextField label="Beschreibung" value={boardDescription} onChange={(e) => setBoardDescription(e.target.value)} fullWidth multiline rows={2} sx={{ mt: 2 }} disabled={!permissions.canManageSettings} />
                     </Box>
                 )}
 
@@ -1040,26 +1100,27 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
                                             <IconButton 
                                                 size="small"
                                                 onClick={() => handleMoveColumn(col.id, 'up')}
-                                                disabled={!canModifyBoard || index === 0}
+                                                disabled={!permissions.canManageSettings || index === 0}
                                             >
                                                 <ArrowUpward fontSize="small" />
                                             </IconButton>
                                             <IconButton 
                                                 size="small"
                                                 onClick={() => handleMoveColumn(col.id, 'down')}
-                                                disabled={!canModifyBoard || index === currentCols.length - 1}
+                                                disabled={!permissions.canManageSettings || index === currentCols.length - 1}
                                             >
                                                 <ArrowDownward fontSize="small" />
                                             </IconButton>
                                             
-                                            <Button size="small" onClick={() => handleToggleDone(col.id)} disabled={!canModifyBoard} sx={{ ml: 1, mr: 1, color: col.done ? 'success.main' : 'text.secondary', border: `1px solid ${col.done ? '#4caf50' : 'gray'}`, minWidth: '80px' }}>
+                                            <Button size="small" onClick={() => handleToggleDone(col.id)} disabled={!permissions.canManageSettings} sx={{ ml: 1, mr: 1, color: col.done ? 'success.main' : 'text.secondary', border: `1px solid ${col.done ? '#4caf50' : 'gray'}`, minWidth: '80px' }}>
                                                 {col.done ? 'Fertig' : 'Normal'}
                                             </Button>
-                                            <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteColumn(col.id)} disabled={!canModifyBoard || currentCols.length === 1}>
+                                            <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteColumn(col.id)} disabled={!permissions.canManageSettings || currentCols.length === 1}>
                                                 <Delete />
                                             </IconButton>
                                         </Box>
                                     }>
+                                        {/* EDITIERBARES FELD FÜR SPALTENNAMEN */}
                                         <TextField 
                                             value={col.name}
                                             onChange={(e) => handleUpdateColumnName(col.id, e.target.value)}
@@ -1067,7 +1128,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
                                             size="small"
                                             fullWidth
                                             sx={{ mr: 2 }}
-                                            disabled={!canModifyBoard}
+                                            disabled={!permissions.canManageSettings}
                                             InputProps={{
                                                 disableUnderline: true,
                                                 startAdornment: <InputAdornment position="start"><Edit fontSize="small" sx={{ color: 'text.disabled', mr: 1 }}/></InputAdornment>
@@ -1078,8 +1139,8 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
                             </List>
                         </Card>
                         <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                            <TextField size="small" label="Neue Spalte" value={newColName} onChange={(e) => setNewColName(e.target.value)} fullWidth disabled={!canModifyBoard} />
-                            <Button variant="contained" startIcon={<Add />} onClick={handleAddColumn} disabled={!canModifyBoard}>Hinzufügen</Button>
+                            <TextField size="small" label="Neue Spalte" value={newColName} onChange={(e) => setNewColName(e.target.value)} fullWidth disabled={!permissions.canManageSettings} />
+                            <Button variant="contained" startIcon={<Add />} onClick={handleAddColumn} disabled={!permissions.canManageSettings}>Hinzufügen</Button>
                         </Box>
                     </Box>
                 )}
@@ -1092,7 +1153,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
                             <List dense>
                                 {currentLanes.map((lane, index) => (
                                     <ListItem key={index} disableGutters secondaryAction={
-                                        <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteLane(lane)} disabled={!canModifyBoard}>
+                                        <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteLane(lane)} disabled={!permissions.canManageSettings}>
                                             <Delete />
                                         </IconButton>
                                     }>
@@ -1102,15 +1163,15 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange }
                             </List>
                         </Card>
                         <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                            <TextField size="small" label="Neue Swimlane" value={newLaneName} onChange={(e) => setNewLaneName(e.target.value)} fullWidth disabled={!canModifyBoard} />
-                            <Button variant="contained" startIcon={<Add />} onClick={handleAddLane} disabled={!canModifyBoard}>Hinzufügen</Button>
+                            <TextField size="small" label="Neue Swimlane" value={newLaneName} onChange={(e) => setNewLaneName(e.target.value)} fullWidth disabled={!permissions.canManageSettings} />
+                            <Button variant="contained" startIcon={<Add />} onClick={handleAddLane} disabled={!permissions.canManageSettings}>Hinzufügen</Button>
                         </Box>
                     </Box>
                 )}
             </DialogContent>
             <DialogActions>
                 <Button onClick={onClose}>Abbrechen</Button>
-                <Button onClick={handleSave} variant="contained" disabled={!canModifyBoard}>Einstellungen speichern</Button>
+                <Button onClick={handleSave} variant="contained" disabled={!permissions.canManageSettings}>Einstellungen speichern</Button>
             </DialogActions>
         </Dialog>
     );
@@ -1140,6 +1201,7 @@ return (
         '--rowheadw': '260px'
       } as any
     }}>
+      {/* ✅ KORREKTUR: Buttons sind in der Sticky Header Box */}
       <Box sx={{
         position: 'sticky',
         top: 0,
@@ -1150,6 +1212,7 @@ return (
       }}>
         <Box sx={{
           display: 'grid',
+          // Das Layout für die Toolbar mit Suche, Views und Buttons
           gridTemplateColumns: '1fr repeat(3, auto) repeat(3, auto) repeat(3, auto)', 
           gap: 1.5,
           alignItems: 'center',
@@ -1168,9 +1231,12 @@ return (
           <Button variant={density === 'xcompact' ? 'contained' : 'outlined'} onClick={() => setDensity('xcompact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: extrakompakt">◻</Button>
           <Button variant={density === 'large' ? 'contained' : 'outlined'} onClick={() => setDensity('large')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: groß">⬜</Button>         
           
-          <Button variant="contained" size="small" onClick={() => setNewCardOpen(true)} disabled={!canModifyBoard}>Neue Karte</Button>
+          <Button variant="contained" size="small" onClick={() => setNewCardOpen(true)} disabled={!permissions.canEditContent}>Neue Karte</Button>
           
-          <IconButton onClick={() => setSettingsOpen(true)} title="Board-Einstellungen">⚙️</IconButton>
+          {/* ✅ KORRIGIERTE BUTTONS NUR HIER */}
+          {permissions.canManageSettings && (
+             <IconButton onClick={() => setSettingsOpen(true)} title="Board-Einstellungen">⚙️</IconButton>
+          )}
           <Badge badgeContent={kpiBadgeCount} color="error" overlap="circular">
             <IconButton onClick={() => setKpiPopupOpen(true)} title="KPIs & Metriken"><Assessment fontSize="small" /></IconButton>
           </Badge>
@@ -1179,13 +1245,13 @@ return (
 
       <Box sx={{ flex: 1, overflow: 'hidden' }}>
         {viewMode === 'columns' && (
-          <KanbanColumnsView rows={rows} cols={cols} density={density} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} archiveColumn={archiveColumn} renderCard={renderCard} allowDrag={canModifyBoard} />
+          <KanbanColumnsView rows={rows} cols={cols} density={density} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} archiveColumn={archiveColumn} renderCard={renderCard} allowDrag={permissions.canEditContent} />
         )}
         {viewMode === 'swim' && (
-          <KanbanSwimlaneView rows={rows} cols={cols} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} renderCard={renderCard} allowDrag={canModifyBoard} />
+          <KanbanSwimlaneView rows={rows} cols={cols} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} renderCard={renderCard} allowDrag={permissions.canEditContent} />
         )}
         {viewMode === 'lane' && (
-          <KanbanLaneView rows={rows} cols={cols} lanes={lanes} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} renderCard={renderCard} allowDrag={canModifyBoard} />
+          <KanbanLaneView rows={rows} cols={cols} lanes={lanes} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} renderCard={renderCard} allowDrag={permissions.canEditContent} />
         )}
       </Box>
 
