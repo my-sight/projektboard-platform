@@ -55,12 +55,13 @@ export default function HomePage() {
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'management' | 'board' | 'team-management' | 'team-board'>('list');
   
+  // State für Deep-Link (Karte highlighten)
   const [openCardId, setOpenCardId] = useState<string | null>(null);
 
-  const { isDark, toggleTheme } = useTheme();
   const { user, loading, signOut } = useAuth();
   const boardRef = useRef<OriginalKanbanBoardHandle>(null);
 
+  // Board Management States
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperuser, setIsSuperuser] = useState(false);
@@ -79,6 +80,7 @@ export default function HomePage() {
     setKpiCount(0);
   }, [selectedBoard]);
 
+  // Auth-Check
   useEffect(() => {
     if (!supabase) return;
     if (!loading && !user) {
@@ -135,11 +137,13 @@ export default function HomePage() {
   const currentUserId = user?.id ?? null;
   const isSelectedBoardAdmin = selectedBoard?.boardAdminId === currentUserId;
 
+  // Handler für das Öffnen aus dem Dashboard
   const handleOpenBoardFromDashboard = (boardId: string, cardId?: string, type: 'standard' | 'team' = 'standard') => {
     const board = boards.find(b => b.id === boardId);
     if (board) {
       setSelectedBoard(board);
-      if (cardId) setOpenCardId(cardId);
+      if (cardId) setOpenCardId(cardId); // ID für Highlight setzen
+      
       if (type === 'team') {
           setViewMode('team-board');
       } else {
@@ -176,7 +180,7 @@ export default function HomePage() {
   if (!supabase) return <Container maxWidth="sm" sx={{ py: 8 }}><SupabaseConfigNotice /></Container>;
   if (!user) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 Weiterleitung...</Typography></Box>;
 
-  // BOARD VIEWS
+  // --- BOARD VIEW (Standard) ---
   if (selectedBoard && selectedBoard.boardType === 'standard' && viewMode === 'board') {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -186,21 +190,27 @@ export default function HomePage() {
             <Typography variant="h6">{selectedBoard.name || 'Board'}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Badge badgeContent={kpiCount} color="error"><IconButton onClick={() => boardRef.current?.openKpis()}><AssessmentIcon /></IconButton></Badge>
             <Button variant="outlined" onClick={() => boardRef.current?.openArchive()}>Archiv{archivedCount !== null ? ` (${archivedCount})` : ''}</Button>
             <IconButton onClick={() => boardRef.current?.openSettings()}>⚙️</IconButton>
             <Typography variant="body2">👋 {user.email}</Typography>
-            <IconButton onClick={toggleTheme}>{isDark ? '☀️' : '🌙'}</IconButton>
             <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
           </Box>
         </Box>
         <Box sx={{ flex: 1 }}>
-          <OriginalKanbanBoard ref={boardRef} boardId={selectedBoard.id} onArchiveCountChange={setArchivedCount} onKpiCountChange={setKpiCount} highlightCardId={openCardId} />
+          <OriginalKanbanBoard 
+            ref={boardRef} 
+            boardId={selectedBoard.id} 
+            onArchiveCountChange={setArchivedCount} 
+            onKpiCountChange={setKpiCount} 
+            highlightCardId={openCardId} // ID für Highlight übergeben
+            onExit={() => { setViewMode('list'); setOpenCardId(null); }} // Zurück-Funktion
+          />
         </Box>
       </Box>
     );
   }
 
+  // --- TEAM BOARD VIEW ---
   if (selectedBoard && selectedBoard.boardType === 'team' && viewMode === 'team-board') {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -211,18 +221,21 @@ export default function HomePage() {
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Typography variant="body2">👋 {user.email}</Typography>
-            <IconButton onClick={toggleTheme}>{isDark ? '☀️' : '🌙'}</IconButton>
             <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
           </Box>
         </Box>
         <Box sx={{ flex: 1, overflow: 'hidden' }}>
-          <TeamKanbanBoard boardId={selectedBoard.id} />
+          <TeamKanbanBoard 
+            boardId={selectedBoard.id} 
+            highlightCardId={openCardId} // ID für Highlight übergeben
+            onExit={() => { setViewMode('list'); setOpenCardId(null); }} // Zurück-Funktion
+          />
         </Box>
       </Box>
     );
   }
 
-  // MANAGEMENT VIEWS
+  // --- MANAGEMENT VIEWS ---
   if (selectedBoard && viewMode === 'management') {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -247,27 +260,25 @@ export default function HomePage() {
     );
   }
 
-  // --- MAIN LIST VIEW (Umgedrehte Reihenfolge!) ---
+  // --- STARTSEITE (LIST VIEW) ---
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-         <Typography variant="h4">📌 Meine Boards</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 4 }}>
          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             {isAdmin && <Button variant="outlined" onClick={() => (window.location.href = '/admin')}>Admin</Button>}
             <Typography variant="body2">👋 {user.email}</Typography>
-            <IconButton onClick={toggleTheme}>{isDark ? '☀️' : '🌙'}</IconButton>
             <Button variant="outlined" onClick={signOut} color="error">Abmelden</Button>
          </Box>
       </Box>
 
       {message && <Alert severity={message.startsWith('✅') ? 'success' : 'error'} sx={{ mb: 3 }}>{message}</Alert>}
 
-      {/* ✅ 1. PERSÖNLICHES DASHBOARD GANZ OBEN */}
+      {/* 1. Dashboard (Ganz oben) */}
       <PersonalDashboard onOpenBoard={handleOpenBoardFromDashboard} />
       
       <Divider sx={{ my: 6 }} />
 
-      {/* ✅ 2. BOARDS UNTEN */}
+      {/* 2. Boards (Darunter) */}
       <Typography variant="h5" sx={{ mb: 2 }}>Projektboards</Typography>
       <Grid container spacing={3}>
         {isAdmin && (
@@ -318,7 +329,6 @@ export default function HomePage() {
         ))}
       </Grid>
       
-      {/* Dialogs... */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
         <DialogTitle>Neues Board erstellen</DialogTitle>
         <DialogContent>

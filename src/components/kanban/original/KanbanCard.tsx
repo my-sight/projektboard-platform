@@ -1,11 +1,18 @@
 'use client';
 
-import { ReactNode, useMemo } from 'react';
+import { ReactNode, useEffect, useMemo, useRef } from 'react';
 import { Box, Chip, IconButton, Typography, Tooltip } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
+import { keyframes } from '@mui/system';
 
 import { nullableDate, toBoolean } from '@/utils/booleans';
 import { ProjectBoardCard, LayoutDensity } from '@/types';
+
+const blinkAnimation = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); border-color: #ffc107; }
+  50% { box-shadow: 0 0 0 10px rgba(25, 118, 210, 0); border-color: #ffc107; background-color: rgba(255, 249, 196, 0.5); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+`;
 
 export interface KanbanCardProps {
   card: ProjectBoardCard;
@@ -22,6 +29,7 @@ export interface KanbanCardProps {
   idFor: (card: ProjectBoardCard) => string;
   users: Array<{ id: string; name?: string; full_name?: string; email?: string; department?: string | null; company?: string | null; }>;
   canModify: boolean;
+  highlighted?: boolean;
 }
 
 const statusKeys = ['message', 'qualitaet', 'kosten', 'termine'] as const;
@@ -41,9 +49,17 @@ export function KanbanCard({
   idFor,
   users,
   canModify,
+  highlighted,
 }: KanbanCardProps) {
   const cardId = idFor(card);
   const isDragDisabled = !canModify;
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (highlighted && cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+    }
+  }, [highlighted]);
 
   const usersById = useMemo(() => {
     const map = new Map<string, any>();
@@ -74,7 +90,6 @@ export function KanbanCard({
   const sopDate = nullableDate(card.SOP_Datum);
   const trCompletedDate = nullableDate(card.TR_Completed_At || card.TR_Completed_Date);
   
-  // TR-Datum für die Berechnung des Diffs
   const trDiffBase = nullableDate(card.TR_Datum);
   const trCompletionDiff = trDiffBase && trCompletedDate
     ? Math.round((trCompletedDate.getTime() - trDiffBase.getTime()) / (1000 * 60 * 60 * 24))
@@ -121,14 +136,18 @@ export function KanbanCard({
     <Draggable key={cardId} draggableId={cardId} index={index} isDragDisabled={isDragDisabled}>
       {(provided, snapshot) => (
         <Box
-          ref={provided.innerRef}
+          ref={(el) => {
+              provided.innerRef(el);
+              // @ts-ignore
+              cardRef.current = el;
+          }}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           className={`card ${hasLKEscalation ? 'esk-lk' : ''} ${hasSKEscalation ? 'esk-sk' : ''}`}
           onClick={(e) => {
             if (!canModify) return;
             if (!(e.target as HTMLElement).closest('.controls')) {
-              setSelectedCard(card); setEditModalOpen(true); setEditTabValue(1);
+              setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0);
             }
           }}
           sx={{
@@ -139,6 +158,9 @@ export function KanbanCard({
             minHeight: currentSize === 'xcompact' ? '18px' : currentSize === 'large' ? '150px' : '80px',
             display: 'flex', flexDirection: 'column', position: 'relative',
             '&:hover': { transform: snapshot.isDragging ? 'rotate(2deg) scale(1.03)' : 'translateY(-2px)', boxShadow: '0 6px 14px rgba(0,0,0,0.18)' },
+            // ✅ Animation: 5x blinken, dann stop
+            animation: highlighted ? `${blinkAnimation} 1s 5` : 'none',
+            borderColor: highlighted ? '#ffc107' : borderColor,
           }}
         >
           {currentSize === 'xcompact' ? (
@@ -160,18 +182,18 @@ export function KanbanCard({
                     <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: currentSize === 'large' ? '#e3f2fd' : 'transparent', color: currentSize === 'large' ? '#1976d2' : 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} title="Groß/Normal umschalten" disabled={!canModify} onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Collapsed: currentSize === 'large' ? '' : 'large' }); }}>↕</IconButton>
                     <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', backgroundColor: hasLKEscalation ? '#ef6c00' : 'transparent', color: hasLKEscalation ? 'white' : 'var(--muted)', '&:hover': { backgroundColor: hasLKEscalation ? '#e65100' : 'rgba(0,0,0,0.06)' } }} title="Leitungskreis" disabled={!canModify} onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Eskalation: hasLKEscalation ? '' : 'LK', Ampel: hasLKEscalation ? 'grün' : 'rot' }); }}>LK</IconButton>
                     <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', backgroundColor: hasSKEscalation ? '#c62828' : 'transparent', color: hasSKEscalation ? 'white' : 'var(--muted)', '&:hover': { backgroundColor: hasSKEscalation ? '#b71c1c' : 'rgba(0,0,0,0.06)' } }} title="Strategiekreis" disabled={!canModify} onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Eskalation: hasSKEscalation ? '' : 'SK', Ampel: hasSKEscalation ? 'grün' : 'rot' }); }}>SK</IconButton>
-                    <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: 'transparent', color: 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} title="Bearbeiten" disabled={!canModify} onClick={(e) => { e.stopPropagation(); setSelectedCard(card); setEditModalOpen(true); setEditTabValue(1); }}>✎</IconButton>
+                    <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: 'transparent', color: 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} title="Bearbeiten" disabled={!canModify} onClick={(e) => { e.stopPropagation(); setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0); }}>✎</IconButton>
                   </Box>
                 </Box>
               </Box>
 
-              {/* ✅ KORREKTUR: Nicht fett (fontWeight 400) und max. 2 Zeilen */}
+              {/* Nicht fett, max 2 Zeilen */}
               {card.Teil && (
                 <Typography 
                   variant="body2" 
                   sx={{ 
                     fontSize: '12px', 
-                    fontWeight: 400, // Nicht fett
+                    fontWeight: 400,
                     lineHeight: 1.3, 
                     color: 'var(--muted)', 
                     overflow: 'hidden', 
@@ -222,7 +244,7 @@ export function KanbanCard({
                 </Box>
               )}
 
-              {/* ✅ WIEDERHERGESTELLT: Team-Anzeige bei großer Karte */}
+              {/* ✅ WIEDER EINGEFÜGT: Team-Anzeige bei großer Karte */}
               {currentSize === 'large' && card.Team && Array.isArray(card.Team) && card.Team.length > 0 && (
                   <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid var(--line)' }}>
                     <Typography variant="caption" sx={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 600, display: 'block', mb: 0.5 }}>

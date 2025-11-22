@@ -153,23 +153,22 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; memberId: string | null }>({ open: false, memberId: null });
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  
+ 
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   useEffect(() => {
-    if (supabase) {
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        setCurrentUserId(user?.id ?? null);
-      }).catch(() => {
-        setCurrentUserId(null);
-      });
-    }
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setCurrentUserId(user?.id ?? null);
+    }).catch(() => {
+      setCurrentUserId(null);
+    });
   }, [supabase]);
-
   const isMember = useMemo(() => members.some((m) => m.profile_id === currentUserId), [members, currentUserId]);
   const canManageTopics = canEdit || isMember;
+useEffect(() => {
+    if (!supabase) {
+    return;
+  }
 
-  useEffect(() => {
-    if (!supabase) return;
 
     let active = true;
 
@@ -194,8 +193,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
             .order('week_start', { ascending: true }),
           supabase
             .from('board_top_topics')
-            // ✅ FIX: calendar_week fehlte hier im Select!
-            .select('id, board_id, title, calendar_week, position')
+            .select('id, board_id, title, position')
             .eq('board_id', boardId)
             .order('position', { ascending: true }),
         ]);
@@ -248,7 +246,6 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
 
         const topicRows = (topicsResult.data as TopicRow[] | null) ?? [];
         setTopics(topicRows);
-        
         const topicDraftValues: Record<string, TopicDraft> = {};
         topicRows.forEach((row) => {
           topicDraftValues[row.id] = {
@@ -801,27 +798,27 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                       }))
                     }
                     onBlur={() => persistTopic(topic.id)}
-                    fullWidth
-                    disabled={!canManageTopics}
-                  />
-                  <TextField
-                    type="week"
-                    label="Kalenderwoche"
-                    value={draft.calendarWeek}
-                    onChange={(event) =>
-                      setTopicDrafts((prev) => ({
-                        ...prev,
-                        [topic.id]: {
-                          ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
-                          calendarWeek: event.target.value,
-                        },
-                      }))
-                    }
-                    onBlur={() => persistTopic(topic.id)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ width: { xs: '100%', md: 200 } }}
-                    disabled={!canManageTopics}
-                  />
+       fullWidth
+                     disabled={!canManageTopics}
+                   />
+                   <TextField
+                     type="week"
+                     label="Kalenderwoche"
+                     value={draft.calendarWeek}
+                     onChange={(event) =>
+                       setTopicDrafts((prev) => ({
+                         ...prev,
+                         [topic.id]: {
+                           ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
+                           calendarWeek: event.target.value,
+                         },
+                       }))
+                     }
+                     onBlur={() => persistTopic(topic.id)}
+                     InputLabelProps={{ shrink: true }}
+                     sx={{ width: { xs: '100%', md: 200 } }}
+                     disabled={!canManageTopics}
+                   />
                    {canManageTopics && (
                      <Button
                        color="error"

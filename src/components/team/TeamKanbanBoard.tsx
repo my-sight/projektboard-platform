@@ -20,10 +20,11 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, FilterList, Warning, PriorityHigh, ArrowBack } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
-import { useSnackbar } from 'notistack'; // ✅ NEU: Für Toasts
+import { useSnackbar } from 'notistack';
+import { keyframes } from '@mui/system';
 
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { fetchClientProfiles, ClientProfile } from '@/lib/clientProfiles';
@@ -31,190 +32,62 @@ import { isSuperuserEmail } from '@/constants/superuser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders';
 
-// --- TYPEN ---
+// Animation wie im Projektboard (5x)
+const blinkAnimation = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); border-color: #ffc107; }
+  50% { box-shadow: 0 0 0 10px rgba(25, 118, 210, 0); border-color: #ffc107; background-color: rgba(255, 249, 196, 0.5); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
+`;
 
-interface BoardMember {
-  id: string;
-  profile_id: string;
-}
-
-interface MemberWithProfile extends BoardMember {
-  profile: ClientProfile | null;
-}
-
+interface BoardMember { id: string; profile_id: string; }
+interface MemberWithProfile extends BoardMember { profile: ClientProfile | null; }
 export type TeamBoardStatus = 'backlog' | 'flow1' | 'flow' | 'done';
+interface TeamBoardCard { rowId: string; cardId: string; description: string; dueDate: string | null; important: boolean; assigneeId: string | null; status: TeamBoardStatus; position: number; createdBy?: string; }
+interface TeamKanbanBoardProps { boardId: string; onExit?: () => void; highlightCardId?: string | null; } // ✅ Prop
+interface TaskDraft { description: string; dueDate: string; important: boolean; assigneeId: string | null; status: TeamBoardStatus; }
+interface DroppableInfo { assigneeId: string | null; status: TeamBoardStatus; }
 
-interface TeamBoardCard {
-  rowId: string;
-  cardId: string;
-  description: string;
-  dueDate: string | null;
-  important: boolean;
-  assigneeId: string | null;
-  status: TeamBoardStatus;
-  position: number;
-  createdBy?: string;
-}
-
-interface TeamKanbanBoardProps {
-  boardId: string;
-}
-
-interface TaskDraft {
-  description: string;
-  dueDate: string;
-  important: boolean;
-  assigneeId: string | null;
-  status: TeamBoardStatus;
-}
-
-interface DroppableInfo {
-  assigneeId: string | null;
-  status: TeamBoardStatus;
-}
-
-// --- KONSTANTEN ---
-
-const statusLabels: Record<TeamBoardStatus, string> = {
-  backlog: 'Aufgabenspeicher',
-  flow1: 'Flow-1',
-  flow: 'Flow',
-  done: 'Fertig',
-};
-
+const statusLabels: Record<TeamBoardStatus, string> = { backlog: 'Aufgabenspeicher', flow1: 'Flow-1', flow: 'Flow', done: 'Fertig' };
 const CARD_WIDTH = 260;
 const MIN_CARD_HEIGHT = 92;
+const defaultDraft: TaskDraft = { description: '', dueDate: '', important: false, assigneeId: null, status: 'backlog' };
 
-const defaultDraft: TaskDraft = {
-  description: '',
-  dueDate: '',
-  important: false,
-  assigneeId: null,
-  status: 'backlog',
-};
-
-// --- HELPER ---
-
-const getInitials = (name: string) => {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-};
-
-const droppableKey = (assigneeId: string | null, status: TeamBoardStatus) =>
-  `team|${assigneeId ?? 'unassigned'}|${status}`;
-
+const getInitials = (name: string) => name.split(' ').filter(Boolean).map((part) => part[0]).join('').toUpperCase().slice(0, 2);
+const droppableKey = (assigneeId: string | null, status: TeamBoardStatus) => `team|${assigneeId ?? 'unassigned'}|${status}`;
 const parseDroppableKey = (value: string): DroppableInfo => {
-  if (!value.startsWith('team|')) {
-    return { assigneeId: null, status: 'backlog' };
-  }
+  if (!value.startsWith('team|')) return { assigneeId: null, status: 'backlog' };
   const [, rawAssignee, rawStatus] = value.split('|');
-  const status = (['backlog', 'flow1', 'flow', 'done'] as TeamBoardStatus[]).includes(rawStatus as TeamBoardStatus)
-    ? (rawStatus as TeamBoardStatus)
-    : 'backlog';
+  const status = (['backlog', 'flow1', 'flow', 'done'] as TeamBoardStatus[]).includes(rawStatus as TeamBoardStatus) ? (rawStatus as TeamBoardStatus) : 'backlog';
   const assigneeId = rawAssignee === 'unassigned' ? null : rawAssignee;
   return { assigneeId, status };
 };
 
-const buildCardData = (card: TeamBoardCard) => ({
-  type: 'teamTask',
-  description: card.description,
-  dueDate: card.dueDate,
-  important: card.important,
-  assigneeId: card.assigneeId,
-  status: card.status,
-  createdBy: card.createdBy,
-});
-
-const createColumnsMapFromCards = (cards: TeamBoardCard[]) => {
-  const map = new Map<string, TeamBoardCard[]>();
-  cards.forEach((card) => {
-    const key = droppableKey(card.assigneeId, card.status);
-    const entries = map.get(key) ?? [];
-    entries.push({ ...card });
-    map.set(key, entries);
-  });
-  return map;
-};
-
-const flattenColumnsMap = (map: Map<string, TeamBoardCard[]>) => {
-  const flattened: TeamBoardCard[] = [];
-  Array.from(map.keys())
-    .sort()
-    .forEach((key) => {
-      const entries = map.get(key) ?? [];
-      entries
-        .map((entry) => ({ ...entry }))
-        .forEach((entry, index) => {
-          flattened.push({ ...entry, position: index });
-        });
-    });
-  return flattened;
-};
-
-const buildPersistPayload = (boardId: string, cards: TeamBoardCard[]) =>
-  cards.map((card) => ({
-    board_id: boardId,
-    card_id: card.cardId,
-    card_data: buildCardData(card),
-    stage: droppableKey(card.assigneeId, card.status),
-    position: card.position ?? 0,
-    project_number: null,
-    project_name: null,
-  }));
-
+const buildCardData = (card: TeamBoardCard) => ({ type: 'teamTask', description: card.description, dueDate: card.dueDate, important: card.important, assigneeId: card.assigneeId, status: card.status, createdBy: card.createdBy });
+const createColumnsMapFromCards = (cards: TeamBoardCard[]) => { const map = new Map<string, TeamBoardCard[]>(); cards.forEach((card) => { const key = droppableKey(card.assigneeId, card.status); const entries = map.get(key) ?? []; entries.push({ ...card }); map.set(key, entries); }); return map; };
+const flattenColumnsMap = (map: Map<string, TeamBoardCard[]>) => { const flattened: TeamBoardCard[] = []; Array.from(map.keys()).sort().forEach((key) => { const entries = map.get(key) ?? []; entries.map((entry) => ({ ...entry })).forEach((entry, index) => { flattened.push({ ...entry, position: index }); }); }); return flattened; };
+const buildPersistPayload = (boardId: string, cards: TeamBoardCard[]) => cards.map((card) => ({ board_id: boardId, card_id: card.cardId, card_data: buildCardData(card), stage: droppableKey(card.assigneeId, card.status), position: card.position ?? 0, project_number: null, project_name: null }));
 const normalizeCard = (row: any): TeamBoardCard | null => {
   const stageInfo = typeof row.stage === 'string' ? parseDroppableKey(row.stage) : { assigneeId: null, status: 'backlog' as TeamBoardStatus };
   const payload = (row.card_data ?? {}) as Record<string, unknown>;
-  
-  if (payload && payload.type && payload.type !== 'teamTask' && !String(row.stage || '').startsWith('team|')) {
-    return null;
-  }
-
+  if (payload && payload.type && payload.type !== 'teamTask' && !String(row.stage || '').startsWith('team|')) return null;
   const description = typeof payload.description === 'string' ? payload.description : '';
   const dueDate = typeof payload.dueDate === 'string' && payload.dueDate ? payload.dueDate : null;
   const important = Boolean(payload.important);
   const createdBy = typeof payload.createdBy === 'string' ? payload.createdBy : undefined;
-
   let status: TeamBoardStatus = stageInfo.status;
-  if (typeof payload.status === 'string' && ['backlog', 'flow1', 'flow', 'done'].includes(payload.status)) {
-    status = payload.status as TeamBoardStatus;
-  }
-
+  if (typeof payload.status === 'string' && ['backlog', 'flow1', 'flow', 'done'].includes(payload.status)) status = payload.status as TeamBoardStatus;
   let assigneeId: string | null = stageInfo.assigneeId;
-  if (typeof payload.assigneeId === 'string') {
-    assigneeId = payload.assigneeId;
-  } else if (payload.assigneeId === null) {
-    assigneeId = null;
-  }
-
-  return {
-    rowId: String(row.id),
-    cardId: String(row.card_id ?? row.id ?? crypto.randomUUID()),
-    description,
-    dueDate,
-    important,
-    assigneeId,
-    status,
-    position: typeof row.position === 'number' ? row.position : 0,
-    createdBy,
-  };
+  if (typeof payload.assigneeId === 'string') assigneeId = payload.assigneeId; else if (payload.assigneeId === null) assigneeId = null;
+  return { rowId: String(row.id), cardId: String(row.card_id ?? row.id ?? crypto.randomUUID()), description, dueDate, important, assigneeId, status, position: typeof row.position === 'number' ? row.position : 0, createdBy };
 };
 
-// --- KOMPONENTE ---
-
-export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
+export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: TeamKanbanBoardProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
-  const { enqueueSnackbar } = useSnackbar(); // ✅ NEU: Snackbar Hook
-  
-  // State
+  const { enqueueSnackbar } = useSnackbar();
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
   const [cards, setCards] = useState<TeamBoardCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [canModify, setCanModify] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(defaultDraft);
@@ -225,593 +98,262 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
   const [boardSettings, setBoardSettings] = useState<Record<string, any>>({});
   const [completedCount, setCompletedCount] = useState(0);
   const [users, setUsers] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null); // ✅ Für "Meine" Filter
 
-  // --- DATA LOADING & PERSISTENCE ---
+  // Filter State
+  const [filters, setFilters] = useState({
+    mine: false,
+    overdue: false,
+    important: false
+  });
 
-  const persistAllCards = useCallback(
-    async (entries: TeamBoardCard[]) => {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(await buildSupabaseAuthHeaders(supabase)),
-      };
-
-      const response = await fetch(`/api/boards/${boardId}/cards`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ cards: buildPersistPayload(boardId, entries) }),
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-    },
-    [boardId, supabase],
-  );
+  const persistAllCards = useCallback(async (entries: TeamBoardCard[]) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
+      const response = await fetch(`/api/boards/${boardId}/cards`, { method: 'POST', headers, body: JSON.stringify({ cards: buildPersistPayload(boardId, entries) }), credentials: 'include' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    }, [boardId, supabase]);
 
   const loadBoardSettings = useCallback(async () => {
     const headers = await buildSupabaseAuthHeaders(supabase);
-    const response = await fetch(`/api/boards/${boardId}/settings`, {
-      method: 'GET',
-      headers,
-      credentials: 'include',
-    });
-
-    if (!response.ok && response.status !== 404) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    if (response.status === 404) {
-      setBoardSettings({});
-      setCompletedCount(0);
-      return;
-    }
-
+    const response = await fetch(`/api/boards/${boardId}/settings`, { method: 'GET', headers, credentials: 'include' });
+    if (response.status === 404) { setBoardSettings({}); setCompletedCount(0); return; }
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     const settings = payload.settings ?? {};
     setBoardSettings(settings);
     setCompletedCount(Number(settings?.teamBoard?.completedCount || 0));
   }, [boardId, supabase]);
 
-  const persistCompletedCount = useCallback(
-    async (nextCount: number) => {
-      const nextSettings = {
-        ...boardSettings,
-        teamBoard: {
-          ...(boardSettings.teamBoard as Record<string, unknown> | undefined),
-          completedCount: nextCount,
-        },
-      };
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(await buildSupabaseAuthHeaders(supabase)),
-      };
-
-      const response = await fetch(`/api/boards/${boardId}/settings`, {
-        method: 'POST',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify({ settings: nextSettings }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      setBoardSettings(nextSettings);
-      setCompletedCount(nextCount);
-    },
-    [boardId, boardSettings, supabase],
-  );
+  const persistCompletedCount = useCallback(async (nextCount: number) => {
+      const nextSettings = { ...boardSettings, teamBoard: { ...(boardSettings.teamBoard || {}), completedCount: nextCount } };
+      const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
+      const response = await fetch(`/api/boards/${boardId}/settings`, { method: 'POST', headers, body: JSON.stringify({ settings: nextSettings }), credentials: 'include' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      setBoardSettings(nextSettings); setCompletedCount(nextCount);
+    }, [boardId, boardSettings, supabase]);
 
   const loadAllUsers = useCallback(async () => {
-    try {
-      const profiles = await fetchClientProfiles();
-      setUsers(profiles);
-      return profiles;
-    } catch (err) {
-      console.error("Fehler beim Laden der Profile:", err);
-      return [];
-    }
+    try { const profiles = await fetchClientProfiles(); setUsers(profiles); return profiles; } catch (err) { return []; }
   }, []);
 
-  const loadMembers = useCallback(
-    async (availableProfiles: ClientProfile[]) => {
+  const loadMembers = useCallback(async (availableProfiles: ClientProfile[]) => {
       if (!supabase) return [];
-      const { data, error: membershipError } = await supabase
-        .from('board_members')
-        .select('id, profile_id')
-        .eq('board_id', boardId)
-        .order('created_at', { ascending: true });
-
-      if (membershipError) throw membershipError;
-
-      const rows = (data as BoardMember[] | null) ?? [];
-      const mapped: MemberWithProfile[] = rows
-        .map((entry) => {
-          const profile = availableProfiles.find((candidate) => candidate.id === entry.profile_id) ?? null;
-          if (profile && (profile.is_active ?? true) && !isSuperuserEmail(profile.email)) {
-            return { ...entry, profile };
-          }
-          return null;
-        })
-        .filter((entry): entry is MemberWithProfile => Boolean(entry));
-
+      const { data, error } = await supabase.from('board_members').select('id, profile_id').eq('board_id', boardId).order('created_at', { ascending: true });
+      if (error) throw error;
+      const rows = (data as BoardMember[]) ?? [];
+      const mapped = rows.map((entry) => {
+          const profile = availableProfiles.find((c) => c.id === entry.profile_id) ?? null;
+          return (profile && (profile.is_active ?? true) && !isSuperuserEmail(profile.email)) ? { ...entry, profile } : null;
+        }).filter((e): e is MemberWithProfile => Boolean(e));
       setMembers(mapped);
       return mapped;
-    },
-    [boardId, supabase],
-  );
+    }, [boardId, supabase]);
 
   const loadCards = useCallback(async () => {
     if (!supabase) return;
-    const { data, error: cardsError } = await supabase
-      .from('kanban_cards')
-      .select('id, card_id, card_data, stage, position')
-      .eq('board_id', boardId)
-      .order('position', { ascending: true });
-
-    if (cardsError) throw cardsError;
-
-    const rows = (data as any[] | null) ?? [];
-    const normalized = rows
-      .map((row) => normalizeCard(row))
-      .filter((card): card is TeamBoardCard => Boolean(card))
-      .map((card) => ({
-        ...card,
-        position: card.position ?? 0,
-      }));
-
-    normalized.sort((a, b) => {
-      const aKey = droppableKey(a.assigneeId, a.status);
-      const bKey = droppableKey(b.assigneeId, b.status);
-      if (aKey === bKey) {
-        return a.position - b.position;
-      }
-      return aKey.localeCompare(bKey);
-    });
-
+    const { data, error } = await supabase.from('kanban_cards').select('id, card_id, card_data, stage, position').eq('board_id', boardId).order('position', { ascending: true });
+    if (error) throw error;
+    const normalized = (data ?? []).map(normalizeCard).filter((c): c is TeamBoardCard => !!c);
+    normalized.sort((a, b) => { const kA = droppableKey(a.assigneeId, a.status), kB = droppableKey(b.assigneeId, b.status); return kA === kB ? a.position - b.position : kA.localeCompare(kB); });
     setCards(normalized);
   }, [boardId, supabase]);
 
-  const evaluatePermissions = useCallback(
-    async (availableProfiles: ClientProfile[], currentMembers: MemberWithProfile[]) => {
-      if (!supabase) {
-        setCanModify(false);
-        return;
-      }
+  const evaluatePermissions = useCallback(async (profiles: ClientProfile[], currentMembers: MemberWithProfile[]) => {
+      if (!supabase) { setCanModify(false); return; }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setCanModify(false); return; }
+      
+      setCurrentUser(user); // User speichern
 
-      try {
-        const { data: authData, error: authError } = await supabase.auth.getUser();
-        if (authError || !authData.user) {
-          setCanModify(false);
-          return;
-        }
-
-        const authUser = authData.user;
-        const email = authUser.email ?? '';
-        const profile = availableProfiles.find((candidate) => candidate.id === authUser.id);
-        const role = String(profile?.role ?? '').toLowerCase();
-
-        const elevated =
-          role === 'admin' ||
-          role === 'owner' ||
-          role === 'manager' ||
-          role === 'superuser' ||
-          isSuperuserEmail(email);
-
-        const member = currentMembers.some((entry) => entry.profile_id === authUser.id);
-
-        let ownsBoard = false;
-        let isBoardAdmin = false;
-        try {
-          const { data: boardRow } = await supabase
-            .from('kanban_boards')
-            .select('owner_id, board_admin_id')
-            .eq('id', boardId)
-            .maybeSingle();
-
-          if (boardRow) {
-            ownsBoard = boardRow.owner_id === authUser.id;
-            isBoardAdmin = boardRow.board_admin_id === authUser.id;
-          }
-        } catch (e) { /* Ignore */ }
-
-        setCanModify(elevated || member || ownsBoard || isBoardAdmin);
-      } catch (cause) {
-        setCanModify(false);
-      }
-    },
-    [boardId, supabase],
-  );
-
-  // --- INITIALISIERUNG ---
+      const profile = profiles.find(p => p.id === user.id);
+      const role = String(profile?.role || '').toLowerCase();
+      const elevated = role === 'admin' || role === 'owner' || role === 'manager' || role === 'superuser' || isSuperuserEmail(user.email || '');
+      const member = currentMembers.some(m => m.profile_id === user.id);
+      let owns = false, admin = false;
+      try { const { data } = await supabase.from('kanban_boards').select('owner_id, board_admin_id').eq('id', boardId).maybeSingle(); if(data) { owns = data.owner_id === user.id; admin = data.board_admin_id === user.id; } } catch {}
+      setCanModify(elevated || member || owns || admin);
+    }, [boardId, supabase]);
 
   useEffect(() => {
     if (!supabase) return;
-
     let active = true;
-
     const loadAll = async () => {
-      setLoading(true);
+      setLoading(true); setError(null);
       try {
-        const loadedProfiles = await loadAllUsers();
+        const profiles = await loadAllUsers();
         if (!active) return;
-
         await loadBoardSettings();
-        const currentMembers = await loadMembers(loadedProfiles);
+        const mems = await loadMembers(profiles);
         await loadCards();
-        await evaluatePermissions(loadedProfiles, currentMembers);
-      } catch (cause) {
-        if (!active) return;
-        console.error('❌ Fehler beim Laden des Teamboards', cause);
-        enqueueSnackbar('Fehler beim Laden der Daten.', { variant: 'error' });
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
+        await evaluatePermissions(profiles, mems);
+      } catch (e) { if (active) setError('Fehler beim Laden.'); } finally { if (active) setLoading(false); }
     };
-
     loadAll();
+    return () => { active = false; };
+  }, [boardId]);
 
-    return () => {
-      active = false;
-    };
-  }, [boardId]); // Abhängigkeiten reduziert auf boardId
-
-  // --- ACTIONS ---
-
-  const openCreateDialog = () => {
-    if (!canModify) return;
-    setEditingCard(null);
-    setDraft(defaultDraft);
-    setDueDateError(false);
-    setDialogOpen(true);
-  };
-
-  const openEditDialog = (card: TeamBoardCard) => {
-    if (!canModify) return;
-    setEditingCard(card);
-    setDraft({
-      description: card.description,
-      dueDate: card.dueDate ?? '',
-      important: card.important,
-      assigneeId: card.assigneeId,
-      status: card.status,
-    });
-    setDueDateError(false);
-    setDialogOpen(true);
-  };
-
-  const closeDialog = () => {
-    if (saving) return;
-    setDialogOpen(false);
-    setEditingCard(null);
-    setDraft(defaultDraft);
-    setDueDateError(false);
-  };
-
-  const handleDraftChange = <K extends keyof TaskDraft>(key: K, value: TaskDraft[K]) => {
-    setDraft(prev => ({ ...prev, [key]: value }));
-    if (key === 'dueDate') {
-      setDueDateError(!value);
-    }
-  };
+  // ACTIONS
+  const openCreateDialog = () => { if (!canModify) return; setEditingCard(null); setDraft(defaultDraft); setDueDateError(false); setDialogOpen(true); };
+  const openEditDialog = (card: TeamBoardCard) => { if (!canModify) return; setEditingCard(card); setDraft({ description: card.description, dueDate: card.dueDate ?? '', important: card.important, assigneeId: card.assigneeId, status: card.status }); setDueDateError(false); setDialogOpen(true); };
+  const closeDialog = () => { if (!saving) { setDialogOpen(false); setEditingCard(null); setDraft(defaultDraft); setDueDateError(false); }};
+  const handleDraftChange = (k: keyof TaskDraft, v: any) => { setDraft(p => ({...p, [k]: v})); if(k==='dueDate') setDueDateError(!v); };
 
   const handleDragEnd = async (result: DropResult) => {
     if (!canModify || !result.destination) return;
     const { source, destination } = result;
-    
     if (source.droppableId === destination.droppableId && source.index === destination.index) return;
-
     const working = createColumnsMapFromCards(cards);
-    const sourceEntries = [...(working.get(source.droppableId) ?? [])];
-    const [removed] = sourceEntries.splice(source.index, 1);
-    working.set(source.droppableId, sourceEntries);
-
+    const srcList = working.get(source.droppableId) || [];
+    const [moved] = srcList.splice(source.index, 1);
+    working.set(source.droppableId, srcList);
     const destInfo = parseDroppableKey(destination.droppableId);
-    const updatedCard: TeamBoardCard = {
-      ...removed,
-      assigneeId: destInfo.assigneeId,
-      status: destInfo.status,
-    };
-
-    const destEntries = source.droppableId === destination.droppableId ? sourceEntries : [...(working.get(destination.droppableId) ?? [])];
-    destEntries.splice(destination.index, 0, updatedCard);
-    working.set(destination.droppableId, destEntries);
-
-    const flattened = flattenColumnsMap(working);
-    setCards(flattened);
-    
-    try {
-      await persistAllCards(flattened);
-    } catch (cause) {
-      enqueueSnackbar('Fehler beim Speichern der Position.', { variant: 'error' });
-      await loadCards();
-    }
+    const updated = { ...moved, assigneeId: destInfo.assigneeId, status: destInfo.status };
+    const destList = source.droppableId === destination.droppableId ? srcList : (working.get(destination.droppableId) || []);
+    destList.splice(destination.index, 0, updated);
+    working.set(destination.droppableId, destList);
+    const flat = flattenColumnsMap(working);
+    setCards(flat);
+    try { await persistAllCards(flat); } catch { setError('Speicherfehler'); loadCards(); }
   };
 
   const saveTask = async () => {
-    if (!supabase) return;
-    if (!draft.description.trim()) {
-      enqueueSnackbar('Bitte eine Beschreibung eingeben.', { variant: 'warning' });
-      return;
-    }
-    if (!draft.dueDate) {
-      setDueDateError(true);
-      enqueueSnackbar('Bitte einen Zieltermin festlegen.', { variant: 'warning' });
-      return;
-    }
-    if (draft.status !== 'backlog' && !draft.assigneeId) {
-      enqueueSnackbar('Bitte ein Teammitglied zuweisen.', { variant: 'warning' });
-      return;
-    }
-
+    if (!draft.description.trim()) { enqueueSnackbar('Beschreibung fehlt', { variant: 'warning' }); return; }
+    if (!draft.dueDate) { setDueDateError(true); enqueueSnackbar('Datum fehlt', { variant: 'warning' }); return; }
+    if (draft.status !== 'backlog' && !draft.assigneeId) { enqueueSnackbar('Mitglied fehlt', { variant: 'warning' }); return; }
     setSaving(true);
-
     try {
       const working = createColumnsMapFromCards(cards);
-
       if (editingCard) {
-        const previousKey = droppableKey(editingCard.assigneeId, editingCard.status);
-        const previousEntries = [...(working.get(previousKey) ?? [])];
-        const previousIndex = previousEntries.findIndex((entry) => entry.cardId === editingCard.cardId);
-
-        if (previousIndex !== -1) {
-          previousEntries.splice(previousIndex, 1);
-        }
-
-        const updatedCard: TeamBoardCard = {
-          ...editingCard,
-          description: draft.description.trim(),
-          dueDate: draft.dueDate,
-          important: draft.important,
-          assigneeId: draft.assigneeId,
-          status: draft.status,
-        };
-
-        working.set(previousKey, previousEntries);
-
-        const nextKey = droppableKey(updatedCard.assigneeId, updatedCard.status);
-        const targetEntries = nextKey === previousKey ? previousEntries : [...(working.get(nextKey) ?? [])];
-        
-        const insertIndex = nextKey === previousKey && previousIndex >= 0 ? previousIndex : targetEntries.length;
-        targetEntries.splice(insertIndex, 0, updatedCard);
-        working.set(nextKey, targetEntries);
+        const prevKey = droppableKey(editingCard.assigneeId, editingCard.status);
+        const prevList = working.get(prevKey) || [];
+        const idx = prevList.findIndex(c => c.cardId === editingCard.cardId);
+        if (idx !== -1) prevList.splice(idx, 1);
+        working.set(prevKey, prevList);
+        const updated = { ...editingCard, ...draft };
+        const nextKey = droppableKey(updated.assigneeId, updated.status);
+        const nextList = prevKey === nextKey ? prevList : (working.get(nextKey) || []);
+        nextList.splice(prevKey === nextKey && idx >= 0 ? idx : nextList.length, 0, updated);
+        working.set(nextKey, nextList);
       } else {
-        const cardId = `team-${crypto.randomUUID()}`;
         const { data: { user } } = await supabase.auth.getUser();
-        
-        const newCard: TeamBoardCard = {
-          rowId: cardId,
-          cardId,
-          description: draft.description.trim(),
-          dueDate: draft.dueDate,
-          important: draft.important,
-          assigneeId: draft.assigneeId,
-          status: draft.status,
-          position: 0,
-          createdBy: user?.id,
-        };
-
-        const targetKey = droppableKey(newCard.assigneeId, newCard.status);
-        const targetEntries = [...(working.get(targetKey) ?? [])];
-        targetEntries.push(newCard);
-        working.set(targetKey, targetEntries);
+        const newCard = { rowId: `team-${crypto.randomUUID()}`, cardId: `team-${crypto.randomUUID()}`, ...draft, position: 0, createdBy: user?.id };
+        const key = droppableKey(newCard.assigneeId, newCard.status);
+        const list = working.get(key) || [];
+        list.push(newCard as TeamBoardCard);
+        working.set(key, list);
       }
-
-      const nextCards = flattenColumnsMap(working);
-      setCards(nextCards);
-      await persistAllCards(nextCards);
+      const flat = flattenColumnsMap(working);
+      setCards(flat);
+      await persistAllCards(flat);
       enqueueSnackbar('Aufgabe gespeichert', { variant: 'success' });
       closeDialog();
-    } catch (cause) {
-      console.error('❌ Fehler beim Speichern', cause);
-      enqueueSnackbar('Fehler beim Speichern der Aufgabe.', { variant: 'error' });
-      await loadCards();
-    } finally {
-      setSaving(false);
-    }
+    } catch { enqueueSnackbar('Fehler beim Speichern', { variant: 'error' }); } finally { setSaving(false); }
   };
 
   const deleteTask = async () => {
-    if (!supabase || !editingCard) return;
+    if (!editingCard) return;
     setSaving(true);
     try {
       const working = createColumnsMapFromCards(cards);
-      const previousKey = droppableKey(editingCard.assigneeId, editingCard.status);
-      const previousEntries = [...(working.get(previousKey) ?? [])];
-      const index = previousEntries.findIndex((entry) => entry.cardId === editingCard.cardId);
-
-      if (index === -1) throw new Error('Aufgabe nicht gefunden');
-
-      previousEntries.splice(index, 1);
-      working.set(previousKey, previousEntries);
-
-      const nextCards = flattenColumnsMap(working);
-      setCards(nextCards);
-      await persistAllCards(nextCards);
-      enqueueSnackbar('Aufgabe gelöscht', { variant: 'success' });
-      closeDialog();
-    } catch (cause) {
-      enqueueSnackbar('Fehler beim Löschen der Aufgabe.', { variant: 'error' });
-      await loadCards();
-    } finally {
-      setSaving(false);
-    }
+      const key = droppableKey(editingCard.assigneeId, editingCard.status);
+      const list = working.get(key) || [];
+      const idx = list.findIndex(c => c.cardId === editingCard.cardId);
+      if (idx !== -1) {
+        list.splice(idx, 1);
+        working.set(key, list);
+        const flat = flattenColumnsMap(working);
+        setCards(flat);
+        await persistAllCards(flat);
+        enqueueSnackbar('Aufgabe gelöscht', { variant: 'success' });
+        closeDialog();
+      }
+    } catch { enqueueSnackbar('Fehler beim Löschen', { variant: 'error' }); } finally { setSaving(false); }
   };
 
-  const handleCompleteFlow = useCallback(async () => {
+  const handleCompleteFlow = async () => {
     if (!canModify || flowSaving) return;
-
-    const finishedCards = cards.filter((card) => card.status === 'done');
-    if (finishedCards.length === 0) return;
-
+    const done = cards.filter(c => c.status === 'done');
+    if (done.length === 0) return;
     setFlowSaving(true);
-
     try {
-      const remainingCards = cards.filter((card) => card.status !== 'done');
-      await persistAllCards(remainingCards);
-      await persistCompletedCount(completedCount + finishedCards.length);
-      setCards(remainingCards);
-      enqueueSnackbar('Flow abgeschlossen & archiviert', { variant: 'success' });
-    } catch (cause) {
-      enqueueSnackbar('Fehler beim Abschließen des Flows.', { variant: 'error' });
-      await loadCards();
-    } finally {
-      setFlowSaving(false);
-    }
-  }, [canModify, cards, completedCount, flowSaving, loadCards, persistAllCards, persistCompletedCount, enqueueSnackbar]);
+      const remain = cards.filter(c => c.status !== 'done');
+      await persistAllCards(remain);
+      await persistCompletedCount(completedCount + done.length);
+      setCards(remain);
+      enqueueSnackbar('Flow abgeschlossen', { variant: 'success' });
+    } catch { enqueueSnackbar('Fehler beim Abschließen', { variant: 'error' }); loadCards(); } finally { setFlowSaving(false); }
+  };
 
-  // --- RENDER ---
+  // --- Filterung ---
+  const filteredCards = useMemo(() => {
+      let result = cards;
 
-  const backlogCards = useMemo(
-    () => cards.filter((card) => card.status === 'backlog').sort((a, b) => a.position - b.position),
-    [cards],
-  );
+      if (filters.mine && currentUser) {
+         result = result.filter(c => c.assigneeId === currentUser.id);
+      }
 
-  const memberColumns = useMemo(() => {
-    return members.map((member) => {
-      const rowCards = cards.filter((card) => card.assigneeId === member.profile_id);
-      return {
-        member,
-        flow1: rowCards.filter((card) => card.status === 'flow1').sort((a, b) => a.position - b.position),
-        flow: rowCards.filter((card) => card.status === 'flow').sort((a, b) => a.position - b.position),
-        done: rowCards.filter((card) => card.status === 'done').sort((a, b) => a.position - b.position),
-      };
-    });
-  }, [cards, members]);
+      if (filters.overdue) {
+          const today = new Date().toISOString().split('T')[0];
+          result = result.filter(c => c.dueDate && c.dueDate < today);
+      }
 
-  const doneCardsCount = useMemo(
-    () => cards.filter((card) => card.status === 'done').length,
-    [cards],
-  );
+      if (filters.important) {
+          result = result.filter(c => c.important);
+      }
+
+      return result;
+  }, [cards, filters, currentUser]);
+
+  // RENDER
+  const backlogCards = useMemo(() => filteredCards.filter(c => c.status === 'backlog').sort((a, b) => a.position - b.position), [filteredCards]);
+  const memberColumns = useMemo(() => members.map(m => {
+    const mine = filteredCards.filter(c => c.assigneeId === m.profile_id);
+    return { member: m, flow1: mine.filter(c => c.status === 'flow1').sort((a,b)=>a.position-b.position), flow: mine.filter(c => c.status === 'flow').sort((a,b)=>a.position-b.position), done: mine.filter(c => c.status === 'done').sort((a,b)=>a.position-b.position) };
+  }), [filteredCards, members]);
+  const doneCardsCount = useMemo(() => filteredCards.filter(c => c.status === 'done').length, [filteredCards]);
 
   const renderCard = (card: TeamBoardCard, index: number) => {
-    const dueDateLabel = card.dueDate ? new Date(card.dueDate).toLocaleDateString('de-DE') : null;
+    const due = card.dueDate ? new Date(card.dueDate).toLocaleDateString('de-DE') : null;
     const overdue = card.dueDate ? new Date(card.dueDate) < new Date(new Date().toDateString()) : false;
-    const creator = card.createdBy ? users.find((u) => u.id === card.createdBy) : null;
-    const creatorInitials = creator ? getInitials(creator.full_name || creator.name || '') : null;
+    const creator = card.createdBy ? users.find(u => u.id === card.createdBy) : null;
+    const initials = creator ? getInitials(creator.full_name || creator.name || '') : null;
+    
+    // ✅ NEU: Highlight & Animation
+    const isHighlighted = highlightCardId === card.cardId;
 
     return (
       <Draggable key={card.cardId} draggableId={card.cardId} index={index} isDragDisabled={!canModify}>
-        {(provided, snapshot) => (
-          <Card
-            ref={provided.innerRef}
-            {...provided.draggableProps}
-            {...provided.dragHandleProps}
-            sx={{
-              width: '100%',
-              maxWidth: CARD_WIDTH,
-              minWidth: { xs: '100%', sm: CARD_WIDTH },
-              mb: 1.5,
-              borderRadius: 2.5,
-              boxShadow: snapshot.isDragging
-                ? '0 18px 30px rgba(15, 23, 42, 0.22)'
-                : '0 4px 14px rgba(15, 23, 42, 0.08)',
-              position: 'relative',
-              cursor: canModify ? 'grab' : 'default',
-              transition: 'transform 0.14s ease, box-shadow 0.14s ease',
-              border: '1px solid',
-              borderColor: card.important ? 'error.light' : 'rgba(148, 163, 184, 0.35)',
-              height: 'auto',
-              minHeight: MIN_CARD_HEIGHT,
-              display: 'flex',
-              flexDirection: 'column',
-              background: (theme) =>
-                snapshot.isDragging
-                  ? theme.palette.background.paper
-                  : 'linear-gradient(165deg, rgba(255,255,255,0.98) 0%, rgba(244,247,255,0.92) 100%)',
-              '&:hover': {
-                transform: snapshot.isDragging ? 'scale(1.02)' : 'translateY(-2px)',
-                boxShadow: '0 10px 22px rgba(15, 23, 42, 0.16)',
-              },
+        {(prov, snap) => (
+          <Card 
+            ref={(el) => {
+                prov.innerRef(el);
+                if (isHighlighted && el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+                }
             }}
+            {...prov.draggableProps} 
+            {...prov.dragHandleProps} 
+            sx={{ 
+                width: '100%', maxWidth: CARD_WIDTH, mb: 1.5, borderRadius: 2.5, 
+                boxShadow: snap.isDragging ? '0 18px 30px rgba(15,23,42,0.22)' : '0 4px 14px rgba(15,23,42,0.08)', 
+                position: 'relative', border: '1px solid', 
+                // Styles für Highlight
+                borderColor: isHighlighted ? '#ffc107' : (card.important ? 'error.light' : 'rgba(148,163,184,0.35)'), 
+                animation: isHighlighted ? `${blinkAnimation} 1s 5` : 'none',
+                height: 'auto', minHeight: MIN_CARD_HEIGHT, display: 'flex', flexDirection: 'column', 
+                background: snap.isDragging ? 'background.paper' : 'linear-gradient(165deg, rgba(255,255,255,0.98) 0%, rgba(244,247,255,0.92) 100%)', 
+                '&:hover': { transform: snap.isDragging ? 'scale(1.02)' : 'translateY(-2px)', boxShadow: '0 10px 22px rgba(15,23,42,0.16)' } 
+            }} 
             onClick={() => openEditDialog(card)}
           >
-            {card.important && (
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: 8,
-                  left: 8,
-                  width: 10,
-                  height: 10,
-                  borderRadius: '50%',
-                  backgroundColor: '#d32f2f',
-                }}
-              />
-            )}
-            <CardContent
-              sx={{
-                pr: 3,
-                py: 1.5,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 0.75,
-                height: '100%',
-                position: 'relative',
-              }}
-            >
-              <Tooltip
-                title={card.description}
-                placement="top-start"
-                arrow
-                disableInteractive
-                enterDelay={1000}
-              >
-                <Typography
-                  variant="body2"
-                  sx={{
-                    fontWeight: 400,
-                    fontSize: '0.9rem',
-                    lineHeight: 1.4,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical',
-                    whiteSpace: 'normal',
-                    textTransform: 'none',
-                    mb: 1.5,
-                  }}
-                >
-                  {card.description || 'Ohne Beschreibung'}
-                </Typography>
+            {card.important && <Box sx={{ position: 'absolute', top: 8, left: 8, width: 10, height: 10, borderRadius: '50%', backgroundColor: '#d32f2f' }} />}
+            <CardContent sx={{ pr: 3, py: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75, height: '100%' }}>
+              <Tooltip title={card.description} placement="top-start" arrow enterDelay={1000}>
+                <Typography variant="body2" sx={{ fontWeight: 400, fontSize: '0.9rem', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', mb: 1.5 }}>{card.description || 'Ohne Beschreibung'}</Typography>
               </Tooltip>
-              
               <Box sx={{ mt: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                {dueDateLabel && (
-                  <Typography
-                    variant="caption"
-                    color={overdue ? 'error.main' : 'text.secondary'}
-                    sx={{ fontWeight: overdue ? 600 : 500 }}
-                  >
-                    Fällig: {dueDateLabel}
-                  </Typography>
-                )}
-                
-                {creatorInitials && (
-                   <Tooltip title={`Erstellt von: ${creator?.full_name || creator?.name}`} placement="top" arrow>
-                       <Typography
-                         variant="caption"
-                         sx={{
-                           fontSize: '0.65rem',
-                           color: 'text.disabled',
-                           fontWeight: 600,
-                           backgroundColor: 'rgba(0,0,0,0.05)',
-                           borderRadius: '4px',
-                           px: 0.5,
-                           py: 0.25,
-                           ml: 'auto'
-                         }}
-                       >
-                         {creatorInitials}
-                       </Typography>
-                   </Tooltip>
-                )}
+                {due && <Typography variant="caption" color={overdue ? 'error.main' : 'text.secondary'} sx={{ fontWeight: overdue ? 600 : 500 }}>Fällig: {due}</Typography>}
+                {initials && <Tooltip title={`Erstellt von: ${creator?.full_name}`}><Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.disabled', fontWeight: 600, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: '4px', px: 0.5, py: 0.25, ml: 'auto' }}>{initials}</Typography></Tooltip>}
               </Box>
             </CardContent>
           </Card>
@@ -820,89 +362,54 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
     );
   };
 
-  if (!supabase) {
-    return (
-      <Box sx={{ p: 4 }}>
-        <SupabaseConfigNotice />
-      </Box>
-    );
-  }
-
-  if (loading) {
-    return (
-      <Box sx={{ p: 4 }}>
-        <Typography variant="body1">🔄 Teamboard wird geladen...</Typography>
-      </Box>
-    );
-  }
+  if (!supabase) return <Box sx={{ p: 4 }}><SupabaseConfigNotice /></Box>;
+  if (loading) return <Box sx={{ p: 4 }}><Typography>🔄 Teamboard wird geladen...</Typography></Box>;
 
   return (
-    <Box
-      sx={{
-        p: { xs: 2, md: 3 },
-        background: 'linear-gradient(180deg, rgba(240, 244, 255, 0.8) 0%, rgba(255, 255, 255, 0.95) 45%)',
-        height: '100%', 
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 3,
-        overflow: 'hidden', // ✅ FIX: Kein Scrollen im Hauptcontainer
-      }}
-    >
+    <Box sx={{ p: { xs: 2, md: 3 }, background: 'linear-gradient(180deg, rgba(240, 244, 255, 0.8) 0%, rgba(255, 255, 255, 0.95) 45%)', height: '100%', display: 'flex', flexDirection: 'column', gap: 3, overflow: 'hidden' }}>
+      {/* Header mit Zurück und Filter */}
+      <Box sx={{ p: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+            {onExit && <Button onClick={onExit} startIcon={<ArrowBack />}>Zurück</Button>}
+            
+            <Box sx={{ display: 'flex', gap: 1 }}>
+                 <Chip 
+                    icon={<FilterList />} 
+                    label="Meine" 
+                    clickable 
+                    color={filters.mine ? "primary" : "default"} 
+                    onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))}
+                 />
+                 <Chip 
+                    icon={<Warning />} 
+                    label="Überfällig" 
+                    clickable 
+                    color={filters.overdue ? "error" : "default"} 
+                    onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))}
+                 />
+                 <Chip 
+                    icon={<PriorityHigh />} 
+                    label="Wichtig" 
+                    clickable 
+                    color={filters.important ? "warning" : "default"} 
+                    onClick={() => setFilters(prev => ({ ...prev, important: !prev.important }))}
+                 />
+            </Box>
+        </Box>
+      </Box>
+
       <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'hidden' }}>
         <DragDropContext onDragEnd={handleDragEnd}>
+          {/* ... Grid Layout (gleich geblieben) ... */}
           <Grid container spacing={3} sx={{ height: '100%' }} alignItems="flex-start" wrap="nowrap">
-            {/* Backlog Column */}
             <Grid item xs={12} md={3} sx={{ height: '100%' }}>
-              <Card
-                sx={{
-                  height: '100%',
-                  borderRadius: 3,
-                  border: '1px solid',
-                  borderColor: 'rgba(148, 163, 184, 0.28)',
-                  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
+              <Card sx={{ height: '100%', borderRadius: 3, border: '1px solid', borderColor: 'rgba(148,163,184,0.28)', display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflow: 'hidden', p: 2 }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ flexShrink: 0 }}>
-                    <Typography variant="h6">Aufgabenspeicher</Typography>
-                    {canModify && (
-                      <IconButton color="primary" size="small" onClick={openCreateDialog}>
-                        <AddIcon fontSize="small" />
-                      </IconButton>
-                    )}
-                  </Stack>
-                  
-                  {/* ✅ FIX: Droppable Bereich scrollbar */}
+                  <Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="h6">Aufgabenspeicher</Typography>{canModify && <IconButton color="primary" size="small" onClick={openCreateDialog}><AddIcon fontSize="small" /></IconButton>}</Stack>
                   <Droppable droppableId={droppableKey(null, 'backlog')}>
                     {(provided) => (
-                      <Box
-                        ref={provided.innerRef}
-                        {...provided.droppableProps}
-                        sx={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'stretch',
-                          gap: 1,
-                          flex: 1,
-                          overflowY: 'auto',
-                          border: '1px solid',
-                          borderColor: 'rgba(148, 163, 184, 0.22)',
-                          borderRadius: 2,
-                          p: 1.5,
-                          backgroundColor: (theme) => alpha(theme.palette.primary.light, 0.08),
-                          transition: 'background-color 0.12s ease',
-                          '&:hover': {
-                            backgroundColor: (theme) => alpha(theme.palette.primary.light, 0.16),
-                          },
-                        }}
-                      >
-                        {backlogCards.length === 0 && (
-                          <Typography variant="body2" color="text.secondary">
-                            Keine Aufgaben im Speicher.
-                          </Typography>
-                        )}
+                      <Box ref={provided.innerRef} {...provided.droppableProps} sx={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, overflowY: 'auto', border: '1px solid', borderColor: 'rgba(148,163,184,0.22)', borderRadius: 2, p: 1.5, backgroundColor: alpha('#1976d2', 0.08) }}>
+                        {backlogCards.length === 0 && <Typography variant="body2" color="text.secondary">Keine Aufgaben im Speicher.</Typography>}
                         {backlogCards.map((card, index) => renderCard(card, index))}
                         {provided.placeholder}
                       </Box>
@@ -911,155 +418,41 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
                 </CardContent>
               </Card>
             </Grid>
-
-            {/* Team Flow Column */}
             <Grid item xs={12} md={9} sx={{ height: '100%' }}>
-              <Card
-                sx={{
-                  height: '100%',
-                  borderRadius: 3,
-                  border: '1px solid',
-                  borderColor: 'rgba(148, 163, 184, 0.28)',
-                  boxShadow: '0 12px 30px rgba(15, 23, 42, 0.08)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-              >
+              <Card sx={{ height: '100%', borderRadius: 3, border: '1px solid', borderColor: 'rgba(148,163,184,0.28)', display: 'flex', flexDirection: 'column' }}>
                 <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflow: 'hidden', p: 2 }}>
-                  <Typography variant="h6" sx={{ flexShrink: 0 }}>Team-Flow</Typography>
-                  
-                  {/* ✅ FIX: Tabelle scrollbar */}
+                  <Typography variant="h6">Team-Flow</Typography>
                   <Box sx={{ flex: 1, overflowY: 'auto' }}>
                     <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
                       <Box component="thead" sx={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'background.paper' }}>
-                        <Box
-                          component="tr"
-                          sx={{
-                            '& th': {
-                              borderBottom: '1px solid',
-                              borderColor: 'rgba(148, 163, 184, 0.3)',
-                              py: 1,
-                              px: 1.5,
-                              textTransform: 'uppercase',
-                              fontSize: '0.75rem',
-                              letterSpacing: '0.06em',
-                              color: 'text.secondary',
-                            },
-                          }}
-                        >
+                        <Box component="tr" sx={{ '& th': { borderBottom: '1px solid rgba(148,163,184,0.3)', py: 1, px: 1.5, textTransform: 'uppercase', fontSize: '0.75rem', color: 'text.secondary' } }}>
                           <Box component="th" align="left">Mitglied</Box>
-                          <Box component="th" align="center" width="25%">
-                            {statusLabels.flow1}
-                          </Box>
-                          <Box component="th" align="center" width="25%">
-                            {statusLabels.flow}
-                          </Box>
-                          <Box component="th" align="center" width="25%">
-                            <Stack spacing={1} alignItems="center">
-                              <Box component="span">{statusLabels.done}</Box>
-                              <Stack direction="row" spacing={1} alignItems="center" justifyContent="center">
-                                <Chip
-                                  size="small"
-                                  color="primary"
-                                  variant="outlined"
-                                  label={`${completedCount} gesamt`}
-                                />
-                                {canModify && (
-                                  <Button
-                                    size="small"
-                                    variant="contained"
-                                    onClick={handleCompleteFlow}
-                                    disabled={flowSaving || doneCardsCount === 0}
-                                    sx={{ textTransform: 'none' }}
-                                  >
-                                    Abschließen
-                                  </Button>
-                                )}
-                              </Stack>
-                            </Stack>
-                          </Box>
+                          <Box component="th" align="center" width="25%">{statusLabels.flow1}</Box>
+                          <Box component="th" align="center" width="25%">{statusLabels.flow}</Box>
+                          <Box component="th" align="center" width="25%"><Stack spacing={1} alignItems="center"><span>{statusLabels.done}</span><Stack direction="row" spacing={1}><Chip size="small" color="primary" variant="outlined" label={`${completedCount} gesamt`} />{canModify && <Button size="small" variant="contained" onClick={handleCompleteFlow} disabled={flowSaving || doneCardsCount === 0} sx={{ textTransform: 'none' }}>Abschließen</Button>}</Stack></Stack></Box>
                         </Box>
                       </Box>
                       <Box component="tbody">
-                        {memberColumns.length === 0 && (
-                          <Box component="tr">
-                            <Box component="td" colSpan={4} sx={{ py: 3, textAlign: 'center', color: 'text.secondary' }}>
-                              Keine Mitglieder hinterlegt. Füge Mitglieder im Management-Bereich hinzu.
-                            </Box>
-                          </Box>
-                        )}
-                        {memberColumns.map(({ member, flow1, flow, done }) => {
-                          const label = member.profile?.full_name || member.profile?.email || 'Unbekannt';
-                          return (
-                            <Box
-                              component="tr"
-                              key={member.id}
-                              sx={{
-                                '& td': {
-                                  borderBottom: '1px solid',
-                                  borderColor: 'rgba(148, 163, 184, 0.2)',
-                                  px: 1.5,
-                                  py: 1.5,
-                                  verticalAlign: 'top',
-                                },
-                              }}
-                            >
-                              <Box component="td" width="25%">
-                                <Stack spacing={0.5}>
-                                  <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                                    {label}
-                                  </Typography>
-                                  {member.profile?.company && (
-                                    <Typography variant="caption" color="text.secondary">
-                                      {member.profile.company}
-                                    </Typography>
-                                  )}
-                                </Stack>
-                              </Box>
-                              {(['flow1', 'flow', 'done'] as TeamBoardStatus[]).map((status) => {
-                                const droppableId = droppableKey(member.profile_id, status);
-                                const rows = status === 'flow1' ? flow1 : status === 'flow' ? flow : done;
+                        {memberColumns.map(({ member, flow1, flow, done }) => (
+                          <Box component="tr" key={member.id} sx={{ '& td': { borderBottom: '1px solid rgba(148,163,184,0.2)', px: 1.5, py: 1.5, verticalAlign: 'top' } }}>
+                            <Box component="td" width="25%"><Stack spacing={0.5}><Typography variant="subtitle2" fontWeight={600}>{member.profile?.full_name || member.profile?.email}</Typography>{member.profile?.company && <Typography variant="caption" color="text.secondary">{member.profile.company}</Typography>}</Stack></Box>
+                            {[flow1, flow, done].map((rows, i) => {
+                                const status = i===0 ? 'flow1' : i===1 ? 'flow' : 'done';
                                 return (
-                                  <Box component="td" key={droppableId} width="25%">
-                                    <Droppable droppableId={droppableId}>
-                                      {(providedDroppable) => (
-                                        <Box
-                                          ref={providedDroppable.innerRef}
-                                          {...providedDroppable.droppableProps}
-                                          sx={{
-                                            display: 'flex',
-                                            flexDirection: 'column',
-                                            alignItems: 'stretch',
-                                            minHeight: 160,
-                                            gap: 1,
-                                            overflow: 'visible',
-                                            border: '1px solid',
-                                            borderColor: 'rgba(148, 163, 184, 0.22)',
-                                            borderRadius: 2,
-                                            p: 1.5,
-                                            backgroundColor: (theme) => alpha(theme.palette.primary.light, 0.06),
-                                            transition: 'background-color 0.12s ease',
-                                            '&:hover': {
-                                              backgroundColor: (theme) => alpha(theme.palette.primary.light, 0.16),
-                                            },
-                                          }}
-                                        >
-                                          {rows.length === 0 && (
-                                            <Typography variant="body2" color="text.secondary" align="center">
-                                              —
-                                            </Typography>
-                                          )}
-                                          {rows.map((card, index) => renderCard(card, index))}
-                                          {providedDroppable.placeholder}
+                                  <Box component="td" key={status} width="25%">
+                                    <Droppable droppableId={droppableKey(member.profile_id, status as TeamBoardStatus)}>
+                                      {(prov) => (
+                                        <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ display: 'flex', flexDirection: 'column', minHeight: 160, gap: 1, border: '1px solid rgba(148,163,184,0.22)', borderRadius: 2, p: 1.5, backgroundColor: alpha('#1976d2', 0.06) }}>
+                                          {rows.map((c, idx) => renderCard(c, idx))}
+                                          {prov.placeholder}
                                         </Box>
                                       )}
                                     </Droppable>
                                   </Box>
                                 );
-                              })}
-                            </Box>
-                          );
-                        })}
+                            })}
+                          </Box>
+                        ))}
                       </Box>
                     </Box>
                   </Box>
@@ -1069,55 +462,10 @@ export default function TeamKanbanBoard({ boardId }: TeamKanbanBoardProps) {
           </Grid>
         </DragDropContext>
       </Box>
-
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{editingCard ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2}>
-            <TextField
-              label="Aufgabenbeschreibung"
-              value={draft.description}
-              onChange={(event) => handleDraftChange('description', event.target.value)}
-              fullWidth
-              multiline
-              minRows={2}
-            />
-            <TextField
-              label="Zieltermin"
-              type="date"
-              InputLabelProps={{ shrink: true }}
-              value={draft.dueDate}
-              onChange={(event) => handleDraftChange('dueDate', event.target.value)}
-              onBlur={() => setDueDateError(!draft.dueDate)}
-              required
-              error={dueDateError && !draft.dueDate}
-              helperText={dueDateError && !draft.dueDate ? 'Bitte einen Zieltermin auswählen.' : undefined}
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={draft.important}
-                  onChange={(event) => handleDraftChange('important', event.target.checked)}
-                />
-              }
-              label="Wichtige Aufgabe markieren"
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          {editingCard && (
-            <Button color="error" onClick={deleteTask} disabled={saving} startIcon={<DeleteIcon />}>
-              Löschen
-            </Button>
-          )}
-          <Box sx={{ flexGrow: 1 }} />
-          <Button onClick={closeDialog} disabled={saving}>
-            Abbrechen
-          </Button>
-          <Button onClick={saveTask} disabled={saving} variant="contained">
-            Speichern
-          </Button>
-        </DialogActions>
+        <DialogContent dividers><Stack spacing={2}><TextField label="Aufgabenbeschreibung" value={draft.description} onChange={(e) => handleDraftChange('description', e.target.value)} fullWidth multiline minRows={2} /><TextField label="Zieltermin" type="date" InputLabelProps={{ shrink: true }} value={draft.dueDate} onChange={(e) => handleDraftChange('dueDate', e.target.value)} required error={dueDateError && !draft.dueDate} /><FormControlLabel control={<Checkbox checked={draft.important} onChange={(e) => handleDraftChange('important', e.target.checked)} />} label="Wichtige Aufgabe markieren" /></Stack></DialogContent>
+        <DialogActions>{editingCard && <Button color="error" onClick={deleteTask} disabled={saving} startIcon={<DeleteIcon />}>Löschen</Button>}<Box sx={{ flexGrow: 1 }} /><Button onClick={closeDialog} disabled={saving}>Abbrechen</Button><Button onClick={saveTask} disabled={saving} variant="contained">Speichern</Button></DialogActions>
       </Dialog>
     </Box>
   );

@@ -22,21 +22,43 @@ import {
   ListItem,
   ListItemText,
   InputAdornment,
+  Tooltip,
+  Stack
 } from '@mui/material';
 import { DropResult } from '@hello-pangea/dnd';
-import { Assessment, Close, Delete, Add, Done, Settings, Assignment, People, ArrowUpward, ArrowDownward, Edit } from '@mui/icons-material';
+import { 
+  Assessment, 
+  Close, 
+  Delete, 
+  Add, 
+  Settings, 
+  Assignment, 
+  Done,
+  ViewHeadline,
+  ViewList,
+  ViewModule,
+  AddCircle,
+  FilterList,
+  Warning,
+  PriorityHigh,
+  ErrorOutline,
+  Star,
+  Edit,
+  ArrowUpward,
+  ArrowDownward
+} from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { KanbanCard } from './original/KanbanCard';
-import { KanbanColumnsView, KanbanLaneView, KanbanSwimlaneView } from './original/KanbanViews';
+import { KanbanColumnsView } from './original/KanbanViews';
 import { ArchiveDialog, EditCardDialog, NewCardDialog } from './original/KanbanDialogs';
 import { nullableDate, toBoolean } from '@/utils/booleans';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders';
-import { ProjectBoardCard, LayoutDensity, ViewMode } from '@/types';
+import { ProjectBoardCard, LayoutDensity } from '@/types';
 
 // --- Typen & Helper ---
 
@@ -71,6 +93,14 @@ interface OriginalKanbanBoardProps {
   highlightCardId?: string | null;
 }
 
+interface TopTopic {
+  id: string;
+  title: string;
+  calendar_week?: string;
+  due_date?: string;
+  position: number;
+}
+
 const DEFAULT_COLS = [
   {id: "c1", name: "Werkzeug beim Werkzeugmacher", done: false},
   {id: "c2", name: "Werkzeugtransport", done: false},
@@ -94,14 +124,25 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   }
 
   // --- State ---
-  const [viewMode, setViewMode] = useState<ViewMode>('columns');
   const [density, setDensity] = useState<LayoutDensity>('compact');
   const [searchTerm, setSearchTerm] = useState('');
   const [rows, setRows] = useState<ProjectBoardCard[]>([]);
   const [cols, setCols] = useState(DEFAULT_COLS);
-  const [lanes, setLanes] = useState<string[]>(['Projekt A', 'Projekt B', 'Projekt C']);
   const [users, setUsers] = useState<any[]>([]);
   const [canModifyBoard, setCanModifyBoard] = useState(false);
+  const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  
+  // Top Topics
+  const [topTopicsOpen, setTopTopicsOpen] = useState(false);
+  const [topTopics, setTopTopics] = useState<TopTopic[]>([]);
+  
+  // Filter State
+  const [filters, setFilters] = useState({
+    mine: false,
+    overdue: false,
+    priority: false,
+    critical: false
+  });
   
   // Permissions
   const [permissions, setPermissions] = useState({
@@ -165,20 +206,15 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     return card;
   }, []);
 
+  // Bereinigt um Lane-Logik
   const reindexByStage = useCallback((cards: ProjectBoardCard[]): ProjectBoardCard[] => {
     const byStage: Record<string, number> = {};
     return cards.map((c) => {
       const stageKey = inferStage(c);
-      let groupKey = stageKey;
-      if (viewMode === 'swim') {
-        groupKey += '|' + ((c["Verantwortlich"] || '').trim() || '—');
-      } else if (viewMode === 'lane') {
-        groupKey += '|' + (c["Swimlane"] || 'Allgemein');
-      }
-      byStage[groupKey] = (byStage[groupKey] ?? 0) + 1;
-      return { ...c, order: byStage[groupKey], position: byStage[groupKey] };
+      byStage[stageKey] = (byStage[stageKey] ?? 0) + 1;
+      return { ...c, order: byStage[stageKey], position: byStage[stageKey] };
     });
-  }, [viewMode, inferStage]);
+  }, [inferStage]);
   
   const updateArchivedState = useCallback((cards: ProjectBoardCard[]) => {
     setArchivedCards(cards);
@@ -203,7 +239,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
 
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
     const endOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - now.getDay()), 23, 59, 59);
     
     activeCards.forEach(card => {
@@ -225,7 +260,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
             kpis.trOverdue.push(card);
           } else if (trDate.toISOString().split('T')[0] === today) {
             kpis.trToday.push(card);
-          } else if (trDate >= startOfWeek && trDate <= endOfWeek) {
+          } else if (trDate <= endOfWeek) {
             kpis.trThisWeek.push(card);
           }
         }
@@ -246,6 +281,57 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   useEffect(() => {
     onKpiCountChange?.(kpiBadgeCount);
   }, [kpiBadgeCount, onKpiCountChange]);
+
+  // Top Topics Load
+  const loadTopTopics = useCallback(async () => {
+    const { data } = await supabase
+      .from('board_top_topics')
+      .select('*')
+      .eq('board_id', boardId)
+      .order('position');
+    if (data) setTopTopics(data);
+  }, [boardId, supabase]);
+
+  // --- FILTER LOGIC ---
+  const filteredRows = useMemo(() => {
+    let result = rows;
+    
+    if (searchTerm) {
+      const lower = searchTerm.toLowerCase();
+      result = result.filter(r => 
+        Object.values(r).some(v => String(v || '').toLowerCase().includes(lower))
+      );
+    }
+    
+    if (filters.mine && currentUserName) {
+       const myNameParts = currentUserName.toLowerCase().split(' ').filter(p => p.length > 2);
+       result = result.filter(r => {
+          const resp = String(r.Verantwortlich || '').toLowerCase();
+          return myNameParts.some(part => resp.includes(part));
+       });
+    }
+
+    if (filters.overdue) {
+      const today = new Date().toISOString().split('T')[0];
+      result = result.filter(r => {
+         const d = r['Due Date'];
+         return d && d < today;
+      });
+    }
+
+    if (filters.priority) {
+      result = result.filter(r => toBoolean(r.Priorität));
+    }
+
+    if (filters.critical) {
+      result = result.filter(r => 
+        String(r.Ampel || '').toLowerCase().includes('rot') || 
+        ['LK', 'SK'].includes(String(r.Eskalation || '').toUpperCase())
+      );
+    }
+
+    return result;
+  }, [rows, searchTerm, filters, currentUserName]);
 
   // --- REALTIME SUBSCRIPTION ---
   useEffect(() => {
@@ -305,21 +391,18 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
 
   // --- API / Persistence ---
 
-  // ✅ FIX: Patch updated auch selectedCard (lokalen State)
   const patchCard = useCallback(async (card: ProjectBoardCard, changes: Partial<ProjectBoardCard>) => {
     if (!permissions.canEditContent) {
         enqueueSnackbar('Keine Berechtigung.', { variant: 'error' });
         return;
     }
     
-    // Update rows list
     const updatedRows = rows.map(r => {
       if (idFor(r) === idFor(card)) { return { ...r, ...changes } as ProjectBoardCard; }
       return r;
     });
     setRows(updatedRows);
 
-    // Update selected card (if open)
     if (selectedCard && idFor(selectedCard) === idFor(card)) {
       setSelectedCard(prev => prev ? ({ ...prev, ...changes } as ProjectBoardCard) : null);
     }
@@ -359,9 +442,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     try {
       const settings = {
         cols,
-        lanes,
+        // lanes entfernt
         checklistTemplates,
-        viewMode,
+        // viewMode entfernt
         density,
         lastUpdated: new Date().toISOString(),
       };
@@ -418,7 +501,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       enqueueSnackbar(formatSupabaseActionError('Einstellungen speichern', getErrorMessage(error)), { variant: 'error' });
       return false;
     }
-  }, [permissions.canManageSettings, boardId, supabase, cols, lanes, checklistTemplates, viewMode, density, boardName, boardDescription, boardMeta, enqueueSnackbar]);
+  }, [permissions.canManageSettings, boardId, supabase, cols, checklistTemplates, density, boardName, boardDescription, boardMeta, enqueueSnackbar]);
 
   const saveCards = useCallback(async () => {
     if (!permissions.canEditContent) return false;
@@ -474,9 +557,8 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       if (payload?.settings) {
         const s = payload.settings;
         if (s.cols) setCols(s.cols);
-        if (s.lanes) setLanes(s.lanes);
         if (s.checklistTemplates) setChecklistTemplates(s.checklistTemplates);
-        if (s.viewMode) setViewMode(s.viewMode);
+        // if (s.viewMode) setViewMode(s.viewMode); // ViewMode entfernt
         if (s.density) setDensity(s.density);
         return true;
       }
@@ -554,6 +636,11 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       const authUserId = data.user.id;
       const email = data.user.email ?? '';
       const profile = loadedUsers.find((user: any) => user.id === authUserId);
+      
+      if (profile) {
+          setCurrentUserName(profile.full_name || profile.name || email);
+      }
+
       const globalRole = String(profile?.role ?? '').toLowerCase();
       const isSuper = isSuperuserEmail(email) || globalRole === 'superuser';
       const isGlobalAdmin = isSuper || globalRole === 'admin';
@@ -642,19 +729,14 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   useEffect(() => {
     const timeoutId = setTimeout(() => { saveSettings({ skipMeta: true }); }, 1000);
     return () => clearTimeout(timeoutId);
-  }, [cols, lanes, checklistTemplates, viewMode, density, saveSettings]);
+  }, [cols, checklistTemplates, density, saveSettings]);
   
-  // Deep Link: Karte öffnen
+  // Deep Link: Karte öffnen (ohne Modal)
   useEffect(() => {
     if (highlightCardId && rows.length > 0) {
-      const targetCard = rows.find(r => idFor(r) === highlightCardId || r.card_id === highlightCardId || r.id === highlightCardId);
-      if (targetCard) {
-        setSelectedCard(targetCard);
-        setEditModalOpen(true);
-        setEditTabValue(0);
-      }
+      // Karte nur highlighten, Logik in KanbanCard via prop
     }
-  }, [highlightCardId, rows, idFor]);
+  }, [highlightCardId, rows]);
 
   // --- Card Actions ---
   
@@ -743,12 +825,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     if (!Array.isArray(card.StatusHistory)) card.StatusHistory = [];
     card.StatusHistory.unshift(newEntry);
     setRows([...rows]);
-    // Kein Auto-Save hier nötig, da User im Dialog weiter editiert. 
-    // Erst beim Schließen/Ändern von Feldern wird gepatcht, wenn wir das wollen.
-    // Für komplexe Objekte (Arrays) ist patchCard schwieriger, daher nutzen wir hier
-    // noch setRows und verlassen uns auf den manuellen Save oder schließen des Dialogs.
-    // Ideal wäre auch hier patchCard, aber das Array-Merging ist tricky.
-    // Wir lassen es vorerst so und triggern patchCard explizit beim Ändern des Textes (siehe Dialog).
   };
 
   const updateStatusSummary = (card: any) => {
@@ -768,22 +844,24 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   const handleTRNeuChange = async (card: any, newDate: string) => {
     if (!permissions.canEditContent) return;
     
+    if (!newDate) {
+      card["TR_Neu"] = "";
+      setRows([...rows]);
+      return;
+    }
+    
     const { data: authData } = await supabase.auth.getUser();
     const currentUser = users.find(u => u.id === authData.user?.id)?.full_name || 'System';
     
-    let history = Array.isArray(card.TR_History) ? [...card.TR_History] : [];
+    if (!Array.isArray(card["TR_History"])) card["TR_History"] = [];
     
-    // Historie fortschreiben
-    if (card.TR_Neu && card.TR_Neu !== newDate) {
-      history.push({ date: card.TR_Neu, changedBy: currentUser, timestamp: new Date().toISOString(), superseded: true });
+    if (card["TR_Neu"] && card["TR_Neu"] !== newDate) {
+      card["TR_History"].push({ date: card["TR_Neu"], changedBy: currentUser, timestamp: new Date().toISOString(), superseded: true });
     }
     
-    const updates = {
-        TR_Neu: newDate,
-        TR_History: [...history, { date: newDate, changedBy: currentUser, timestamp: new Date().toISOString(), superseded: false }]
-    };
-    
-    patchCard(card, updates);
+    card["TR_Neu"] = newDate;
+    card["TR_History"].push({ date: newDate, changedBy: currentUser, timestamp: new Date().toISOString(), superseded: false });
+    setRows([...rows]);
   };
 
   // --- Drag & Drop Logic ---
@@ -798,15 +876,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     if (!card) return;
 
     let newStage = destination.droppableId;
-    let newResp = null;
-    let newLane = null;
-
-    if (destination.droppableId.includes('||')) {
-      const parts = destination.droppableId.split('||');
-      newStage = parts[0];
-      if (viewMode === 'swim') newResp = parts[1] === ' ' ? '' : parts[1];
-      else if (viewMode === 'lane') newLane = parts[1];
-    }
     
     const newRows = [...rows];
     const cardIndex = newRows.findIndex(r => idFor(r) === draggableId);
@@ -815,17 +884,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     const [movedCard] = newRows.splice(cardIndex, 1);
     
     movedCard["Board Stage"] = newStage;
-    if (newResp !== null) movedCard["Verantwortlich"] = newResp;
-    if (newLane !== null) movedCard["Swimlane"] = newLane;
     
     const targetGroupFilter = (r: any) => {
-        let matches = inferStage(r) === newStage;
-        if (viewMode === 'swim' && newResp !== null) {
-            matches = matches && ((r["Verantwortlich"] || '').trim() || '—') === newResp;
-        } else if (viewMode === 'lane' && newLane !== null) {
-            matches = matches && (r["Swimlane"] || 'Allgemein') === newLane;
-        }
-        return matches;
+        return inferStage(r) === newStage;
     };
 
     let globalInsertIndex = newRows.length;
@@ -852,7 +913,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     const reindexed = reindexByStage(newRows);
     setRows(reindexed);
     
-    // Speichere direkt (Bulk), da Positionen sich verschoben haben
     saveCards(); 
   };
   
@@ -863,10 +923,10 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         card={card}
         index={index}
         density={density}
-        rows={rows}
+        rows={filteredRows} // Hier wird gefiltert
         setRows={setRows}
         saveCards={saveCards}
-        patchCard={patchCard} // ✅ PatchCard wird übergeben
+        patchCard={patchCard}
         setSelectedCard={setSelectedCard}
         setEditModalOpen={setEditModalOpen}
         setEditTabValue={setEditTabValue}
@@ -874,9 +934,10 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         idFor={idFor}
         users={users}
         canModify={permissions.canEditContent}
+        highlighted={highlightCardId === idFor(card) || highlightCardId === card.card_id || highlightCardId === card.id}
       />
     ),
-    [permissions.canEditContent, density, idFor, inferStage, rows, saveCards, patchCard, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users]
+    [filteredRows, permissions.canEditContent, density, idFor, inferStage, saveCards, patchCard, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users, highlightCardId]
   );
   
   const TRKPIPopup = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
@@ -902,7 +963,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         </DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={3}>
-            {/* Erste Zeile: Haupt-Status */}
             <Grid item xs={12} sm={4}>
                 <Card variant="outlined" sx={{ height: '100%', backgroundColor: isOverdue ? '#ffebee' : '#f0f0f0' }}>
                     <CardContent>
@@ -936,8 +996,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
                     </CardContent>
                 </Card>
             </Grid>
-            
-            {/* Zweite Zeile: Verteilung */}
             <Grid item xs={12}>
                 <Typography variant="h6" gutterBottom sx={{ mt: 1, color: 'text.secondary' }}>Kartenverteilung (Stages)</Typography>
                 <Card variant="outlined">
@@ -977,23 +1035,71 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     );
   };
 
+  const TopTopicsDialog = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+      const [localTopics, setLocalTopics] = useState<TopTopic[]>(topTopics);
+      useEffect(() => { setLocalTopics(topTopics); }, [topTopics]);
+      
+      const handleSaveTopic = async (index: number, field: keyof TopTopic, value: any) => {
+          const topic = localTopics[index];
+          const updated = { ...topic, [field]: value };
+          const newTopics = [...localTopics];
+          newTopics[index] = updated;
+          setLocalTopics(newTopics);
+          if (!topic.id.startsWith('temp-')) {
+             await supabase.from('board_top_topics').update({ [field]: value }).eq('id', topic.id);
+          }
+      };
+
+      const handleAdd = async () => {
+          if (localTopics.length >= 5) return;
+          const { data } = await supabase.from('board_top_topics').insert({
+              board_id: boardId,
+              title: '',
+              position: localTopics.length
+          }).select().single();
+          if (data) setLocalTopics([...localTopics, data]);
+      };
+
+      const handleDelete = async (id: string) => {
+          await supabase.from('board_top_topics').delete().eq('id', id);
+          setLocalTopics(localTopics.filter(t => t.id !== id));
+      };
+
+      return (
+        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+           <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+               <Star color="warning" /> Top Themen der Woche
+           </DialogTitle>
+           <DialogContent>
+               <Stack spacing={2} sx={{ mt: 1 }}>
+                   {localTopics.length === 0 && <Typography variant="body2" color="text.secondary">Keine Top-Themen vorhanden.</Typography>}
+                   {localTopics.map((topic, index) => (
+                       <Box key={topic.id} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                           <TextField fullWidth size="small" placeholder="Thema..." value={topic.title} onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} />
+                           <TextField type="week" size="small" label="KW" InputLabelProps={{ shrink: true }} value={topic.calendar_week || ''} onChange={(e) => handleSaveTopic(index, 'calendar_week', e.target.value)} sx={{ width: 130 }} />
+                           <TextField type="date" size="small" label="Datum" InputLabelProps={{ shrink: true }} value={topic.due_date || ''} onChange={(e) => handleSaveTopic(index, 'due_date', e.target.value)} sx={{ width: 150 }} />
+                           <IconButton color="error" onClick={() => handleDelete(topic.id)}><Delete /></IconButton>
+                       </Box>
+                   ))}
+                   {localTopics.length < 5 && <Button startIcon={<Add />} onClick={handleAdd}>Thema hinzufügen</Button>}
+               </Stack>
+           </DialogContent>
+           <DialogActions><Button onClick={onClose}>Schließen</Button></DialogActions>
+        </Dialog>
+      );
+  };
+
   const SettingsDialog = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
     const [currentCols, setCurrentCols] = useState(cols);
-    const [currentLanes, setCurrentLanes] = useState(lanes);
     const [tab, setTab] = useState(0);
     const [newColName, setNewColName] = useState('');
-    const [newLaneName, setNewLaneName] = useState('');
 
     useEffect(() => {
-        if (open) {
-            setCurrentCols(cols);
-            setCurrentLanes(lanes);
-        }
-    }, [open, cols, lanes]);
+        if (open) setCurrentCols(cols);
+    }, [open, cols]);
 
     const handleSave = async () => {
         setCols(currentCols);
-        setLanes(currentLanes);
         const success = await saveSettings();
         if (success) {
             onClose();
@@ -1004,19 +1110,12 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     const handleMoveColumn = (id: string, direction: 'up' | 'down') => {
         const index = currentCols.findIndex(c => c.id === id);
         if (index === -1) return;
-
         const newCols = [...currentCols];
         const [removed] = newCols.splice(index, 1);
-        
         let newIndex = index;
-        if (direction === 'up' && index > 0) {
-            newIndex = index - 1;
-        } else if (direction === 'down' && index < newCols.length) {
-            newIndex = index + 1;
-        } else {
-            return;
-        }
-
+        if (direction === 'up' && index > 0) newIndex = index - 1;
+        else if (direction === 'down' && index < newCols.length) newIndex = index + 1;
+        else return;
         newCols.splice(newIndex, 0, removed);
         setCurrentCols(newCols);
     };
@@ -1043,18 +1142,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         setCurrentCols(currentCols.map(c => c.id === id ? { ...c, done: !c.done } : c));
     }
 
-    const handleAddLane = () => {
-        const trimmedName = newLaneName.trim();
-        if (trimmedName && !currentLanes.includes(trimmedName)) {
-            setCurrentLanes([...currentLanes, trimmedName]);
-            setNewLaneName('');
-        }
-    };
-
-    const handleDeleteLane = (name: string) => {
-        setCurrentLanes(currentLanes.filter(l => l !== name));
-    };
-
     return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
             <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1066,10 +1153,8 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
                 <Tabs value={tab} onChange={(_, newValue) => setTab(newValue)} sx={{ mb: 2 }}>
                     <Tab label="Meta-Daten" icon={<Assignment />} />
                     <Tab label="Spalten (Stages)" icon={<Done />} />
-                    <Tab label="Swimlanes" icon={<People />} />
                 </Tabs>
 
-                {/* Tab 1: Meta-Daten */}
                 {tab === 0 && (
                     <Box sx={{ pt: 1 }}>
                         <TextField label="Board-Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} fullWidth sx={{ mt: 2 }} disabled={!permissions.canManageSettings} />
@@ -1077,7 +1162,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
                     </Box>
                 )}
 
-                {/* Tab 2: Spalten-Verwaltung */}
                 {tab === 1 && (
                     <Box sx={{ pt: 1 }}>
                         <Typography variant="subtitle1" gutterBottom color="text.secondary">Spalten (Stages) definieren</Typography>
@@ -1086,30 +1170,12 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
                                 {currentCols.map((col, index) => (
                                     <ListItem key={col.id} disableGutters secondaryAction={
                                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                            <IconButton 
-                                                size="small"
-                                                onClick={() => handleMoveColumn(col.id, 'up')}
-                                                disabled={!permissions.canManageSettings || index === 0}
-                                            >
-                                                <ArrowUpward fontSize="small" />
-                                            </IconButton>
-                                            <IconButton 
-                                                size="small"
-                                                onClick={() => handleMoveColumn(col.id, 'down')}
-                                                disabled={!permissions.canManageSettings || index === currentCols.length - 1}
-                                            >
-                                                <ArrowDownward fontSize="small" />
-                                            </IconButton>
-                                            
-                                            <Button size="small" onClick={() => handleToggleDone(col.id)} disabled={!permissions.canManageSettings} sx={{ ml: 1, mr: 1, color: col.done ? 'success.main' : 'text.secondary', border: `1px solid ${col.done ? '#4caf50' : 'gray'}`, minWidth: '80px' }}>
-                                                {col.done ? 'Fertig' : 'Normal'}
-                                            </Button>
-                                            <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteColumn(col.id)} disabled={!permissions.canManageSettings || currentCols.length === 1}>
-                                                <Delete />
-                                            </IconButton>
+                                            <IconButton size="small" onClick={() => handleMoveColumn(col.id, 'up')} disabled={!permissions.canManageSettings || index === 0}><ArrowUpward fontSize="small" /></IconButton>
+                                            <IconButton size="small" onClick={() => handleMoveColumn(col.id, 'down')} disabled={!permissions.canManageSettings || index === currentCols.length - 1}><ArrowDownward fontSize="small" /></IconButton>
+                                            <Button size="small" onClick={() => handleToggleDone(col.id)} disabled={!permissions.canManageSettings} sx={{ ml: 1, mr: 1, color: col.done ? 'success.main' : 'text.secondary', border: `1px solid ${col.done ? '#4caf50' : 'gray'}`, minWidth: '80px' }}>{col.done ? 'Fertig' : 'Normal'}</Button>
+                                            <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteColumn(col.id)} disabled={!permissions.canManageSettings || currentCols.length === 1}><Delete /></IconButton>
                                         </Box>
                                     }>
-                                        {/* EDITIERBARES FELD FÜR SPALTENNAMEN */}
                                         <TextField 
                                             value={col.name}
                                             onChange={(e) => handleUpdateColumnName(col.id, e.target.value)}
@@ -1130,30 +1196,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
                         <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                             <TextField size="small" label="Neue Spalte" value={newColName} onChange={(e) => setNewColName(e.target.value)} fullWidth disabled={!permissions.canManageSettings} />
                             <Button variant="contained" startIcon={<Add />} onClick={handleAddColumn} disabled={!permissions.canManageSettings}>Hinzufügen</Button>
-                        </Box>
-                    </Box>
-                )}
-
-                {/* Tab 3: Swimlanes/Lanes-Verwaltung */}
-                {tab === 2 && (
-                    <Box sx={{ pt: 1 }}>
-                        <Typography variant="subtitle1" gutterBottom color="text.secondary">Swimlanes/Kategorien definieren</Typography>
-                        <Card variant="outlined">
-                            <List dense>
-                                {currentLanes.map((lane, index) => (
-                                    <ListItem key={index} disableGutters secondaryAction={
-                                        <IconButton edge="end" aria-label="delete" onClick={() => handleDeleteLane(lane)} disabled={!permissions.canManageSettings}>
-                                            <Delete />
-                                        </IconButton>
-                                    }>
-                                        <ListItemText primary={lane} />
-                                    </ListItem>
-                                ))}
-                            </List>
-                        </Card>
-                        <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                            <TextField size="small" label="Neue Swimlane" value={newLaneName} onChange={(e) => setNewLaneName(e.target.value)} fullWidth disabled={!permissions.canManageSettings} />
-                            <Button variant="contained" startIcon={<Add />} onClick={handleAddLane} disabled={!permissions.canManageSettings}>Hinzufügen</Button>
                         </Box>
                     </Box>
                 )}
@@ -1199,26 +1241,36 @@ return (
       }}>
         <Box sx={{
           display: 'grid',
-          gridTemplateColumns: '1fr repeat(3, auto) repeat(3, auto) repeat(3, auto)', 
+          gridTemplateColumns: '1fr repeat(2, auto) repeat(3, auto) repeat(3, auto)', 
           gap: 1.5,
           alignItems: 'center',
           mt: 0
         }}>
           <TextField size="small" placeholder="Suchen..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} sx={{ minWidth: 220 }} />
 
-          <Button variant={viewMode === 'columns' ? 'contained' : 'outlined'} onClick={() => setViewMode('columns')} sx={{ minWidth: 'auto', p: 1 }} title="Ansicht: Spalten">📊</Button>
-          <Button variant={viewMode === 'swim' ? 'contained' : 'outlined'} onClick={() => setViewMode('swim')} sx={{ minWidth: 'auto', p: 1 }} title="Ansicht: Swimlanes (Verantwortlich)">👥</Button>
-          <Button variant={viewMode === 'lane' ? 'contained' : 'outlined'} onClick={() => setViewMode('lane')} sx={{ minWidth: 'auto', p: 1 }} title="Ansicht: Swimlanes (Kategorie)">🏷️</Button>
-
-          <Button variant={density === 'compact' ? 'contained' : 'outlined'} onClick={() => setDensity('compact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: kompakt">◼</Button>
-          <Button variant={density === 'xcompact' ? 'contained' : 'outlined'} onClick={() => setDensity('xcompact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: extrakompakt">◻</Button>
-          <Button variant={density === 'large' ? 'contained' : 'outlined'} onClick={() => setDensity('large')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: groß">⬜</Button>         
+          <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 0.5 }}>
+             <Chip icon={<FilterList />} label="Meine" clickable color={filters.mine ? "primary" : "default"} onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))} />
+             <Chip icon={<Warning />} label="Überfällig" clickable color={filters.overdue ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))} />
+             <Chip icon={<PriorityHigh />} label="Wichtig" clickable color={filters.priority ? "warning" : "default"} onClick={() => setFilters(prev => ({ ...prev, priority: !prev.priority }))} />
+              <Chip icon={<ErrorOutline />} label="Kritisch" clickable color={filters.critical ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, critical: !prev.critical }))} />
+          </Box>
           
-          <Button variant="contained" size="small" onClick={() => setNewCardOpen(true)} disabled={!permissions.canEditContent}>Neue Karte</Button>
+          <Button variant={density === 'compact' ? 'contained' : 'outlined'} onClick={() => setDensity('compact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: kompakt"><ViewHeadline fontSize="small" /></Button>
+          <Button variant={density === 'xcompact' ? 'contained' : 'outlined'} onClick={() => setDensity('xcompact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: extrakompakt"><ViewList fontSize="small" /></Button>
+          <Button variant={density === 'large' ? 'contained' : 'outlined'} onClick={() => setDensity('large')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: groß"><ViewModule fontSize="small" /></Button>         
+          
+          <Button variant="contained" size="small" startIcon={<AddCircle />} onClick={() => setNewCardOpen(true)} disabled={!permissions.canEditContent}>Neue Karte</Button>
           
           {permissions.canManageSettings && (
-             <IconButton onClick={() => setSettingsOpen(true)} title="Board-Einstellungen">⚙️</IconButton>
+             <IconButton onClick={() => setSettingsOpen(true)} title="Board-Einstellungen">
+                <Settings fontSize="small" />
+             </IconButton>
           )}
+          <Tooltip title="Top Themen">
+             <IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}>
+                <Star fontSize="small" color="warning" />
+             </IconButton>
+          </Tooltip>
           <Badge badgeContent={kpiBadgeCount} color="error" overlap="circular">
             <IconButton onClick={() => setKpiPopupOpen(true)} title="KPIs & Metriken"><Assessment fontSize="small" /></IconButton>
           </Badge>
@@ -1226,24 +1278,15 @@ return (
       </Box>
 
       <Box sx={{ flex: 1, overflow: 'hidden' }}>
-        {viewMode === 'columns' && (
-          <KanbanColumnsView rows={rows} cols={cols} density={density} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} archiveColumn={archiveColumn} renderCard={renderCard} allowDrag={permissions.canEditContent} />
-        )}
-        {viewMode === 'swim' && (
-          <KanbanSwimlaneView rows={rows} cols={cols} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} renderCard={renderCard} allowDrag={permissions.canEditContent} />
-        )}
-        {viewMode === 'lane' && (
-          <KanbanLaneView rows={rows} cols={cols} lanes={lanes} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} renderCard={renderCard} allowDrag={permissions.canEditContent} />
-        )}
+         <KanbanColumnsView rows={filteredRows} cols={cols} density={density} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} archiveColumn={archiveColumn} renderCard={renderCard} allowDrag={permissions.canEditContent} />
       </Box>
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-
-      {/* ✅ NEU: patchCard übergeben */}
-      <EditCardDialog selectedCard={selectedCard} editModalOpen={editModalOpen} setEditModalOpen={setEditModalOpen} editTabValue={editTabValue} setEditTabValue={setEditTabValue} rows={rows} setRows={setRows} users={users} lanes={lanes} checklistTemplates={checklistTemplates} inferStage={inferStage} addStatusEntry={addStatusEntry} updateStatusSummary={updateStatusSummary} handleTRNeuChange={handleTRNeuChange} saveCards={saveCards} patchCard={patchCard} idFor={idFor} setSelectedCard={setSelectedCard} />
-      <NewCardDialog newCardOpen={newCardOpen} setNewCardOpen={setNewCardOpen} cols={cols} lanes={lanes} rows={rows} setRows={setRows} users={users} />
+      <EditCardDialog selectedCard={selectedCard} editModalOpen={editModalOpen} setEditModalOpen={setEditModalOpen} editTabValue={editTabValue} setEditTabValue={setEditTabValue} rows={rows} setRows={setRows} users={users} lanes={[]} checklistTemplates={checklistTemplates} inferStage={inferStage} addStatusEntry={addStatusEntry} updateStatusSummary={updateStatusSummary} handleTRNeuChange={handleTRNeuChange} saveCards={saveCards} patchCard={patchCard} idFor={idFor} setSelectedCard={setSelectedCard} />
+      <NewCardDialog newCardOpen={newCardOpen} setNewCardOpen={setNewCardOpen} cols={cols} lanes={[]} rows={rows} setRows={setRows} users={users} />
       <ArchiveDialog archiveOpen={archiveOpen} setArchiveOpen={setArchiveOpen} archivedCards={archivedCards} restoreCard={restoreCard} deleteCardPermanently={deleteCardPermanently} />
       <TRKPIPopup open={kpiPopupOpen} onClose={() => setKpiPopupOpen(false)} />
+      <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
     </Box>
   );
 });
