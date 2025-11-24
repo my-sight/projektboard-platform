@@ -19,8 +19,9 @@ import {
   TextField,
   Tooltip,
   Typography,
+  Badge
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, FilterList, Warning, PriorityHigh, ArrowBack } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon, FilterList, Warning, PriorityHigh, ArrowBack, Star, Delete } from '@mui/icons-material';
 import { alpha } from '@mui/material/styles';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
 import { useSnackbar } from 'notistack';
@@ -43,9 +44,18 @@ interface BoardMember { id: string; profile_id: string; }
 interface MemberWithProfile extends BoardMember { profile: ClientProfile | null; }
 export type TeamBoardStatus = 'backlog' | 'flow1' | 'flow' | 'done';
 interface TeamBoardCard { rowId: string; cardId: string; description: string; dueDate: string | null; important: boolean; assigneeId: string | null; status: TeamBoardStatus; position: number; createdBy?: string; }
-interface TeamKanbanBoardProps { boardId: string; onExit?: () => void; highlightCardId?: string | null; } // ✅ Prop
+interface TeamKanbanBoardProps { boardId: string; onExit?: () => void; highlightCardId?: string | null; }
 interface TaskDraft { description: string; dueDate: string; important: boolean; assigneeId: string | null; status: TeamBoardStatus; }
 interface DroppableInfo { assigneeId: string | null; status: TeamBoardStatus; }
+
+// Interface für Top Themen
+interface TopTopic {
+  id: string;
+  title: string;
+  calendar_week?: string;
+  due_date?: string;
+  position: number;
+}
 
 const statusLabels: Record<TeamBoardStatus, string> = { backlog: 'Aufgabenspeicher', flow1: 'Flow-1', flow: 'Flow', done: 'Fertig' };
 const CARD_WIDTH = 260;
@@ -98,7 +108,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   const [boardSettings, setBoardSettings] = useState<Record<string, any>>({});
   const [completedCount, setCompletedCount] = useState(0);
   const [users, setUsers] = useState<any[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null); // ✅ Für "Meine" Filter
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // Top Themen State
+  const [topTopics, setTopTopics] = useState<TopTopic[]>([]);
+  const [topTopicsOpen, setTopTopicsOpen] = useState(false);
 
   // Filter State
   const [filters, setFilters] = useState({
@@ -158,12 +172,17 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     setCards(normalized);
   }, [boardId, supabase]);
 
+  const loadTopTopics = useCallback(async () => {
+    const { data } = await supabase.from('board_top_topics').select('*').eq('board_id', boardId).order('position');
+    if (data) setTopTopics(data);
+  }, [boardId, supabase]);
+
   const evaluatePermissions = useCallback(async (profiles: ClientProfile[], currentMembers: MemberWithProfile[]) => {
       if (!supabase) { setCanModify(false); return; }
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setCanModify(false); return; }
       
-      setCurrentUser(user); // User speichern
+      setCurrentUser(user);
 
       const profile = profiles.find(p => p.id === user.id);
       const role = String(profile?.role || '').toLowerCase();
@@ -186,6 +205,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         const mems = await loadMembers(profiles);
         await loadCards();
         await evaluatePermissions(profiles, mems);
+        await loadTopTopics(); // ✅ Top Themen laden
       } catch (e) { if (active) setError('Fehler beim Laden.'); } finally { if (active) setLoading(false); }
     };
     loadAll();
@@ -213,7 +233,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     working.set(destination.droppableId, destList);
     const flat = flattenColumnsMap(working);
     setCards(flat);
-    try { await persistAllCards(flat); } catch { setError('Speicherfehler'); loadCards(); }
+    try { await persistAllCards(flat); enqueueSnackbar('Aufgabe verschoben', { variant: 'success', autoHideDuration: 1500 }); } catch { setError('Speicherfehler'); loadCards(); }
   };
 
   const saveTask = async () => {
@@ -284,23 +304,79 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     } catch { enqueueSnackbar('Fehler beim Abschließen', { variant: 'error' }); loadCards(); } finally { setFlowSaving(false); }
   };
 
+  // --- Top Themen Dialog ---
+  const TopTopicsDialog = ({ open, onClose }: any) => {
+      const [localTopics, setLocalTopics] = useState<TopTopic[]>(topTopics);
+      useEffect(() => { setLocalTopics(topTopics); }, [topTopics]);
+      
+      const handleSaveTopic = async (index: number, field: string, value: any) => {
+          const newTopics = [...localTopics];
+          newTopics[index] = { ...newTopics[index], [field]: value };
+          setLocalTopics(newTopics);
+          if (newTopics[index].id && !newTopics[index].id.startsWith('tmp')) {
+              await supabase.from('board_top_topics').update({ [field]: value }).eq('id', newTopics[index].id);
+          }
+      };
+      const handleAdd = async () => {
+          const { data } = await supabase.from('board_top_topics').insert({ board_id: boardId, title: '', position: localTopics.length }).select().single();
+          if (data) setLocalTopics([...localTopics, data]);
+      };
+      const handleDelete = async (id: string) => {
+          await supabase.from('board_top_topics').delete().eq('id', id);
+          setLocalTopics(prev => prev.filter(t => t.id !== id));
+      };
+
+      return (
+        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+           <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+               <Star color="warning" /> Top Themen der Woche
+           </DialogTitle>
+           <DialogContent>
+               <Stack spacing={2} sx={{ mt: 1 }}>
+                   {localTopics.length === 0 && <Typography variant="body2" color="text.secondary">Keine Top-Themen.</Typography>}
+                   {localTopics.map((topic, index) => (
+                       <Box key={topic.id} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                           <TextField 
+                               fullWidth 
+                               size="small" 
+                               placeholder="Thema..." 
+                               value={topic.title} 
+                               onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} 
+                           />
+                           {/* ✅ Hier ist der Fix: type="date" statt "week" und Speichern in due_date */}
+                           <TextField 
+                               type="date" 
+                               size="small" 
+                               label="Fällig" 
+                               InputLabelProps={{ shrink: true }} 
+                               value={topic.due_date || ''} 
+                               onChange={(e) => handleSaveTopic(index, 'due_date', e.target.value)} 
+                               sx={{ width: 150 }} 
+                           />
+                           <IconButton color="error" onClick={() => handleDelete(topic.id)}><Delete /></IconButton>
+                       </Box>
+                   ))}
+                   {localTopics.length < 5 && <Button startIcon={<AddIcon />} onClick={handleAdd}>Hinzufügen</Button>}
+               </Stack>
+           </DialogContent>
+           <DialogActions><Button onClick={onClose}>Schließen</Button></DialogActions>
+        </Dialog>
+      );
+  };
+
   // --- Filterung ---
   const filteredCards = useMemo(() => {
       let result = cards;
-
       if (filters.mine && currentUser) {
          result = result.filter(c => c.assigneeId === currentUser.id);
       }
-
       if (filters.overdue) {
           const today = new Date().toISOString().split('T')[0];
           result = result.filter(c => c.dueDate && c.dueDate < today);
       }
-
       if (filters.important) {
           result = result.filter(c => c.important);
       }
-
       return result;
   }, [cards, filters, currentUser]);
 
@@ -317,8 +393,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const overdue = card.dueDate ? new Date(card.dueDate) < new Date(new Date().toDateString()) : false;
     const creator = card.createdBy ? users.find(u => u.id === card.createdBy) : null;
     const initials = creator ? getInitials(creator.full_name || creator.name || '') : null;
-    
-    // ✅ NEU: Highlight & Animation
     const isHighlighted = highlightCardId === card.cardId;
 
     return (
@@ -337,7 +411,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 width: '100%', maxWidth: CARD_WIDTH, mb: 1.5, borderRadius: 2.5, 
                 boxShadow: snap.isDragging ? '0 18px 30px rgba(15,23,42,0.22)' : '0 4px 14px rgba(15,23,42,0.08)', 
                 position: 'relative', border: '1px solid', 
-                // Styles für Highlight
                 borderColor: isHighlighted ? '#ffc107' : (card.important ? 'error.light' : 'rgba(148,163,184,0.35)'), 
                 animation: isHighlighted ? `${blinkAnimation} 1s 5` : 'none',
                 height: 'auto', minHeight: MIN_CARD_HEIGHT, display: 'flex', flexDirection: 'column', 
@@ -373,34 +446,22 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             {onExit && <Button onClick={onExit} startIcon={<ArrowBack />}>Zurück</Button>}
             
             <Box sx={{ display: 'flex', gap: 1 }}>
-                 <Chip 
-                    icon={<FilterList />} 
-                    label="Meine" 
-                    clickable 
-                    color={filters.mine ? "primary" : "default"} 
-                    onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))}
-                 />
-                 <Chip 
-                    icon={<Warning />} 
-                    label="Überfällig" 
-                    clickable 
-                    color={filters.overdue ? "error" : "default"} 
-                    onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))}
-                 />
-                 <Chip 
-                    icon={<PriorityHigh />} 
-                    label="Wichtig" 
-                    clickable 
-                    color={filters.important ? "warning" : "default"} 
-                    onClick={() => setFilters(prev => ({ ...prev, important: !prev.important }))}
-                 />
+                 <Chip icon={<FilterList />} label="Meine" clickable color={filters.mine ? "primary" : "default"} onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))} />
+                 <Chip icon={<Warning />} label="Überfällig" clickable color={filters.overdue ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))} />
+                 <Chip icon={<PriorityHigh />} label="Wichtig" clickable color={filters.important ? "warning" : "default"} onClick={() => setFilters(prev => ({ ...prev, important: !prev.important }))} />
             </Box>
         </Box>
+        
+        {/* Top Themen Button */}
+        <Tooltip title="Top Themen">
+            <IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}>
+                <Star fontSize="small" color="warning" />
+            </IconButton>
+        </Tooltip>
       </Box>
 
       <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'hidden' }}>
         <DragDropContext onDragEnd={handleDragEnd}>
-          {/* ... Grid Layout (gleich geblieben) ... */}
           <Grid container spacing={3} sx={{ height: '100%' }} alignItems="flex-start" wrap="nowrap">
             <Grid item xs={12} md={3} sx={{ height: '100%' }}>
               <Card sx={{ height: '100%', borderRadius: 3, border: '1px solid', borderColor: 'rgba(148,163,184,0.28)', display: 'flex', flexDirection: 'column' }}>
@@ -467,6 +528,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         <DialogContent dividers><Stack spacing={2}><TextField label="Aufgabenbeschreibung" value={draft.description} onChange={(e) => handleDraftChange('description', e.target.value)} fullWidth multiline minRows={2} /><TextField label="Zieltermin" type="date" InputLabelProps={{ shrink: true }} value={draft.dueDate} onChange={(e) => handleDraftChange('dueDate', e.target.value)} required error={dueDateError && !draft.dueDate} /><FormControlLabel control={<Checkbox checked={draft.important} onChange={(e) => handleDraftChange('important', e.target.checked)} />} label="Wichtige Aufgabe markieren" /></Stack></DialogContent>
         <DialogActions>{editingCard && <Button color="error" onClick={deleteTask} disabled={saving} startIcon={<DeleteIcon />}>Löschen</Button>}<Box sx={{ flexGrow: 1 }} /><Button onClick={closeDialog} disabled={saving}>Abbrechen</Button><Button onClick={saveTask} disabled={saving} variant="contained">Speichern</Button></DialogActions>
       </Dialog>
+      
+      <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
     </Box>
   );
 }

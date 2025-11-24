@@ -58,12 +58,13 @@ interface TopicRow {
   board_id: string;
   title: string;
   calendar_week: string | null;
+  due_date: string | null; // NEU: due_date hinzugefügt
   position: number;
 }
 
 interface TopicDraft {
   title: string;
-  calendarWeek: string;
+  dueDate: string; // NEU: dueDate statt calendarWeek
 }
 
 interface MemberWithProfile extends BoardMemberRow {
@@ -152,24 +153,23 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   const [attendanceSaving, setAttendanceSaving] = useState(false);
   const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; memberId: string | null }>({ open: false, memberId: null });
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
- 
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setCurrentUserId(user?.id ?? null);
-    }).catch(() => {
-      setCurrentUserId(null);
-    });
+    if (supabase) {
+        supabase.auth.getUser().then(({ data: { user } }) => {
+            setCurrentUserId(user?.id ?? null);
+        }).catch(() => {
+            setCurrentUserId(null);
+        });
+    }
   }, [supabase]);
+
   const isMember = useMemo(() => members.some((m) => m.profile_id === currentUserId), [members, currentUserId]);
   const canManageTopics = canEdit || isMember;
-useEffect(() => {
-    if (!supabase) {
-    return;
-  }
 
-
+  useEffect(() => {
+    if (!supabase) return;
     let active = true;
 
     const run = async () => {
@@ -193,7 +193,7 @@ useEffect(() => {
             .order('week_start', { ascending: true }),
           supabase
             .from('board_top_topics')
-            .select('id, board_id, title, position')
+            .select('*') // Select all fields including due_date
             .eq('board_id', boardId)
             .order('position', { ascending: true }),
         ]);
@@ -244,13 +244,15 @@ useEffect(() => {
         });
         setAttendanceDraft(draft);
 
+        // Topics Loading Fix
         const topicRows = (topicsResult.data as TopicRow[] | null) ?? [];
         setTopics(topicRows);
         const topicDraftValues: Record<string, TopicDraft> = {};
         topicRows.forEach((row) => {
           topicDraftValues[row.id] = {
             title: row.title ?? '',
-            calendarWeek: row.calendar_week ?? '',
+            // Nutze due_date wenn vorhanden, sonst leer
+            dueDate: row.due_date ?? '', 
           };
         });
         setTopicDrafts(topicDraftValues);
@@ -335,7 +337,6 @@ useEffect(() => {
       setMessage('✅ Anwesenheit gespeichert');
       setTimeout(() => setMessage(null), 4000);
 
-      // Refresh attendance map
       const copy = { ...attendanceByWeek };
       if (!copy[selectedWeek]) {
         copy[selectedWeek] = {};
@@ -432,7 +433,7 @@ useEffect(() => {
     try {
       const { data, error } = await supabase
         .from('board_top_topics')
-        .insert({ board_id: boardId, title: '', calendar_week: null, position: topics.length })
+        .insert({ board_id: boardId, title: '', due_date: null, position: topics.length })
         .select()
         .single();
       if (error) throw error;
@@ -443,7 +444,7 @@ useEffect(() => {
         ...prev,
         [topic.id]: {
           title: topic.title ?? '',
-          calendarWeek: topic.calendar_week ?? '',
+          dueDate: '',
         },
       }));
     } catch (cause) {
@@ -455,44 +456,40 @@ useEffect(() => {
   const persistTopic = async (topicId: string) => {
     if (!supabase) return;
 
-    const draft = topicDrafts[topicId] ?? { title: '', calendarWeek: '' };
+    const draft = topicDrafts[topicId] ?? { title: '', dueDate: '' };
     const trimmedTitle = draft.title.trim();
-    const sanitizedWeek = draft.calendarWeek.trim();
-    const weekValue = sanitizedWeek || '';
+    const dateValue = draft.dueDate;
 
     const current = topics.find((topic) => topic.id === topicId);
-    const currentWeek = current?.calendar_week ?? '';
+    const currentDate = current?.due_date ?? '';
 
-    if (current && current.title === trimmedTitle && currentWeek === weekValue) {
-      if (draft.title !== trimmedTitle || draft.calendarWeek !== weekValue) {
-        setTopicDrafts((prev) => ({
-          ...prev,
-          [topicId]: { title: trimmedTitle, calendarWeek: weekValue },
-        }));
-      }
+    if (current && current.title === trimmedTitle && currentDate === dateValue) {
       return;
     }
 
     try {
       const { error } = await supabase
         .from('board_top_topics')
-        .update({ title: trimmedTitle, calendar_week: weekValue ? weekValue : null })
+        .update({ 
+            title: trimmedTitle, 
+            due_date: dateValue || null, // Jetzt wird due_date gespeichert
+            calendar_week: null // Wir nutzen das alte Feld nicht mehr primär
+        })
         .eq('id', topicId);
       if (error) throw error;
 
       setTopics((prev) =>
         prev.map((topic) =>
           topic.id === topicId
-            ? { ...topic, title: trimmedTitle, calendar_week: weekValue || null }
+            ? { ...topic, title: trimmedTitle, due_date: dateValue || null }
             : topic,
         ),
       );
-      setTopicDrafts((prev) => ({
-        ...prev,
-        [topicId]: { title: trimmedTitle, calendarWeek: weekValue },
-      }));
-      setMessage('✅ Top-Thema aktualisiert');
-      setTimeout(() => setMessage(null), 3000);
+      
+      // Feedback
+      setMessage('✅ Top-Thema gespeichert');
+      setTimeout(() => setMessage(null), 2000);
+      
     } catch (cause) {
       console.error('❌ Fehler beim Aktualisieren eines Top-Themas', cause);
       setMessage('❌ Top-Thema konnte nicht aktualisiert werden.');
@@ -754,7 +751,7 @@ useEffect(() => {
                 Halte die wichtigsten Themen fest (maximal fünf Einträge).
               </Typography>
             </Box>
-{canManageTopics && (
+            {canManageTopics && (
               <Button
                 variant="outlined"
                 startIcon={<AddIcon />}
@@ -775,7 +772,7 @@ useEffect(() => {
             {topics.map((topic) => {
               const draft = topicDrafts[topic.id] ?? {
                 title: topic.title ?? '',
-                calendarWeek: topic.calendar_week ?? '',
+                dueDate: topic.due_date ?? '',
               };
 
               return (
@@ -792,42 +789,45 @@ useEffect(() => {
                       setTopicDrafts((prev) => ({
                         ...prev,
                         [topic.id]: {
-                          ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
+                          ...(prev[topic.id] ?? { title: '', dueDate: '' }),
                           title: event.target.value,
                         },
                       }))
                     }
                     onBlur={() => persistTopic(topic.id)}
-       fullWidth
-                     disabled={!canManageTopics}
-                   />
-                   <TextField
-                     type="week"
-                     label="Kalenderwoche"
-                     value={draft.calendarWeek}
-                     onChange={(event) =>
-                       setTopicDrafts((prev) => ({
-                         ...prev,
-                         [topic.id]: {
-                           ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
-                           calendarWeek: event.target.value,
-                         },
-                       }))
-                     }
-                     onBlur={() => persistTopic(topic.id)}
-                     InputLabelProps={{ shrink: true }}
-                     sx={{ width: { xs: '100%', md: 200 } }}
-                     disabled={!canManageTopics}
-                   />
-                   {canManageTopics && (
-                     <Button
-                       color="error"
-                       onClick={() => deleteTopic(topic.id)}
-                       startIcon={<DeleteIcon />}
-                     >
-                       Löschen
-                     </Button>
-                   )}
+                    fullWidth
+                    disabled={!canManageTopics}
+                  />
+                  
+                  {/* Korrigiertes Datumsfeld */}
+                  <TextField
+                    type="date"
+                    label="Fällig bis"
+                    value={draft.dueDate}
+                    onChange={(event) =>
+                      setTopicDrafts((prev) => ({
+                        ...prev,
+                        [topic.id]: {
+                          ...(prev[topic.id] ?? { title: '', dueDate: '' }),
+                          dueDate: event.target.value,
+                        },
+                      }))
+                    }
+                    onBlur={() => persistTopic(topic.id)}
+                    InputLabelProps={{ shrink: true }}
+                    sx={{ width: { xs: '100%', md: 200 } }}
+                    disabled={!canManageTopics}
+                  />
+                  
+                  {canManageTopics && (
+                    <Button
+                      color="error"
+                      onClick={() => deleteTopic(topic.id)}
+                      startIcon={<DeleteIcon />}
+                    >
+                      Löschen
+                    </Button>
+                  )}
                 </Stack>
               );
             })}
