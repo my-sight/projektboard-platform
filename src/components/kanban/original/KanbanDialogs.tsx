@@ -48,7 +48,6 @@ export interface EditCardDialogProps {
   saveCards: () => void;
   idFor: (card: any) => string;
   setSelectedCard: (card: any) => void;
-  patchCard: (card: any, changes: any) => Promise<void | boolean>;
 }
 
 export function EditCardDialog({
@@ -69,58 +68,12 @@ export function EditCardDialog({
   saveCards,
   idFor,
   setSelectedCard,
-  patchCard
 }: EditCardDialogProps) {
   if (!selectedCard) return null;
 
   const stage = inferStage(selectedCard);
   const tasks = checklistTemplates[stage] || [];
   const stageChecklist = (selectedCard.ChecklistDone && selectedCard.ChecklistDone[stage]) || {};
-
-  // Helfer: Den aktuell ausgewählten User anhand ID oder Name finden
-  const getCurrentUserValue = () => {
-    if (selectedCard.userId) return selectedCard.userId;
-    if (selectedCard.assigneeId) return selectedCard.assigneeId;
-    
-    // Fallback: Suche über den Namenstring
-    const name = selectedCard['Verantwortlich'];
-    if (!name) return '';
-    const found = users.find(u => 
-        (u.full_name && u.full_name === name) || 
-        (u.name && u.name === name) ||
-        (u.email && u.email === name)
-    );
-    return found ? found.id : ''; // Wenn nicht gefunden, leer lassen (oder man könnte den Namen als String lassen, aber Select braucht Value)
-  };
-
-  // Helfer: User setzen und alle Felder updaten
-  const handleUserChange = (newId: string) => {
-      const user = users.find(u => u.id === newId);
-      if (user) {
-          const displayName = user.full_name || user.name || user.email;
-          // Update local state immediately
-          selectedCard['Verantwortlich'] = displayName;
-          selectedCard['userId'] = user.id;
-          selectedCard['assigneeId'] = user.id; // Redundanz für Teamboard-Kompatibilität
-          selectedCard['email'] = user.email;
-      } else {
-          // Reset
-          selectedCard['Verantwortlich'] = '';
-          selectedCard['userId'] = null;
-          selectedCard['assigneeId'] = null;
-          selectedCard['email'] = null;
-      }
-      setRows([...rows]);
-      // Trigger save/patch
-      if (patchCard) {
-          patchCard(selectedCard, {
-              Verantwortlich: selectedCard['Verantwortlich'],
-              userId: selectedCard['userId'],
-              assigneeId: selectedCard['assigneeId'],
-              email: selectedCard['email']
-          });
-      }
-  };
 
   return (
     <Dialog
@@ -189,40 +142,33 @@ export function EditCardDialog({
               />
 
               <Typography>Verantwortlich</Typography>
-              <FormControl size="small" fullWidth>
-                  <Select
-                    value={getCurrentUserValue()}
-                    displayEmpty
-                    onChange={(e) => handleUserChange(e.target.value as string)}
-                    renderValue={(selected) => {
-                        if (!selected) {
-                            // Wenn keine ID da ist, zeige den Legacy-String an
-                            return selectedCard['Verantwortlich'] || <em>Nicht zugewiesen</em>;
-                        }
-                        const u = users.find(user => user.id === selected);
-                        return u ? (u.full_name || u.name || u.email) : (selectedCard['Verantwortlich'] || <em>Unbekannt</em>);
-                    }}
-                  >
-                    <MenuItem value="">
-                      <em>Nicht zugewiesen</em>
-                    </MenuItem>
-                    {users.map((user: any) => (
-                      <MenuItem key={user.id || user.email} value={user.id}>
-                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                            {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
-                            {user.department || user.company ? ` – ${user.department || user.company}` : ''}
-                          </Typography>
-                          {user.email && (
-                            <Typography variant="caption" color="text.secondary">
-                              {user.email}
-                            </Typography>
-                          )}
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-              </FormControl>
+              <Select
+                size="small"
+                value={selectedCard['Verantwortlich'] || ''}
+                onChange={(e) => {
+                  selectedCard['Verantwortlich'] = e.target.value;
+                  setRows([...rows]);
+                }}
+              >
+                <MenuItem value="">
+                  <em>Nicht zugewiesen</em>
+                </MenuItem>
+                {users.map((user: any) => (
+                  <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
+                        {user.department || user.company ? ` – ${user.department || user.company}` : ''}
+                      </Typography>
+                      {user.email && (
+                        <Typography variant="caption" color="text.secondary">
+                          {user.email}
+                        </Typography>
+                      )}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
 
               <Typography>Fällig bis</Typography>
               <TextField
@@ -255,22 +201,6 @@ export function EditCardDialog({
                   setRows([...rows]);
                 }}
               />
-
-              <Typography>Swimlane</Typography>
-              <Select
-                size="small"
-                value={selectedCard['Swimlane'] || ''}
-                onChange={(e) => {
-                  selectedCard['Swimlane'] = e.target.value;
-                  setRows([...rows]);
-                }}
-              >
-                {lanes.map((lane) => (
-                  <MenuItem key={lane} value={lane}>
-                    {lane}
-                  </MenuItem>
-                ))}
-              </Select>
 
               <Typography>Bild</Typography>
               <TextField
@@ -425,12 +355,20 @@ export function EditCardDialog({
             </Box>
 
             <Box sx={{ mt: 3 }}>
-              {/* TR Datum Logic identical to original */}
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
                 TR-Datum (Original)
               </Typography>
               {selectedCard['TR_Datum'] ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 1, backgroundColor: 'action.hover', borderRadius: 1 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1,
+                    p: 1,
+                    backgroundColor: 'action.hover',
+                    borderRadius: 1,
+                  }}
+                >
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     {new Date(selectedCard['TR_Datum']).toLocaleDateString('de-DE')}
                   </Typography>
@@ -453,7 +391,9 @@ export function EditCardDialog({
               )}
 
               <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>TR neu</Typography>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  TR neu
+                </Typography>
                 <TextField
                   size="small"
                   type="date"
@@ -462,6 +402,19 @@ export function EditCardDialog({
                   InputLabelProps={{ shrink: true }}
                 />
               </Box>
+
+              <TextField
+                label="TR-Datum"
+                type="date"
+                value={(selectedCard && (selectedCard['TR_Neu'] || selectedCard['TR_Datum'])) || ''}
+                onChange={(e) => {
+                  const newCard = { ...selectedCard };
+                  newCard['TR_Neu'] = e.target.value;
+                  setSelectedCard(newCard);
+                }}
+                InputLabelProps={{ shrink: true }}
+                sx={{ mt: 2, mb: 2 }}
+              />
 
               {(selectedCard['TR_Neu'] || selectedCard['TR_Datum']) && (
                 <FormControlLabel
@@ -479,17 +432,87 @@ export function EditCardDialog({
                         const index = rows.findIndex((row) => idFor(row) === idFor(selectedCard));
                         if (index >= 0) {
                           const updatedRows = [...rows];
-                          updatedRows[index] = newCard;
+                          updatedRows[index] = {
+                            ...updatedRows[index],
+                            TR_Completed: checked,
+                            TR_Completed_At: completionTimestamp,
+                            TR_Completed_Date: completionTimestamp,
+                          };
                           setRows(updatedRows);
                           setTimeout(() => saveCards(), 500);
                         }
                       }}
-                      sx={{ color: 'success.main', '&.Mui-checked': { color: 'success.main' } }}
+                      sx={{
+                        color: 'success.main',
+                        '&.Mui-checked': {
+                          color: 'success.main',
+                        },
+                      }}
                     />
                   }
                   label="TR abgeschlossen"
                   sx={{ mt: 1, mb: 2 }}
                 />
+              )}
+
+              {(selectedCard['TR_Datum'] || selectedCard['TR_Neu'] || (selectedCard['TR_History'] && selectedCard['TR_History'].length > 0)) && (
+                <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid var(--line)' }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                    TR-Termine
+                  </Typography>
+
+                  {selectedCard['TR_Datum'] && (
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#4caf50', mb: 0.5 }}>
+                      TR ursprünglich: {new Date(selectedCard['TR_Datum']).toLocaleDateString('de-DE')}
+                    </Typography>
+                  )}
+
+                  {(() => {
+                    const history = selectedCard['TR_History'] || [];
+                    const currentTRNeu = selectedCard['TR_Neu'];
+                    const uniqueDates = new Set();
+                    const uniqueEntries: any[] = [];
+
+                    history.forEach((entry: any) => {
+                      const entryDate = entry.date;
+                      if (entryDate !== currentTRNeu && !uniqueDates.has(entryDate)) {
+                        uniqueDates.add(entryDate);
+                        uniqueEntries.push(entry);
+                      }
+                    });
+
+                    return (
+                      uniqueEntries.length > 0 && (
+                        <Box sx={{ mb: 1 }}>
+                          {uniqueEntries.map((trEntry: any, idx: number) => (
+                            <Typography
+                              key={`${trEntry.date}-${idx}`}
+                              variant="body2"
+                              sx={{
+                                color: 'var(--muted)',
+                                display: 'block',
+                                textDecoration: 'line-through',
+                                opacity: 0.7,
+                                mb: 0.5,
+                              }}
+                            >
+                              TR geändert: {new Date(trEntry.date).toLocaleDateString('de-DE')}
+                              {trEntry.changedBy && (
+                                <span style={{ fontSize: '12px', marginLeft: '8px' }}>(von {trEntry.changedBy})</span>
+                              )}
+                            </Typography>
+                          ))}
+                        </Box>
+                      )
+                    );
+                  })()}
+
+                  {selectedCard['TR_Neu'] && (
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#2196f3' }}>
+                      TR aktuell: {new Date(selectedCard['TR_Neu']).toLocaleDateString('de-DE')}
+                    </Typography>
+                  )}
+                </Box>
               )}
             </Box>
           </Box>
@@ -497,60 +520,223 @@ export function EditCardDialog({
 
         {editTabValue === 2 && (
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Team-Mitglieder</Typography>
-            {/* Team logic same as original */}
+            <Typography variant="h6" sx={{ mb: 2 }}>
+              Team-Mitglieder
+            </Typography>
+
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               {(() => {
                 const userList = Array.isArray(users) ? users : [];
                 const userById = new Map<string, any>();
-                userList.forEach((user: any) => { if (user.id) userById.set(user.id, user); });
+                userList.forEach((user: any) => {
+                  if (user.id) {
+                    userById.set(user.id, user);
+                  }
+                });
+
+                const formatUserLabel = (user: any) => {
+                  if (!user) return 'Mitglied auswählen';
+                  const baseName = user.full_name || user.name || user.email || 'Unbekannt';
+                  const department = user.department || user.company;
+                  return department ? `${baseName} – ${department}` : baseName;
+                };
 
                 return (selectedCard.Team || []).map((member: any, idx: number) => {
+                  const memberId = `team-member-${idx}`;
+                  const selectedUser = member.userId ? userById.get(member.userId) : null;
+
                   return (
-                    <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: '3fr 2fr auto', alignItems: 'flex-start', gap: 1, border: '1px solid var(--line)', borderRadius: 1, p: 1 }}>
-                      <FormControl size="small" fullWidth>
-                          <InputLabel>Mitglied</InputLabel>
+                    <Box
+                      key={idx}
+                      sx={{
+                        display: 'grid',
+                        gridTemplateColumns: '3fr 2fr auto',
+                        alignItems: 'flex-start',
+                        gap: 1,
+                        border: '1px solid var(--line)',
+                        borderRadius: 1,
+                        p: 1,
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        <FormControl size="small" fullWidth>
+                          <InputLabel id={`${memberId}-label`}>Mitglied</InputLabel>
                           <Select
+                            labelId={`${memberId}-label`}
+                            id={memberId}
                             value={member.userId || ''}
                             label="Mitglied"
                             onChange={(e) => {
                               const userId = String(e.target.value);
                               if (userId) {
-                                const selected = userById.get(userId);
+                                const selected = userById.get(userId) || null;
                                 if (selected) {
+                                  const displayName =
+                                    selected.full_name || selected.name || selected.email || 'Unbekannt';
                                   selectedCard.Team[idx] = {
                                     ...selectedCard.Team[idx],
                                     userId,
-                                    name: selected.full_name || selected.name || selected.email,
+                                    name: displayName,
                                     email: selected.email || '',
                                     department: selected.department || selected.company || '',
                                   };
                                 }
+                              } else {
+                                selectedCard.Team[idx] = {
+                                  ...selectedCard.Team[idx],
+                                  userId: '',
+                                  name: '',
+                                  email: '',
+                                  department: '',
+                                };
                               }
                               setRows([...rows]);
                             }}
+                            renderValue={(selected) => {
+                              if (!selected) return 'Mitglied auswählen';
+                              const user = userById.get(String(selected));
+                              return formatUserLabel(user);
+                            }}
                           >
-                            {userList.map((user: any) => (
-                                <MenuItem key={user.id} value={user.id}>{user.full_name || user.email}</MenuItem>
-                            ))}
+                            <MenuItem value="">
+                              <em>Mitglied auswählen</em>
+                            </MenuItem>
+                            {userList
+                              .filter((user: any) => user.id)
+                              .map((user: any) => (
+                                <MenuItem key={user.id} value={user.id}>
+                                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                      {user.full_name || user.name || user.email || 'Unbekannt'}
+                                    </Typography>
+                                    {(user.department || user.company) && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        {(user.department || user.company) as string}
+                                      </Typography>
+                                    )}
+                                    {user.email && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        {user.email}
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                </MenuItem>
+                              ))}
                           </Select>
-                      </FormControl>
-                      <TextField size="small" label="Rolle" value={member.role || ''} onChange={(e) => { selectedCard.Team[idx].role = e.target.value; setRows([...rows]); }} />
-                      <IconButton color="error" size="small" onClick={() => { selectedCard.Team.splice(idx, 1); setRows([...rows]); }}><Typography>🗑️</Typography></IconButton>
+                        </FormControl>
+
+                        {selectedUser && (
+                          <Box>
+                            <Typography variant="caption" color="text.secondary">
+                              {selectedUser.email}
+                            </Typography>
+                            {selectedUser.department && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                Abteilung: {selectedUser.department}
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
+                      </Box>
+
+                      <TextField
+                        size="small"
+                        label="Rolle"
+                        value={member.role || ''}
+                        onChange={(e) => {
+                          selectedCard.Team[idx].role = e.target.value;
+                          setRows([...rows]);
+                        }}
+                        sx={{ minWidth: 120 }}
+                        placeholder="z.B. Dev, Design..."
+                      />
+
+                      <IconButton
+                        color="error"
+                        size="small"
+                        onClick={() => {
+                          selectedCard.Team.splice(idx, 1);
+                          setRows([...rows]);
+                        }}
+                        title="Mitglied entfernen"
+                        sx={{
+                          flexShrink: 0,
+                          mt: 0.5,
+                          '&:hover': { backgroundColor: 'error.light', color: 'white' },
+                        }}
+                      >
+                        🗑️
+                      </IconButton>
                     </Box>
                   );
                 });
               })()}
             </Box>
-            <Button variant="outlined" onClick={() => { if (!selectedCard.Team) selectedCard.Team = []; selectedCard.Team.push({ userId: '', name: '', role: '' }); setRows([...rows]); }} sx={{ mt: 1 }}>+ Team-Mitglied</Button>
+
+            <Button
+              variant="outlined"
+              onClick={() => {
+                if (!selectedCard.Team) selectedCard.Team = [];
+                selectedCard.Team.push({ userId: '', name: '', email: '', department: '', role: '' });
+                setRows([...rows]);
+              }}
+              sx={{ mt: 1 }}
+            >
+              + Team-Mitglied hinzufügen
+            </Button>
+
+            {selectedCard.Team && selectedCard.Team.length > 0 && (
+              <Box sx={{ mt: 3, p: 2, backgroundColor: 'action.hover', borderRadius: 1 }}>
+                <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                  Team-Übersicht:
+                </Typography>
+                <Typography variant="body2">{selectedCard.Team.length} Mitglieder</Typography>
+                <Typography variant="body2">
+                  Rollen: {Array.from(new Set(selectedCard.Team.map((m: any) => m.role).filter(Boolean))).join(', ')}
+                </Typography>
+                {(() => {
+                  const departments = Array.from(
+                    new Set(
+                      (selectedCard.Team || [])
+                        .map((m: any) => (m.department || m.company || '').toString().trim())
+                        .filter(Boolean),
+                    ),
+                  );
+                  if (!departments.length) return null;
+                  return (
+                    <Typography variant="body2">
+                      Abteilungen: {departments.join(', ')}
+                    </Typography>
+                  );
+                })()}
+              </Box>
+            )}
           </Box>
         )}
       </DialogContent>
 
-      <DialogActions sx={{ borderTop: 1, borderColor: 'divider', p: 2 }}>
-        <Button variant="outlined" onClick={() => { if (window.confirm('Archivieren?')) { selectedCard['Archived'] = '1'; selectedCard['ArchivedDate'] = new Date().toLocaleDateString('de-DE'); setRows([...rows]); setEditModalOpen(false); setTimeout(() => saveCards(), 500); } }}>Archivieren</Button>
-        <Button variant="outlined" color="error" onClick={() => { if (window.confirm('Wirklich löschen?')) { const idx = rows.findIndex((r) => idFor(r) === idFor(selectedCard)); if (idx >= 0) { rows.splice(idx, 1); setRows([...rows]); setEditModalOpen(false); } } }}>Löschen</Button>
-        <Button variant="contained" onClick={() => setEditModalOpen(false)}>Schließen</Button>
+      <DialogActions sx={{ borderTop: 1, borderColor: 'divider', p: 2, justifyContent: 'space-between' }}>
+        <Button
+          variant="outlined"
+          color="error"
+          onClick={() => {
+            if (window.confirm(`Soll die Karte "${selectedCard['Nummer']} – ${selectedCard['Teil']}" wirklich gelöscht werden?`)) {
+              if (window.confirm('Bist Du sicher, dass diese Karte dauerhaft gelöscht werden soll?')) {
+                const idx = rows.findIndex((r) => idFor(r) === idFor(selectedCard));
+                if (idx >= 0) {
+                  rows.splice(idx, 1);
+                  setRows([...rows]);
+                  setEditModalOpen(false);
+                }
+              }
+            }
+          }}
+        >
+          Löschen
+        </Button>
+        <Button variant="contained" onClick={() => setEditModalOpen(false)}>
+          Schließen
+        </Button>
       </DialogActions>
     </Dialog>
   );
@@ -577,7 +763,9 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
               <TableRow>
                 <TableCell>Nummer</TableCell>
                 <TableCell>Teil</TableCell>
+                <TableCell>Status</TableCell>
                 <TableCell>Verantwortlich</TableCell>
+                <TableCell>Archiviert am</TableCell>
                 <TableCell align="right">Aktionen</TableCell>
               </TableRow>
             </TableHead>
@@ -586,10 +774,16 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
                 <TableRow key={index}>
                   <TableCell>{card.Nummer}</TableCell>
                   <TableCell>{card.Teil}</TableCell>
+                  <TableCell>{card['Status Kurz']}</TableCell>
                   <TableCell>{card.Verantwortlich}</TableCell>
+                  <TableCell>{card.ArchivedDate || 'Unbekannt'}</TableCell>
                   <TableCell align="right">
-                    <Button size="small" variant="outlined" onClick={() => restoreCard(card)} sx={{ mr: 1 }}>↩️</Button>
-                    <Button size="small" variant="outlined" color="error" onClick={() => deleteCardPermanently(card)}>🗑️</Button>
+                    <Button size="small" variant="outlined" onClick={() => restoreCard(card)} sx={{ mr: 1 }}>
+                      ↩️ Wiederherstellen
+                    </Button>
+                    <Button size="small" variant="outlined" color="error" onClick={() => deleteCardPermanently(card)}>
+                      🗑️ Endgültig löschen
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -615,10 +809,11 @@ export interface NewCardDialogProps {
 }
 
 export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users }: NewCardDialogProps) {
-  const [newCard, setNewCard] = useState<any>({
+  const [newCard, setNewCard] = useState(() => ({
     Nummer: '',
     Teil: '',
     'Board Stage': cols[0]?.name || '',
+    'Status Kurz': '',
     Verantwortlich: '',
     'Due Date': '',
     'Priorität': false,
@@ -629,83 +824,155 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
     TR_Datum: '',
     TR_Neu: '',
     TR_History: [] as any[],
-    userId: null,     // WICHTIG: ID speichern
-    assigneeId: null  // WICHTIG: ID speichern
-  });
-
-  const handleUserChange = (id: string) => {
-      const user = users.find(u => u.id === id);
-      if (user) {
-          setNewCard({
-              ...newCard,
-              userId: user.id,
-              assigneeId: user.id,
-              Verantwortlich: user.full_name || user.name || user.email,
-              email: user.email
-          });
-      } else {
-          setNewCard({ ...newCard, userId: null, assigneeId: null, Verantwortlich: '', email: null });
-      }
-  };
+  }));
 
   const handleSave = () => {
     if (!newCard.Nummer.trim() || !newCard.Teil.trim()) {
       alert('Nummer und Teil sind Pflichtfelder!');
       return;
     }
+
+    if (rows.some((r) => r.Nummer === newCard.Nummer)) {
+      alert('Diese Nummer existiert bereits!');
+      return;
+    }
+
     setRows([...rows, { ...newCard }]);
     setNewCardOpen(false);
-    // Reset
     setNewCard({
-      Nummer: '', Teil: '', 'Board Stage': cols[0]?.name || '', Verantwortlich: '', 'Due Date': '', 'Priorität': false,
-      SOP_Datum: '', Ampel: 'grün', Swimlane: lanes[0] || 'Allgemein', UID: `uid_${Date.now()}`, TR_Datum: '', TR_Neu: '', TR_History: [], userId: null, assigneeId: null
+      Nummer: '',
+      Teil: '',
+      'Board Stage': cols[0]?.name || '',
+      'Status Kurz': '',
+      Verantwortlich: '',
+      'Due Date': '',
+      'Priorität': false,
+      SOP_Datum: '',
+      Ampel: 'grün',
+      Swimlane: lanes[0] || 'Allgemein',
+      UID: `uid_${Date.now()}`,
+      TR_Datum: '',
+      TR_Neu: '',
+      TR_History: [],
     });
   };
+
+  const availableUsers = useMemo(() => users || [], [users]);
 
   return (
     <Dialog open={newCardOpen} onClose={() => setNewCardOpen(false)} maxWidth="sm" fullWidth>
       <DialogTitle>➕ Neue Karte erstellen</DialogTitle>
       <DialogContent sx={{ pt: 2 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <TextField label="Nummer *" value={newCard.Nummer} onChange={(e) => setNewCard({ ...newCard, Nummer: e.target.value })} />
-          <TextField label="Teil *" value={newCard.Teil} onChange={(e) => setNewCard({ ...newCard, Teil: e.target.value })} />
+          <TextField
+            label="Nummer *"
+            value={newCard.Nummer}
+            onChange={(e) => setNewCard({ ...newCard, Nummer: e.target.value })}
+          />
+          <TextField
+            label="Teil *"
+            value={newCard.Teil}
+            onChange={(e) => setNewCard({ ...newCard, Teil: e.target.value })}
+          />
           <FormControl fullWidth>
             <InputLabel>Phase</InputLabel>
-            <Select value={newCard['Board Stage']} label="Phase" onChange={(e) => setNewCard({ ...newCard, 'Board Stage': e.target.value as string })}>
-              {cols.map((col) => (<MenuItem key={col.name} value={col.name}>{col.name}</MenuItem>))}
-            </Select>
-          </FormControl>
-          
-          {/* USERS SELECT für NEUE Karte */}
-          <FormControl fullWidth>
-            <InputLabel>Verantwortlich</InputLabel>
             <Select
-              value={newCard.userId || ''}
-              label="Verantwortlich"
-              onChange={(e) => handleUserChange(e.target.value as string)}
+              value={newCard['Board Stage']}
+              label="Phase"
+              onChange={(e) => setNewCard({ ...newCard, 'Board Stage': e.target.value as string })}
             >
-              <MenuItem value=""><em>Keiner</em></MenuItem>
-              {users.map((user: any) => (
-                <MenuItem key={user.id} value={user.id}>
-                    {user.full_name || user.name || user.email}
+              {cols.map((col) => (
+                <MenuItem key={col.name} value={col.name}>
+                  {col.name}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
-
           <FormControl fullWidth>
-            <InputLabel>Projekt/Kategorie</InputLabel>
-            <Select value={newCard.Swimlane} label="Projekt/Kategorie" onChange={(e) => setNewCard({ ...newCard, Swimlane: e.target.value as string })}>
-              {lanes.map((lane) => (<MenuItem key={lane} value={lane}>{lane}</MenuItem>))}
+            <InputLabel>Verantwortlich</InputLabel>
+            <Select
+              value={newCard.Verantwortlich}
+              label="Verantwortlich"
+              onChange={(e) => setNewCard({ ...newCard, Verantwortlich: e.target.value as string })}
+            >
+              <MenuItem value="">
+                <em>Keiner</em>
+              </MenuItem>
+              {availableUsers.map((user: any) => (
+                <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                      {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
+                      {user.department || user.company ? ` – ${user.department || user.company}` : ''}
+                    </Typography>
+                    {user.email && (
+                      <Typography variant="caption" color="text.secondary">
+                        {user.email}
+                      </Typography>
+                    )}
+                  </Box>
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
-          <TextField label="Fälligkeitsdatum" type="date" value={newCard['Due Date']} onChange={(e) => setNewCard({ ...newCard, 'Due Date': e.target.value })} InputLabelProps={{ shrink: true }} />
-          <FormControlLabel control={<Checkbox checked={Boolean(newCard['Priorität'])} onChange={(e) => setNewCard({ ...newCard, 'Priorität': e.target.checked })} />} label="Priorität" />
+          <FormControl fullWidth>
+            <InputLabel>Projekt/Kategorie</InputLabel>
+            <Select
+              value={newCard.Swimlane}
+              label="Projekt/Kategorie"
+              onChange={(e) => setNewCard({ ...newCard, Swimlane: e.target.value as string })}
+            >
+              {lanes.map((lane) => (
+                <MenuItem key={lane} value={lane}>
+                  {lane}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            label="Fälligkeitsdatum"
+            type="date"
+            value={newCard['Due Date']}
+            onChange={(e) => setNewCard({ ...newCard, 'Due Date': e.target.value })}
+            InputLabelProps={{ shrink: true }}
+          />
+          <FormControlLabel
+            control={(
+              <Checkbox
+                checked={Boolean(newCard['Priorität'])}
+                onChange={(e) =>
+                  setNewCard({ ...newCard, 'Priorität': e.target.checked })
+                }
+              />
+            )}
+            label="Priorität"
+          />
+          <TextField
+            label="SOP Datum"
+            type="date"
+            value={newCard.SOP_Datum}
+            onChange={(e) => setNewCard({ ...newCard, SOP_Datum: e.target.value })}
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField
+            label="Status"
+            value={newCard['Status Kurz']}
+            onChange={(e) => setNewCard({ ...newCard, 'Status Kurz': e.target.value })}
+            fullWidth
+            multiline
+            rows={2}
+          />
         </Box>
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setNewCardOpen(false)}>Abbrechen</Button>
-        <Button variant="contained" onClick={handleSave}>Karte erstellen</Button>
+        <Button
+          variant="contained"
+          onClick={handleSave}
+          sx={{ backgroundColor: '#14c38e', '&:hover': { backgroundColor: '#0ea770' } }}
+        >
+          Karte erstellen
+        </Button>
       </DialogActions>
     </Dialog>
   );

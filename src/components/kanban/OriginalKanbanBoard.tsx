@@ -2,10 +2,10 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { 
-  Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Typography, TextField, IconButton, Chip, Tabs, Tab, Grid, Card, CardContent, Badge, List, ListItem, InputAdornment, Tooltip, Stack
+  Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, Typography, TextField, IconButton, Chip, Tabs, Tab, Grid, Card, CardContent, Badge, List, ListItem, InputAdornment, Tooltip, Stack, CircularProgress
 } from '@mui/material';
 import { DropResult } from '@hello-pangea/dnd';
-import { Assessment, Close, Delete, Add, Settings, Assignment, Done, ViewHeadline, ViewList, ViewModule, AddCircle, FilterList, Warning, PriorityHigh, ErrorOutline, Star, ArrowUpward, ArrowDownward, Edit } from '@mui/icons-material';
+import { Assessment, Close, Delete, Add, Settings, Assignment, Done, ViewHeadline, ViewList, ViewModule, AddCircle, FilterList, Warning, PriorityHigh, ErrorOutline, Star, ArrowUpward, ArrowDownward, Edit, Wifi, WifiOff } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
@@ -79,6 +79,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   const [users, setUsers] = useState<any[]>([]);
   const [canModifyBoard, setCanModifyBoard] = useState(false);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+  const [realtimeStatus, setRealtimeStatus] = useState<'CONNECTING' | 'SUBSCRIBED' | 'CLOSED' | 'CHANNEL_ERROR'>('CLOSED');
   
   const [topTopicsOpen, setTopTopicsOpen] = useState(false);
   const [topTopics, setTopTopics] = useState<TopTopic[]>([]);
@@ -145,36 +146,28 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   // --- Persistence ---
   const saveSettings = useCallback(async (options?: { skipMeta?: boolean }) => {
     if (!permissions.canManageSettings) return false;
-
     try {
       const settings = { cols, checklistTemplates, density, lastUpdated: new Date().toISOString() };
       const requestBody: any = { settings };
-
       if (!options?.skipMeta) {
         const trimmedName = boardName.trim();
-        if (!trimmedName && boardMeta?.name) { 
-          setBoardName(boardMeta.name); return false;
-        }
+        if (!trimmedName && boardMeta?.name) { setBoardName(boardMeta.name); return false; }
         const metaPayload: any = {};
         if (trimmedName !== (boardMeta?.name || '')) metaPayload.name = trimmedName;
         if ((boardDescription.trim() || null) !== (boardMeta?.description ?? null)) metaPayload.description = boardDescription.trim() || null;
         if (Object.keys(metaPayload).length > 0) requestBody.meta = metaPayload;
       }
-
       const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
       const response = await fetch(`/api/boards/${boardId}/settings`, { method: 'POST', headers, credentials: 'include', body: JSON.stringify(requestBody) });
-
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         enqueueSnackbar(formatSupabaseActionError('Einstellungen speichern', payload?.error), { variant: 'error' });
         return false;
       }
-      
       const payload = await response.json().catch(() => ({}));
-      if (payload.meta) {
-        setBoardMeta(prev => ({ ...prev, ...payload.meta }));
-      }
+      if (payload.meta) { setBoardMeta(prev => ({ ...prev, ...payload.meta })); }
       
+      // Feedback für Einstellungen
       if (!options?.skipMeta) enqueueSnackbar('Einstellungen gespeichert', { variant: 'success' });
       return true;
     } catch (error) {
@@ -186,12 +179,10 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   const patchCard = useCallback(async (card: ProjectBoardCard, changes: Partial<ProjectBoardCard>) => {
     if (!permissions.canEditContent) { enqueueSnackbar('Keine Berechtigung.', { variant: 'error' }); return; }
     
+    // OPTIMISTIC UPDATE
     const updatedRows = rows.map(r => idFor(r) === idFor(card) ? { ...r, ...changes } as ProjectBoardCard : r);
     setRows(updatedRows);
-
-    if (selectedCard && idFor(selectedCard) === idFor(card)) {
-      setSelectedCard(prev => prev ? ({ ...prev, ...changes } as ProjectBoardCard) : null);
-    }
+    if (selectedCard && idFor(selectedCard) === idFor(card)) { setSelectedCard(prev => prev ? ({ ...prev, ...changes } as ProjectBoardCard) : null); }
 
     try {
       const payload = {
@@ -203,11 +194,12 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         }
       };
       const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
-      const response = await fetch(`/api/boards/${boardId}/cards`, { method: 'PATCH', headers, body: JSON.stringify(payload), credentials: 'include' });
-      if (!response.ok) enqueueSnackbar('Speichern fehlgeschlagen', { variant: 'error' });
-    } catch (error) {
-      enqueueSnackbar('Netzwerkfehler', { variant: 'error' });
-    }
+      await fetch(`/api/boards/${boardId}/cards`, { method: 'PATCH', headers, body: JSON.stringify(payload), credentials: 'include' });
+      
+      // HIER IST DAS NEUE FEEDBACK:
+      enqueueSnackbar('Änderungen gespeichert', { variant: 'success', autoHideDuration: 1000 });
+
+    } catch (error) { enqueueSnackbar('Netzwerkfehler', { variant: 'error' }); }
   }, [permissions.canEditContent, rows, idFor, boardId, supabase, enqueueSnackbar, selectedCard]);
 
   const saveCards = useCallback(async () => {
@@ -218,11 +210,24 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       }));
       const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
       const response = await fetch(`/api/boards/${boardId}/cards`, { method: 'POST', headers, body: JSON.stringify({ cards: cardsToSave }), credentials: 'include' });
+      
+      // Feedback für Bulk-Save (z.B. Drag & Drop)
+      if(response.ok) enqueueSnackbar('Board gespeichert', { variant: 'success', autoHideDuration: 1000 });
+      
       return response.ok;
     } catch { return false; }
-  }, [permissions.canEditContent, boardId, rows, supabase, inferStage, idFor]);
+  }, [permissions.canEditContent, boardId, rows, supabase, inferStage, idFor, enqueueSnackbar]);
 
-  // --- Load Logic ---
+  const handleTRNeuChange = async (card: any, newDate: string) => {
+    if (!permissions.canEditContent) return;
+    const { data: authData } = await supabase.auth.getUser();
+    const currentUser = users.find(u => u.id === authData.user?.id)?.full_name || 'System';
+    const history = Array.isArray(card["TR_History"]) ? [...card["TR_History"]] : [];
+    if (card["TR_Neu"] && card["TR_Neu"] !== newDate) { history.push({ date: card["TR_Neu"], changedBy: currentUser, timestamp: new Date().toISOString(), superseded: true }); }
+    if (newDate) { history.push({ date: newDate, changedBy: currentUser, timestamp: new Date().toISOString(), superseded: false }); }
+    await patchCard(card, { "TR_Neu": newDate, "TR_History": history });
+  };
+
   const loadCards = useCallback(async () => {
     try {
       let { data, error } = await supabase.from('kanban_cards').select('card_data, stage, position, id, card_id').eq('board_id', boardId);
@@ -259,6 +264,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     if (data) setTopTopics(data);
   }, [boardId, supabase]);
 
+  // --- INIT ---
   useEffect(() => {
     const init = async () => {
         const profiles = await fetchClientProfiles();
@@ -277,20 +283,67 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     if (boardId) init();
   }, [boardId, loadCards, loadBoardMeta, loadSettings]);
 
-  // --- TR Logic ---
-  const handleTRNeuChange = async (card: any, newDate: string) => {
-    if (!permissions.canEditContent) return;
-    const { data: authData } = await supabase.auth.getUser();
-    const currentUser = users.find(u => u.id === authData.user?.id)?.full_name || 'System';
-    const history = Array.isArray(card["TR_History"]) ? [...card["TR_History"]] : [];
-    if (card["TR_Neu"] && card["TR_Neu"] !== newDate) {
-      history.push({ date: card["TR_Neu"], changedBy: currentUser, timestamp: new Date().toISOString(), superseded: true });
-    }
-    if (newDate) {
-        history.push({ date: newDate, changedBy: currentUser, timestamp: new Date().toISOString(), superseded: false });
-    }
-    await patchCard(card, { "TR_Neu": newDate, "TR_History": history });
-  };
+  // --- REALTIME SUBSCRIPTION ---
+  useEffect(() => {
+    if (!boardId || !supabase) return;
+    setRealtimeStatus('CONNECTING');
+
+    const channel = supabase
+      .channel(`board-realtime-${boardId}`) 
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'kanban_cards',
+          filter: `board_id=eq.${boardId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+             const newCard = convertDbToCard(payload.new);
+             if (newCard.Archived !== '1') {
+                 setRows(prev => {
+                     if (prev.find(r => idFor(r) === idFor(newCard))) return prev;
+                     return [...prev, newCard];
+                 });
+             }
+          } else if (payload.eventType === 'UPDATE') {
+             const updatedItem = payload.new;
+             const updatedCard = convertDbToCard(updatedItem);
+             if (updatedCard.Archived === '1') {
+                 setRows(prev => prev.filter(r => idFor(r) !== idFor(updatedCard)));
+             } else {
+                 setRows(prev => {
+                     const idx = prev.findIndex(r => idFor(r) === idFor(updatedCard));
+                     if (idx === -1) return [...prev, updatedCard];
+                     const newRows = [...prev];
+                     newRows[idx] = updatedCard;
+                     return newRows;
+                 });
+                 if (selectedCard && idFor(selectedCard) === idFor(updatedCard)) {
+                     setSelectedCard(updatedCard);
+                 }
+             }
+          } else if (payload.eventType === 'DELETE') {
+             const delId = payload.old.id || payload.old.card_id;
+             if (delId) {
+                 setRows(prev => prev.filter(r => r.id !== delId && r.card_id !== delId));
+             } else {
+                 loadCards(); 
+             }
+          }
+        }
+      )
+      .subscribe((status) => {
+          setRealtimeStatus(status);
+          // Keine störenden Snackbars hier
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [boardId, supabase, convertDbToCard, idFor, loadCards, selectedCard]); // removed enqueueSnackbar
+
 
   // --- KPI Calculation ---
   const kpis = useMemo(() => {
@@ -307,20 +360,13 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       skEscalations: [] as any[],
       columnDistribution: {} as Record<string, number>,
     };
-
     const now = new Date();
     const today = now.toISOString().split('T')[0];
-    
     activeCards.forEach(card => {
       const ampel = String(card.Ampel || '').toLowerCase();
-      if (ampel === 'grün') kpiData.ampelGreen++;
-      else if (ampel === 'rot') kpiData.ampelRed++;
-      else if (ampel === 'gelb') kpiData.ampelYellow++;
-
+      if (ampel === 'grün') kpiData.ampelGreen++; else if (ampel === 'rot') kpiData.ampelRed++; else if (ampel === 'gelb') kpiData.ampelYellow++;
       const eskalation = String(card.Eskalation || '').toUpperCase();
-      if (eskalation === 'LK') kpiData.lkEscalations.push(card);
-      if (eskalation === 'SK') kpiData.skEscalations.push(card);
-
+      if (eskalation === 'LK') kpiData.lkEscalations.push(card); if (eskalation === 'SK') kpiData.skEscalations.push(card);
       const trDateStr = card['TR_Neu'] || card['TR_Datum'];
       if (trDateStr && !toBoolean(card.TR_Completed)) {
         const trDate = nullableDate(trDateStr);
@@ -329,13 +375,12 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
            else if (trDate.toISOString().split('T')[0] === today) kpiData.trToday.push(card);
         }
       }
-
       const stage = inferStage(card);
       kpiData.columnDistribution[stage] = (kpiData.columnDistribution[stage] || 0) + 1;
     });
     return kpiData;
   }, [rows, inferStage]);
-
+  
   const kpiBadgeCount = kpis.trOverdue.length + kpis.lkEscalations.length + kpis.skEscalations.length;
   useEffect(() => { onKpiCountChange?.(kpiBadgeCount); }, [kpiBadgeCount, onKpiCountChange]);
 
@@ -373,192 +418,42 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     newRows.splice(insertIndex, 0, moved);
     const reindexed = reindexByStage(newRows);
     setRows(reindexed);
-    saveCards();
+    saveCards(); // Triggers "Board gespeichert"
   };
 
-  // --- Dialog Components (Full Implementation) ---
+  // --- KPI Popup & Dialogs ---
   const TRKPIPopup = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
     const distribution = Object.entries(kpis.columnDistribution).map(([name, count]) => ({ name, count: count as number }));
-    // Sort by column order
-    distribution.sort((a, b) => {
-        const idxA = cols.findIndex(c => c.name === a.name);
-        const idxB = cols.findIndex(c => c.name === b.name);
-        return idxA - idxB;
-    });
-    
+    distribution.sort((a, b) => { const idxA = cols.findIndex(c => c.name === a.name); const idxB = cols.findIndex(c => c.name === b.name); return idxA - idxB; });
     const percentage = (count: number) => kpis.totalCards > 0 ? Math.round((count / kpis.totalCards) * 100) : 0;
-
     return (
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Assessment color="primary" /> Projekt-KPIs & Metriken
-            <IconButton onClick={onClose} sx={{ ml: 'auto' }}><Close /></IconButton>
-        </DialogTitle>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Assessment color="primary" /> Projekt-KPIs & Metriken <IconButton onClick={onClose} sx={{ ml: 'auto' }}><Close /></IconButton></DialogTitle>
         <DialogContent dividers>
           <Grid container spacing={3}>
-            <Grid item xs={12} sm={4}>
-                <Card variant="outlined" sx={{ height: '100%', bgcolor: kpis.trOverdue.length > 0 ? '#ffebee' : 'background.paper' }}>
-                    <CardContent>
-                        <Typography variant="subtitle2" color="text.secondary">Überfällige TRs</Typography>
-                        <Typography variant="h4" color="error.main" sx={{ fontWeight: 700 }}>{kpis.trOverdue.length}</Typography>
-                    </CardContent>
-                </Card>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-                <Card variant="outlined" sx={{ height: '100%', bgcolor: (kpis.lkEscalations.length + kpis.skEscalations.length) > 0 ? '#fff3e0' : 'background.paper' }}>
-                    <CardContent>
-                        <Typography variant="subtitle2" color="text.secondary">Eskalationen</Typography>
-                        <Typography variant="h4" color="warning.main" sx={{ fontWeight: 700 }}>{kpis.lkEscalations.length + kpis.skEscalations.length}</Typography>
-                        <Typography variant="caption">LK: {kpis.lkEscalations.length} / SK: {kpis.skEscalations.length}</Typography>
-                    </CardContent>
-                </Card>
-            </Grid>
-            <Grid item xs={12} sm={4}>
-                <Card variant="outlined" sx={{ height: '100%' }}>
-                    <CardContent>
-                        <Typography variant="subtitle2" color="text.secondary">Gesamt</Typography>
-                        <Typography variant="h4" sx={{ fontWeight: 700 }}>{kpis.totalCards}</Typography>
-                    </CardContent>
-                </Card>
-            </Grid>
-
-            {/* --- PROJEKTE PRO PHASE (Wieder da!) --- */}
-            <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Projekte pro Phase</Typography>
-                <Card variant="outlined">
-                    <List dense>
-                        {distribution.map((item) => (
-                            <ListItem key={item.name}>
-                                <Grid container alignItems="center" spacing={2}>
-                                    <Grid item xs={4}><Typography variant="body2" fontWeight={500}>{item.name}</Typography></Grid>
-                                    <Grid item xs={6}>
-                                        <Box sx={{ width: '100%', height: 8, bgcolor: '#eee', borderRadius: 1 }}>
-                                            <Box sx={{ width: `${percentage(item.count)}%`, height: '100%', bgcolor: 'primary.main', borderRadius: 1 }} />
-                                        </Box>
-                                    </Grid>
-                                    <Grid item xs={2} textAlign="right">
-                                        <Typography variant="caption" fontWeight="bold">{item.count}</Typography>
-                                    </Grid>
-                                </Grid>
-                            </ListItem>
-                        ))}
-                    </List>
-                </Card>
-            </Grid>
+            <Grid item xs={12} sm={4}><Card variant="outlined" sx={{ height: '100%', bgcolor: kpis.trOverdue.length > 0 ? '#ffebee' : 'background.paper' }}><CardContent><Typography variant="subtitle2" color="text.secondary">Überfällige TRs</Typography><Typography variant="h4" color="error.main" sx={{ fontWeight: 700 }}>{kpis.trOverdue.length}</Typography></CardContent></Card></Grid>
+            <Grid item xs={12} sm={4}><Card variant="outlined" sx={{ height: '100%', bgcolor: (kpis.lkEscalations.length + kpis.skEscalations.length) > 0 ? '#fff3e0' : 'background.paper' }}><CardContent><Typography variant="subtitle2" color="text.secondary">Eskalationen</Typography><Typography variant="h4" color="warning.main" sx={{ fontWeight: 700 }}>{kpis.lkEscalations.length + kpis.skEscalations.length}</Typography><Typography variant="caption">LK: {kpis.lkEscalations.length} / SK: {kpis.skEscalations.length}</Typography></CardContent></Card></Grid>
+            <Grid item xs={12} sm={4}><Card variant="outlined" sx={{ height: '100%' }}><CardContent><Typography variant="subtitle2" color="text.secondary">Gesamt</Typography><Typography variant="h4" sx={{ fontWeight: 700 }}>{kpis.totalCards}</Typography></CardContent></Card></Grid>
+            <Grid item xs={12}><Typography variant="h6" gutterBottom sx={{ mt: 2 }}>Projekte pro Phase</Typography><Card variant="outlined"><List dense>{distribution.map((item) => (<ListItem key={item.name}><Grid container alignItems="center" spacing={2}><Grid item xs={4}><Typography variant="body2" fontWeight={500}>{item.name}</Typography></Grid><Grid item xs={6}><Box sx={{ width: '100%', height: 8, bgcolor: '#eee', borderRadius: 1 }}><Box sx={{ width: `${percentage(item.count)}%`, height: '100%', bgcolor: 'primary.main', borderRadius: 1 }} /></Box></Grid><Grid item xs={2} textAlign="right"><Typography variant="caption" fontWeight="bold">{item.count}</Typography></Grid></Grid></ListItem>))}</List></Card></Grid>
           </Grid>
         </DialogContent>
       </Dialog>
     );
   };
-
   const TopTopicsDialog = ({ open, onClose }: any) => {
       const [localTopics, setLocalTopics] = useState<TopTopic[]>(topTopics);
       useEffect(() => { setLocalTopics(topTopics); }, [topTopics]);
-
-      const handleSaveTopic = async (index: number, field: string, value: any) => {
-          const newTopics = [...localTopics];
-          newTopics[index] = { ...newTopics[index], [field]: value };
-          setLocalTopics(newTopics);
-          if (newTopics[index].id && !newTopics[index].id.startsWith('tmp')) {
-              await supabase.from('board_top_topics').update({ [field]: value }).eq('id', newTopics[index].id);
-          }
-      };
-      const handleAdd = async () => {
-          const { data } = await supabase.from('board_top_topics').insert({ board_id: boardId, title: '', position: localTopics.length }).select().single();
-          if (data) setLocalTopics([...localTopics, data]);
-      };
-      const handleDelete = async (id: string) => {
-          await supabase.from('board_top_topics').delete().eq('id', id);
-          setLocalTopics(prev => prev.filter(t => t.id !== id));
-      };
-
-      return (
-        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-           <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Star color="warning" /> Top Themen der Woche</DialogTitle>
-           <DialogContent>
-               <Stack spacing={2} sx={{ mt: 1 }}>
-                   {localTopics.length === 0 && <Typography variant="body2" color="text.secondary">Keine Top-Themen.</Typography>}
-                   {localTopics.map((topic, index) => (
-                       <Box key={topic.id} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                           <TextField fullWidth size="small" placeholder="Thema..." value={topic.title} onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} />
-                           <TextField type="week" size="small" label="KW" InputLabelProps={{ shrink: true }} value={topic.calendar_week || ''} onChange={(e) => handleSaveTopic(index, 'calendar_week', e.target.value)} sx={{ width: 130 }} />
-                           <IconButton color="error" onClick={() => handleDelete(topic.id)}><Delete /></IconButton>
-                       </Box>
-                   ))}
-                   {localTopics.length < 5 && <Button startIcon={<Add />} onClick={handleAdd}>Hinzufügen</Button>}
-               </Stack>
-           </DialogContent>
-           <DialogActions><Button onClick={onClose}>Schließen</Button></DialogActions>
-        </Dialog>
-      );
+      const handleSaveTopic = async (index: number, field: string, value: any) => { const newTopics = [...localTopics]; newTopics[index] = { ...newTopics[index], [field]: value }; setLocalTopics(newTopics); if (newTopics[index].id && !newTopics[index].id.startsWith('tmp')) { await supabase.from('board_top_topics').update({ [field]: value }).eq('id', newTopics[index].id); }};
+      const handleAdd = async () => { const { data } = await supabase.from('board_top_topics').insert({ board_id: boardId, title: '', position: localTopics.length }).select().single(); if (data) setLocalTopics([...localTopics, data]); };
+      const handleDelete = async (id: string) => { await supabase.from('board_top_topics').delete().eq('id', id); setLocalTopics(prev => prev.filter(t => t.id !== id)); };
+      return (<Dialog open={open} onClose={onClose} maxWidth="md" fullWidth><DialogTitle>Top Themen</DialogTitle><DialogContent><Stack spacing={2}>{localTopics.map((t,i)=>(<Box key={t.id} sx={{display:'flex',gap:1}}><TextField value={t.title} onChange={(e)=>handleSaveTopic(i,'title',e.target.value)} fullWidth size="small"/><IconButton onClick={()=>handleDelete(t.id)}><Delete/></IconButton></Box>))}{localTopics.length<5&&<Button onClick={handleAdd}>+ Add</Button>}</Stack></DialogContent><DialogActions><Button onClick={onClose}>Close</Button></DialogActions></Dialog>);
   };
-
   const SettingsDialog = ({ open, onClose }: any) => {
-    const [localCols, setLocalCols] = useState(cols);
-    const [tab, setTab] = useState(0);
-    const [newCol, setNewCol] = useState('');
-
-    useEffect(() => { if(open) setLocalCols(cols); }, [open, cols]);
-
-    const handleSave = async () => {
-        setCols(localCols);
-        await saveSettings();
-        onClose();
-    };
-    const addCol = () => {
-        if(newCol.trim()) {
-            setLocalCols([...localCols, { id: `c${Date.now()}`, name: newCol.trim(), done: false }]);
-            setNewCol('');
-        }
-    };
-    const moveCol = (idx: number, dir: number) => {
-        const copy = [...localCols];
-        const [item] = copy.splice(idx, 1);
-        copy.splice(idx + dir, 0, item);
-        setLocalCols(copy);
-    };
-
-    return (
-        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-            <DialogTitle>Einstellungen</DialogTitle>
-            <DialogContent dividers>
-                <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-                    <Tab label="Allgemein" icon={<Assignment />} />
-                    <Tab label="Spalten" icon={<Done />} />
-                </Tabs>
-                {tab === 0 && (
-                    <Box sx={{ pt: 1 }}>
-                        <TextField label="Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} fullWidth sx={{ mb: 2 }} />
-                        <TextField label="Beschreibung" value={boardDescription} onChange={(e) => setBoardDescription(e.target.value)} fullWidth multiline rows={2} />
-                    </Box>
-                )}
-                {tab === 1 && (
-                    <Box>
-                        <List dense>
-                            {localCols.map((col, idx) => (
-                                <ListItem key={col.id}>
-                                    <TextField value={col.name} onChange={(e) => {
-                                        const copy = [...localCols]; copy[idx].name = e.target.value; setLocalCols(copy);
-                                    }} size="small" fullWidth sx={{ mr: 1 }} />
-                                    <IconButton disabled={idx===0} onClick={()=>moveCol(idx, -1)}><ArrowUpward/></IconButton>
-                                    <IconButton disabled={idx===localCols.length-1} onClick={()=>moveCol(idx, 1)}><ArrowDownward/></IconButton>
-                                    <IconButton color="error" onClick={() => setLocalCols(localCols.filter(c => c.id !== col.id))}><Delete/></IconButton>
-                                </ListItem>
-                            ))}
-                        </List>
-                        <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                            <TextField size="small" label="Neue Spalte" value={newCol} onChange={(e)=>setNewCol(e.target.value)} fullWidth />
-                            <Button variant="contained" onClick={addCol}>Hinzufügen</Button>
-                        </Box>
-                    </Box>
-                )}
-            </DialogContent>
-            <DialogActions>
-                <Button onClick={onClose}>Abbrechen</Button>
-                <Button variant="contained" onClick={handleSave}>Speichern</Button>
-            </DialogActions>
-        </Dialog>
-    );
+    const [localCols, setLocalCols] = useState(cols); const [tab, setTab] = useState(0); const [newCol, setNewCol] = useState(''); useEffect(() => { if(open) setLocalCols(cols); }, [open, cols]);
+    const handleSave = async () => { setCols(localCols); await saveSettings(); onClose(); };
+    const addCol = () => { if(newCol.trim()) { setLocalCols([...localCols, { id: `c${Date.now()}`, name: newCol.trim(), done: false }]); setNewCol(''); } };
+    const moveCol = (idx: number, dir: number) => { const copy = [...localCols]; const [item] = copy.splice(idx, 1); copy.splice(idx + dir, 0, item); setLocalCols(copy); };
+    return (<Dialog open={open} onClose={onClose} maxWidth="md" fullWidth><DialogTitle>Einstellungen</DialogTitle><DialogContent dividers><Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}><Tab label="Allgemein" /><Tab label="Spalten" /></Tabs>{tab===0&&<Box><TextField label="Name" value={boardName} onChange={(e)=>setBoardName(e.target.value)} fullWidth sx={{mb:2}}/><TextField label="Beschreibung" value={boardDescription} onChange={(e)=>setBoardDescription(e.target.value)} fullWidth multiline rows={2}/></Box>}{tab===1&&<Box><List dense>{localCols.map((c,i)=>(<ListItem key={c.id}><TextField value={c.name} onChange={(e)=>{const cp=[...localCols];cp[i].name=e.target.value;setLocalCols(cp)}} size="small" fullWidth/><IconButton onClick={()=>moveCol(i,-1)} disabled={i===0}><ArrowUpward/></IconButton><IconButton onClick={()=>moveCol(i,1)} disabled={i===localCols.length-1}><ArrowDownward/></IconButton><IconButton onClick={()=>setLocalCols(localCols.filter(x=>x.id!==c.id))}><Delete/></IconButton></ListItem>))}</List><Box sx={{display:'flex',gap:1,mt:2}}><TextField value={newCol} onChange={(e)=>setNewCol(e.target.value)} label="Neue Spalte" size="small" fullWidth/><Button variant="contained" onClick={addCol}>Add</Button></Box></Box>}</DialogContent><DialogActions><Button onClick={onClose}>Abbrechen</Button><Button variant="contained" onClick={handleSave}>Speichern</Button></DialogActions></Dialog>);
   };
 
   useImperativeHandle(ref, () => ({
@@ -567,6 +462,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     openKpis: () => setKpiPopupOpen(true),
   }));
 
+  // --- RENDER ---
   return (
     <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg)', color: 'var(--ink)', '&': { '--colw': '300px', '--rowheadw': '260px' } as any }}>
       <Box sx={{ position: 'sticky', top: 0, zIndex: 5, background: 'linear-gradient(180deg,rgba(0,0,0,.05),transparent),var(--panel)', borderBottom: '1px solid var(--line)', p: 2 }}>
@@ -587,6 +483,16 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
           <Badge badgeContent={kpiBadgeCount} color="error" overlap="circular">
             <IconButton onClick={() => setKpiPopupOpen(true)}><Assessment fontSize="small" /></IconButton>
           </Badge>
+          
+          {/* REALTIME INDICATOR */}
+          <Tooltip title={realtimeStatus === 'SUBSCRIBED' ? 'Live verbunden' : 'Verbinde...'}>
+             <Box sx={{ 
+                 width: 10, height: 10, borderRadius: '50%', 
+                 bgcolor: realtimeStatus === 'SUBSCRIBED' ? 'success.main' : (realtimeStatus === 'CHANNEL_ERROR' ? 'error.main' : 'warning.main'),
+                 boxShadow: '0 0 4px rgba(0,0,0,0.2)' 
+             }} />
+          </Tooltip>
+
         </Box>
       </Box>
 
