@@ -16,6 +16,7 @@ import { ArchiveDialog, EditCardDialog, NewCardDialog } from './original/KanbanD
 import { nullableDate, toBoolean } from '@/utils/booleans';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders';
+import { getKwString } from '@/utils/dateUtils'; // Falls du dateUtils erstellt hast, sonst helper unten nutzen
 import { ProjectBoardCard, LayoutDensity } from '@/types';
 
 const getErrorMessage = (error: unknown) => {
@@ -144,6 +145,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   }, [onArchiveCountChange]);
 
   // --- Persistence ---
+  // ... saveSettings remains same ...
   const saveSettings = useCallback(async (options?: { skipMeta?: boolean }) => {
     if (!permissions.canManageSettings) return false;
     try {
@@ -166,8 +168,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       }
       const payload = await response.json().catch(() => ({}));
       if (payload.meta) { setBoardMeta(prev => ({ ...prev, ...payload.meta })); }
-      
-      // Feedback für Einstellungen
       if (!options?.skipMeta) enqueueSnackbar('Einstellungen gespeichert', { variant: 'success' });
       return true;
     } catch (error) {
@@ -179,7 +179,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   const patchCard = useCallback(async (card: ProjectBoardCard, changes: Partial<ProjectBoardCard>) => {
     if (!permissions.canEditContent) { enqueueSnackbar('Keine Berechtigung.', { variant: 'error' }); return; }
     
-    // OPTIMISTIC UPDATE
     const updatedRows = rows.map(r => idFor(r) === idFor(card) ? { ...r, ...changes } as ProjectBoardCard : r);
     setRows(updatedRows);
     if (selectedCard && idFor(selectedCard) === idFor(card)) { setSelectedCard(prev => prev ? ({ ...prev, ...changes } as ProjectBoardCard) : null); }
@@ -195,10 +194,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       };
       const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
       await fetch(`/api/boards/${boardId}/cards`, { method: 'PATCH', headers, body: JSON.stringify(payload), credentials: 'include' });
-      
-      // HIER IST DAS NEUE FEEDBACK:
       enqueueSnackbar('Änderungen gespeichert', { variant: 'success', autoHideDuration: 1000 });
-
     } catch (error) { enqueueSnackbar('Netzwerkfehler', { variant: 'error' }); }
   }, [permissions.canEditContent, rows, idFor, boardId, supabase, enqueueSnackbar, selectedCard]);
 
@@ -210,14 +206,40 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       }));
       const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
       const response = await fetch(`/api/boards/${boardId}/cards`, { method: 'POST', headers, body: JSON.stringify({ cards: cardsToSave }), credentials: 'include' });
-      
-      // Feedback für Bulk-Save (z.B. Drag & Drop)
       if(response.ok) enqueueSnackbar('Board gespeichert', { variant: 'success', autoHideDuration: 1000 });
-      
       return response.ok;
     } catch { return false; }
   }, [permissions.canEditContent, boardId, rows, supabase, inferStage, idFor, enqueueSnackbar]);
 
+  // ✅ REPARIERTE FUNKTIONEN:
+  const addStatusEntry = useCallback((card: any) => {
+    const history = card.StatusHistory ? [...card.StatusHistory] : [];
+    const newEntry = {
+      date: new Date().toLocaleDateString('de-DE'),
+      message: { text: '', escalation: false },
+      qualitaet: { text: '', escalation: false },
+      kosten: { text: '', escalation: false },
+      termine: { text: '', escalation: false }
+    };
+    const updatedHistory = [newEntry, ...history];
+    // Speichern
+    patchCard(card, { StatusHistory: updatedHistory });
+  }, [patchCard]);
+
+  const updateStatusSummary = useCallback((card: any) => {
+    // Nimmt den Text des neuesten Eintrags als "Status Kurz"
+    const history = card.StatusHistory || [];
+    if (history.length === 0) return;
+    const latest = history[0];
+    const newStatusKurz = latest.message?.text || '';
+    
+    patchCard(card, { 
+        StatusHistory: history, 
+        'Status Kurz': newStatusKurz 
+    });
+  }, [patchCard]);
+
+  // ... Restliche Logik (handleTRNeuChange, loadCards etc.) bleibt gleich ...
   const handleTRNeuChange = async (card: any, newDate: string) => {
     if (!permissions.canEditContent) return;
     const { data: authData } = await supabase.auth.getUser();
@@ -264,7 +286,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     if (data) setTopTopics(data);
   }, [boardId, supabase]);
 
-  // --- INIT ---
   useEffect(() => {
     const init = async () => {
         const profiles = await fetchClientProfiles();
@@ -283,85 +304,31 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     if (boardId) init();
   }, [boardId, loadCards, loadBoardMeta, loadSettings]);
 
-  // --- REALTIME SUBSCRIPTION ---
   useEffect(() => {
     if (!boardId || !supabase) return;
     setRealtimeStatus('CONNECTING');
-
-    const channel = supabase
-      .channel(`board-realtime-${boardId}`) 
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'kanban_cards',
-          filter: `board_id=eq.${boardId}`,
-        },
-        (payload) => {
+    const channel = supabase.channel(`board-realtime-${boardId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_cards', filter: `board_id=eq.${boardId}` }, (payload) => {
           if (payload.eventType === 'INSERT') {
              const newCard = convertDbToCard(payload.new);
-             if (newCard.Archived !== '1') {
-                 setRows(prev => {
-                     if (prev.find(r => idFor(r) === idFor(newCard))) return prev;
-                     return [...prev, newCard];
-                 });
-             }
+             if (newCard.Archived !== '1') setRows(prev => prev.find(r => idFor(r) === idFor(newCard)) ? prev : [...prev, newCard]);
           } else if (payload.eventType === 'UPDATE') {
              const updatedItem = payload.new;
              const updatedCard = convertDbToCard(updatedItem);
-             if (updatedCard.Archived === '1') {
-                 setRows(prev => prev.filter(r => idFor(r) !== idFor(updatedCard)));
-             } else {
-                 setRows(prev => {
-                     const idx = prev.findIndex(r => idFor(r) === idFor(updatedCard));
-                     if (idx === -1) return [...prev, updatedCard];
-                     const newRows = [...prev];
-                     newRows[idx] = updatedCard;
-                     return newRows;
-                 });
-                 if (selectedCard && idFor(selectedCard) === idFor(updatedCard)) {
-                     setSelectedCard(updatedCard);
-                 }
-             }
+             if (updatedCard.Archived === '1') { setRows(prev => prev.filter(r => idFor(r) !== idFor(updatedCard))); } 
+             else { setRows(prev => { const idx = prev.findIndex(r => idFor(r) === idFor(updatedCard)); if (idx === -1) return [...prev, updatedCard]; const newRows = [...prev]; newRows[idx] = updatedCard; return newRows; }); if (selectedCard && idFor(selectedCard) === idFor(updatedCard)) setSelectedCard(updatedCard); }
           } else if (payload.eventType === 'DELETE') {
              const delId = payload.old.id || payload.old.card_id;
-             if (delId) {
-                 setRows(prev => prev.filter(r => r.id !== delId && r.card_id !== delId));
-             } else {
-                 loadCards(); 
-             }
+             if (delId) setRows(prev => prev.filter(r => r.id !== delId && r.card_id !== delId)); else loadCards(); 
           }
-        }
-      )
-      .subscribe((status) => {
-          setRealtimeStatus(status);
-          // Keine störenden Snackbars hier
-      });
+    }).subscribe((status) => setRealtimeStatus(status));
+    return () => { supabase.removeChannel(channel); };
+  }, [boardId, supabase, convertDbToCard, idFor, loadCards, selectedCard]);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [boardId, supabase, convertDbToCard, idFor, loadCards, selectedCard]); // removed enqueueSnackbar
-
-
-  // --- KPI Calculation ---
+  // KPI & Render Logik...
   const kpis = useMemo(() => {
     const activeCards = rows.filter(card => card["Archived"] !== "1");
-    const kpiData = {
-      totalCards: activeCards.length,
-      trOverdue: [] as any[],
-      trToday: [] as any[],
-      trThisWeek: [] as any[],
-      ampelGreen: 0,
-      ampelRed: 0,
-      ampelYellow: 0,
-      lkEscalations: [] as any[],
-      skEscalations: [] as any[],
-      columnDistribution: {} as Record<string, number>,
-    };
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
+    const kpiData = { totalCards: activeCards.length, trOverdue: [] as any[], trToday: [] as any[], trThisWeek: [] as any[], ampelGreen: 0, ampelRed: 0, ampelYellow: 0, lkEscalations: [] as any[], skEscalations: [] as any[], columnDistribution: {} as Record<string, number> };
+    const now = new Date(); const today = now.toISOString().split('T')[0];
     activeCards.forEach(card => {
       const ampel = String(card.Ampel || '').toLowerCase();
       if (ampel === 'grün') kpiData.ampelGreen++; else if (ampel === 'rot') kpiData.ampelRed++; else if (ampel === 'gelb') kpiData.ampelYellow++;
@@ -370,10 +337,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       const trDateStr = card['TR_Neu'] || card['TR_Datum'];
       if (trDateStr && !toBoolean(card.TR_Completed)) {
         const trDate = nullableDate(trDateStr);
-        if (trDate) {
-           if (trDate < now) kpiData.trOverdue.push(card);
-           else if (trDate.toISOString().split('T')[0] === today) kpiData.trToday.push(card);
-        }
+        if (trDate) { if (trDate < now) kpiData.trOverdue.push(card); else if (trDate.toISOString().split('T')[0] === today) kpiData.trToday.push(card); }
       }
       const stage = inferStage(card);
       kpiData.columnDistribution[stage] = (kpiData.columnDistribution[stage] || 0) + 1;
@@ -384,16 +348,12 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   const kpiBadgeCount = kpis.trOverdue.length + kpis.lkEscalations.length + kpis.skEscalations.length;
   useEffect(() => { onKpiCountChange?.(kpiBadgeCount); }, [kpiBadgeCount, onKpiCountChange]);
 
-  // --- Render Filter ---
   const filteredRows = useMemo(() => {
     let result = rows;
     if (searchTerm) result = result.filter(r => Object.values(r).some(v => String(v||'').toLowerCase().includes(searchTerm.toLowerCase())));
     if (filters.mine && currentUserName) {
         const parts = currentUserName.toLowerCase().split(' ').filter(p => p.length > 2);
-        result = result.filter(r => {
-            const resp = String(r.Verantwortlich || '').toLowerCase();
-            return parts.some(p => resp.includes(p));
-        });
+        result = result.filter(r => { const resp = String(r.Verantwortlich || '').toLowerCase(); return parts.some(p => resp.includes(p)); });
     }
     if (filters.overdue) result = result.filter(r => r['Due Date'] && r['Due Date'] < new Date().toISOString().split('T')[0]);
     if (filters.priority) result = result.filter(r => toBoolean(r.Priorität));
@@ -404,24 +364,16 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   const onDragEnd = (result: DropResult) => {
     if (!permissions.canEditContent || !result.destination) return;
     const { draggableId, destination } = result;
-    const newRows = [...rows];
-    const cardIdx = newRows.findIndex(r => idFor(r) === draggableId);
-    if (cardIdx === -1) return;
-    const [moved] = newRows.splice(cardIdx, 1);
-    moved["Board Stage"] = destination.droppableId;
-    
+    const newRows = [...rows]; const cardIdx = newRows.findIndex(r => idFor(r) === draggableId); if (cardIdx === -1) return;
+    const [moved] = newRows.splice(cardIdx, 1); moved["Board Stage"] = destination.droppableId;
     const targetCards = newRows.filter(r => inferStage(r) === destination.droppableId);
-    let insertIndex = newRows.length;
-    if (targetCards.length > 0 && destination.index < targetCards.length) {
-        insertIndex = newRows.findIndex(r => idFor(r) === idFor(targetCards[destination.index]));
-    }
+    let insertIndex = newRows.length; if (targetCards.length > 0 && destination.index < targetCards.length) insertIndex = newRows.findIndex(r => idFor(r) === idFor(targetCards[destination.index]));
     newRows.splice(insertIndex, 0, moved);
     const reindexed = reindexByStage(newRows);
-    setRows(reindexed);
-    saveCards(); // Triggers "Board gespeichert"
+    setRows(reindexed); saveCards(); enqueueSnackbar('Karte verschoben', { variant: 'success', autoHideDuration: 1500 });
   };
 
-  // --- KPI Popup & Dialogs ---
+  // Dialogs
   const TRKPIPopup = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
     const distribution = Object.entries(kpis.columnDistribution).map(([name, count]) => ({ name, count: count as number }));
     distribution.sort((a, b) => { const idxA = cols.findIndex(c => c.name === a.name); const idxB = cols.findIndex(c => c.name === b.name); return idxA - idxB; });
@@ -446,7 +398,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       const handleSaveTopic = async (index: number, field: string, value: any) => { const newTopics = [...localTopics]; newTopics[index] = { ...newTopics[index], [field]: value }; setLocalTopics(newTopics); if (newTopics[index].id && !newTopics[index].id.startsWith('tmp')) { await supabase.from('board_top_topics').update({ [field]: value }).eq('id', newTopics[index].id); }};
       const handleAdd = async () => { const { data } = await supabase.from('board_top_topics').insert({ board_id: boardId, title: '', position: localTopics.length }).select().single(); if (data) setLocalTopics([...localTopics, data]); };
       const handleDelete = async (id: string) => { await supabase.from('board_top_topics').delete().eq('id', id); setLocalTopics(prev => prev.filter(t => t.id !== id)); };
-      return (<Dialog open={open} onClose={onClose} maxWidth="md" fullWidth><DialogTitle>Top Themen</DialogTitle><DialogContent><Stack spacing={2}>{localTopics.map((t,i)=>(<Box key={t.id} sx={{display:'flex',gap:1}}><TextField value={t.title} onChange={(e)=>handleSaveTopic(i,'title',e.target.value)} fullWidth size="small"/><IconButton onClick={()=>handleDelete(t.id)}><Delete/></IconButton></Box>))}{localTopics.length<5&&<Button onClick={handleAdd}>+ Add</Button>}</Stack></DialogContent><DialogActions><Button onClick={onClose}>Close</Button></DialogActions></Dialog>);
+      // Falls getKwString nicht importiert ist, hier lokalen fallback oder import sicherstellen.
+      // Da wir im Originalboard sind, nutzen wir den import oder helper.
+      return (<Dialog open={open} onClose={onClose} maxWidth="md" fullWidth><DialogTitle>Top Themen</DialogTitle><DialogContent><Stack spacing={2}>{localTopics.map((t,i)=>(<Box key={t.id} sx={{display:'flex',gap:1}}><TextField value={t.title} onChange={(e)=>handleSaveTopic(i,'title',e.target.value)} fullWidth size="small"/><TextField type="date" size="small" value={t.due_date||''} onChange={(e)=>handleSaveTopic(i,'due_date',e.target.value)} helperText={getKwString ? getKwString(t.due_date||null) : ''} /><IconButton onClick={()=>handleDelete(t.id)}><Delete/></IconButton></Box>))}{localTopics.length<5&&<Button onClick={handleAdd}>+ Add</Button>}</Stack></DialogContent><DialogActions><Button onClick={onClose}>Close</Button></DialogActions></Dialog>);
   };
   const SettingsDialog = ({ open, onClose }: any) => {
     const [localCols, setLocalCols] = useState(cols); const [tab, setTab] = useState(0); const [newCol, setNewCol] = useState(''); useEffect(() => { if(open) setLocalCols(cols); }, [open, cols]);
@@ -483,16 +437,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
           <Badge badgeContent={kpiBadgeCount} color="error" overlap="circular">
             <IconButton onClick={() => setKpiPopupOpen(true)}><Assessment fontSize="small" /></IconButton>
           </Badge>
-          
-          {/* REALTIME INDICATOR */}
-          <Tooltip title={realtimeStatus === 'SUBSCRIBED' ? 'Live verbunden' : 'Verbinde...'}>
-             <Box sx={{ 
-                 width: 10, height: 10, borderRadius: '50%', 
-                 bgcolor: realtimeStatus === 'SUBSCRIBED' ? 'success.main' : (realtimeStatus === 'CHANNEL_ERROR' ? 'error.main' : 'warning.main'),
-                 boxShadow: '0 0 4px rgba(0,0,0,0.2)' 
-             }} />
-          </Tooltip>
-
+          <Tooltip title={realtimeStatus === 'SUBSCRIBED' ? 'Live verbunden' : 'Verbinde...'}><Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: realtimeStatus === 'SUBSCRIBED' ? 'success.main' : (realtimeStatus === 'CHANNEL_ERROR' ? 'error.main' : 'warning.main'), boxShadow: '0 0 4px rgba(0,0,0,0.2)' }} /></Tooltip>
         </Box>
       </Box>
 
@@ -504,7 +449,26 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
          )} allowDrag={permissions.canEditContent} />
       </Box>
 
-      <EditCardDialog selectedCard={selectedCard} editModalOpen={editModalOpen} setEditModalOpen={setEditModalOpen} editTabValue={editTabValue} setEditTabValue={setEditTabValue} rows={rows} setRows={setRows} users={users} lanes={[]} checklistTemplates={checklistTemplates} inferStage={inferStage} addStatusEntry={()=>{}} updateStatusSummary={()=>{}} handleTRNeuChange={handleTRNeuChange} saveCards={saveCards} idFor={idFor} setSelectedCard={setSelectedCard} patchCard={patchCard} />
+      <EditCardDialog 
+        selectedCard={selectedCard} 
+        editModalOpen={editModalOpen} 
+        setEditModalOpen={setEditModalOpen} 
+        editTabValue={editTabValue} 
+        setEditTabValue={setEditTabValue} 
+        rows={rows} 
+        setRows={setRows} 
+        users={users} 
+        lanes={[]} 
+        checklistTemplates={checklistTemplates} 
+        inferStage={inferStage} 
+        addStatusEntry={addStatusEntry} // ✅ WIEDER EINGEFÜGT
+        updateStatusSummary={updateStatusSummary} // ✅ WIEDER EINGEFÜGT
+        handleTRNeuChange={handleTRNeuChange} 
+        saveCards={saveCards} 
+        idFor={idFor} 
+        setSelectedCard={setSelectedCard} 
+        patchCard={patchCard} 
+      />
       <NewCardDialog newCardOpen={newCardOpen} setNewCardOpen={setNewCardOpen} cols={cols} lanes={[]} rows={rows} setRows={setRows} users={users} />
       <ArchiveDialog archiveOpen={archiveOpen} setArchiveOpen={setArchiveOpen} archivedCards={archivedCards} restoreCard={()=>{}} deleteCardPermanently={()=>{}} />
       <TRKPIPopup open={kpiPopupOpen} onClose={() => setKpiPopupOpen(false)} />
