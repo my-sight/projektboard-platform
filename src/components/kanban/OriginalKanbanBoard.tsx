@@ -43,7 +43,8 @@ import {
   Person,
   Category,
   ViewHeadline,
-  ViewModule, // ViewList entfernt
+  ViewList,
+  ViewModule,
   AddCircle,
   ArrowBack,
   FilterList,
@@ -241,7 +242,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     onArchiveCountChange?.(cards.length);
   }, [onArchiveCountChange]);
 
-  // KPI Berechnung
+  // ✅ KPI BERECHNUNG (Korrigiert)
   const calculateKPIs = useCallback(() => {
     const activeCards = rows.filter(card => card["Archived"] !== "1");
     const kpis: any = {
@@ -255,13 +256,19 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       lkEscalations: [],
       skEscalations: [],
       columnDistribution: {},
+      totalTrDeviation: 0 // Summe der Abweichungen
     };
 
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const endOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (6 - now.getDay()), 23, 59, 59);
+    now.setHours(0, 0, 0, 0);
+    const todayStr = now.toISOString().split('T')[0];
+    
+    const endOfWeek = new Date(now);
+    endOfWeek.setDate(now.getDate() + (6 - now.getDay()));
+    endOfWeek.setHours(23, 59, 59, 999);
     
     activeCards.forEach(card => {
+      // Ampel & Eskalation
       const ampel = String(card.Ampel || '').toLowerCase();
       if (ampel === 'grün') kpis.ampelGreen++;
       else if (ampel === 'rot') kpis.ampelRed++;
@@ -271,15 +278,19 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       if (eskalation === 'LK') kpis.lkEscalations.push(card);
       if (eskalation === 'SK') kpis.skEscalations.push(card);
 
+      // TR Logik
       const trDateStr = card['TR_Neu'] || card['TR_Datum'];
       const trCompleted = toBoolean(card.TR_Completed);
 
+      // 1. Überfälligkeit nur prüfen wenn NICHT erledigt
       if (trDateStr && !trCompleted) {
         const trDate = nullableDate(trDateStr);
         if (trDate) {
+          trDate.setHours(0, 0, 0, 0); // Zeit ignorieren für Vergleich
+          
           if (trDate < now) {
             kpis.trOverdue.push(card);
-          } else if (trDate.toISOString().split('T')[0] === today) {
+          } else if (trDate.toISOString().split('T')[0] === todayStr) {
             kpis.trToday.push(card);
           } else if (trDate <= endOfWeek) {
             kpis.trThisWeek.push(card);
@@ -287,6 +298,17 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         }
       }
 
+      // 2. Gesamtabweichung (TR Neu - TR Original)
+      const original = nullableDate(card["TR_Datum"]);
+      const current = nullableDate(card["TR_Neu"]);
+      if (original && current) {
+          const diffTime = current.getTime() - original.getTime();
+          // Runden auf ganze Tage
+          const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+          kpis.totalTrDeviation += diffDays;
+      }
+
+      // Spaltenverteilung
       const stage = inferStage(card);
       kpis.columnDistribution[stage] = (kpis.columnDistribution[stage] || 0) + 1;
     });
@@ -329,7 +351,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
        const myEmail = (supabase.auth.getUser() as any)?.data?.user?.email;
 
        result = result.filter(r => {
+          // Check auf Email (neu)
           if (r.VerantwortlichEmail === myEmail) return true;
+          // Check auf Name (alt)
           const resp = String(r.Verantwortlich || '').toLowerCase();
           return myNameParts.some(part => resp.includes(part));
        });
@@ -614,6 +638,8 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         let loadedCards = data.map(convertDbToCard);
 
         const activeCards = loadedCards.filter(card => card["Archived"] !== "1");
+        // Archived Cards laden wir nur bei Bedarf (im Dialog)
+        
         activeCards.sort((a, b) => {
           const pos = (name: string) => DEFAULT_COLS.findIndex((c) => c.name === name);
           const stageA = inferStage(a);
@@ -752,15 +778,89 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   // Deep Link: Karte öffnen (ohne Modal)
   useEffect(() => {
     if (highlightCardId && rows.length > 0) {
-      const targetCard = rows.find(r => idFor(r) === highlightCardId || r.card_id === highlightCardId || r.id === highlightCardId);
-      if (targetCard) {
-        // Nur Highlighten
-      }
+      // Highlight logic in Card
     }
-  }, [highlightCardId, rows, idFor]);
+  }, [highlightCardId, rows]);
 
   // --- Card Actions ---
   
+  const loadArchivedCards = useCallback(async () => {
+    try {
+      const { data } = await supabase
+        .from('kanban_cards')
+        .select('card_data')
+        .eq('board_id', boardId);
+
+      const archived = (data || [])
+        .map(item => item.card_data)
+        .filter(card => card["Archived"] === "1");
+      
+      updateArchivedState(archived);
+      return archived;
+    } catch (error) {
+      console.error('❌ Fehler beim Laden des Archivs:', error);
+      updateArchivedState([]);
+      return [];
+    }
+  }, [boardId, supabase, updateArchivedState]);
+  
+  const restoreCard = async (card: any) => {
+    if (!permissions.canEditContent) return;
+    if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" wiederherstellen?`)) return;
+    
+    card["Archived"] = "";
+    card["ArchivedDate"] = null;
+    const updatedRows = reindexByStage([...rows, card]);
+    setRows(updatedRows);
+    // Archivliste muss im Dialog neu geladen werden
+    await saveCards();
+    enqueueSnackbar('Karte wiederhergestellt', { variant: 'success' });
+  };
+
+  const deleteCardPermanently = async (card: any) => {
+    if (!permissions.canManageSettings) {
+        enqueueSnackbar('Nur Admins können Karten löschen.', { variant: 'warning' });
+        return;
+    }
+    if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" ENDGÜLTIG löschen?`)) return;
+    
+    try {
+      const headers = await buildSupabaseAuthHeaders(supabase);
+      const response = await fetch(`/api/boards/${boardId}/cards?cardId=${encodeURIComponent(idFor(card))}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        enqueueSnackbar(formatSupabaseActionError('Karte löschen', payload?.error), { variant: 'error' });
+        return;
+      }
+      
+      // UI Update für Archiv passiert im Dialog
+      enqueueSnackbar('Karte endgültig gelöscht', { variant: 'success' });
+    } catch (error) {
+      enqueueSnackbar(formatSupabaseActionError('Karte löschen', getErrorMessage(error)), { variant: 'error' });
+    }
+  };
+
+  const archiveColumn = (columnName: string) => {
+    if (!permissions.canEditContent) return;
+    if (!window.confirm(`Alle Karten in "${columnName}" archivieren?`)) return;
+    
+    const updatedRows = rows.map(r => {
+      if (inferStage(r) === columnName) {
+        r["Archived"] = "1";
+        r["ArchivedDate"] = new Date().toLocaleDateString('de-DE'); 
+      }
+      return r;
+    }).filter(r => r["Archived"] !== "1"); 
+    
+    setRows(updatedRows);
+    // Wir müssen nicht die archivierten Karten hier laden, das passiert beim Öffnen des Dialogs
+    enqueueSnackbar(`Karten archiviert`, { variant: 'info' });
+  };
+
   const addStatusEntry = (card: any) => {
     const now = new Date();
     const dateStr = now.toLocaleDateString('de-DE');
@@ -932,7 +1032,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     const isOverdue = kpis.trOverdue.length > 0;
     const hasEscalations = kpis.lkEscalations.length > 0 || kpis.skEscalations.length > 0;
 
-
     return (
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -977,7 +1076,17 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
             </Grid>
             
             <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom sx={{ mt: 1, color: 'text.secondary' }}>Kartenverteilung (Stages)</Typography>
+                  {/* ✅ NEU: Gesamtabweichung */}
+                  <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: kpis.totalTrDeviation > 0 ? 'error.light' : 'success.light', borderRadius: 1, bgcolor: kpis.totalTrDeviation > 0 ? 'error.50' : 'success.50' }}>
+                    <Typography variant="subtitle2" sx={{ color: kpis.totalTrDeviation > 0 ? 'error.main' : 'success.main', fontWeight: 'bold' }}>
+                       Gesamtabweichung TR: {kpis.totalTrDeviation > 0 ? '+' : ''}{kpis.totalTrDeviation} Tage
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                       Summe aller Verschiebungen (Neu vs. Original)
+                    </Typography>
+                  </Box>
+
+                <Typography variant="h6" gutterBottom sx={{ mt: 2, color: 'text.secondary' }}>Kartenverteilung (Stages)</Typography>
                 <Card variant="outlined">
                     <CardContent>
                         <List dense>
@@ -1071,6 +1180,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
                      {localTopics.map((topic, index) => (
                          <Box key={topic.id} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                              <TextField fullWidth size="small" placeholder="Thema..." value={topic.title} onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} />
+                             
                              <Box sx={{ width: 200 }}>
                                 <DatePicker 
                                     label="Datum"
@@ -1214,7 +1324,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr repeat(2, auto) repeat(3, auto) repeat(3, auto)', gap: 1.5, alignItems: 'center', mt: 0 }}>
           <TextField size="small" placeholder="Suchen..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} sx={{ minWidth: 220 }} />
 
-          {/* Filters */}
           <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 0.5 }}>
              <Chip icon={<FilterList />} label="Meine" clickable color={filters.mine ? "primary" : "default"} onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))} />
              <Chip icon={<Warning />} label="Überfällig" clickable color={filters.overdue ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))} />
@@ -1223,7 +1332,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
           </Box>
           
           <Button variant={density === 'compact' ? 'contained' : 'outlined'} onClick={() => setDensity('compact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: kompakt"><ViewHeadline fontSize="small" /></Button>
-          {/* xcompact entfernt */}
           <Button variant={density === 'large' ? 'contained' : 'outlined'} onClick={() => setDensity('large')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: groß"><ViewModule fontSize="small" /></Button>         
           
           <Button variant="contained" size="small" startIcon={<AddCircle />} onClick={() => setNewCardOpen(true)} disabled={!permissions.canEditContent}>Neue Karte</Button>
