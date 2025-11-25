@@ -3,6 +3,7 @@
 import { ReactNode, useEffect, useMemo, useRef } from 'react';
 import { Box, Chip, IconButton, Typography, Tooltip } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
+import { CheckCircle } from '@mui/icons-material'; // ✅ NEU: Icon für Checkliste
 import { keyframes } from '@mui/system';
 
 import { nullableDate, toBoolean } from '@/utils/booleans';
@@ -30,6 +31,7 @@ export interface KanbanCardProps {
   users: Array<{ id: string; name?: string; full_name?: string; email?: string; department?: string | null; company?: string | null; }>;
   canModify: boolean;
   highlighted?: boolean;
+  checklistTemplates: Record<string, string[]>;
 }
 
 const statusKeys = ['message', 'qualitaet', 'kosten', 'termine'] as const;
@@ -50,6 +52,7 @@ export function KanbanCard({
   users,
   canModify,
   highlighted,
+  checklistTemplates,
 }: KanbanCardProps) {
   const cardId = idFor(card);
   const isDragDisabled = !canModify;
@@ -88,12 +91,22 @@ export function KanbanCard({
   const isOverdue = !!dueDate && !trCompleted && dueDate < new Date();
   const hasPriority = toBoolean(card.Priorität);
   const sopDate = nullableDate(card.SOP_Datum);
-  const trCompletedDate = nullableDate(card.TR_Completed_At || card.TR_Completed_Date);
   
-  const trDiffBase = nullableDate(card.TR_Datum);
-  const trCompletionDiff = trDiffBase && trCompletedDate
-    ? Math.round((trCompletedDate.getTime() - trDiffBase.getTime()) / (1000 * 60 * 60 * 24))
+  // TR Berechnungen
+  const trOriginalDate = nullableDate(card.TR_Datum);
+  const trNeuDate = nullableDate(card.TR_Neu);
+  
+  // Abweichung berechnen (Neu - Original)
+  const trDiff = trOriginalDate && trNeuDate
+    ? Math.round((trNeuDate.getTime() - trOriginalDate.getTime()) / (1000 * 60 * 60 * 24))
     : null;
+
+  // Checklisten-Logik
+  const stage = inferStage(card);
+  const templateTasks = checklistTemplates?.[stage] || [];
+  const totalChecklist = templateTasks.length;
+  const doneChecklist = templateTasks.filter(task => card.ChecklistDone?.[stage]?.[task]).length;
+  const hasChecklist = totalChecklist > 0;
 
   let currentSize: LayoutDensity = density;
   if (card.Collapsed === 'large') currentSize = 'large';
@@ -102,17 +115,14 @@ export function KanbanCard({
   let backgroundColor = 'white';
   if (hasLKEscalation) backgroundColor = '#fff3e0';
   if (hasSKEscalation) backgroundColor = '#ffebee';
-  let borderColor = 'var(--line)';
+  let borderColor = 'rgba(0,0,0,0.12)'; // Standard Rahmen
   if (hasLKEscalation) borderColor = '#ef6c00';
   if (hasSKEscalation) borderColor = '#c62828';
   const ampelColor = hasLKEscalation || hasSKEscalation ? '#ff5a5a' : '#14c38e';
 
   const handleUpdateCard = (updates: Partial<ProjectBoardCard>) => {
     if (!canModify) return;
-    
-    if (patchCard) {
-        patchCard(card, updates);
-    } else {
+    if (patchCard) { patchCard(card, updates); } else {
         const cardIndex = rows.findIndex((c) => idFor(c) === cardId);
         if (cardIndex >= 0) {
             const newRows = [...rows];
@@ -127,29 +137,17 @@ export function KanbanCard({
     if (!value) return null;
     const date = new Date(value);
     if (isNaN(date.getTime())) return null;
-    return (
-      <Chip label={`${label}: ${date.toLocaleDateString('de-DE')}`} size="small" sx={{ fontSize: '10px', height: '18px', backgroundColor: background, color, border, '& .MuiChip-label': { px: 0.8, py: 0 } }} />
-    );
+    return (<Chip label={`${label}: ${date.toLocaleDateString('de-DE')}`} size="small" sx={{ fontSize: '10px', height: '18px', backgroundColor: background, color, border, '& .MuiChip-label': { px: 0.8, py: 0 } }} />);
   };
 
   return (
     <Draggable key={cardId} draggableId={cardId} index={index} isDragDisabled={isDragDisabled}>
       {(provided, snapshot) => (
         <Box
-          ref={(el) => {
-              provided.innerRef(el);
-              // @ts-ignore
-              cardRef.current = el;
-          }}
-          {...provided.draggableProps}
-          {...provided.dragHandleProps}
+          ref={(el) => { provided.innerRef(el); cardRef.current = el as any; }}
+          {...provided.draggableProps} {...provided.dragHandleProps}
           className={`card ${hasLKEscalation ? 'esk-lk' : ''} ${hasSKEscalation ? 'esk-sk' : ''}`}
-          onClick={(e) => {
-            if (!canModify) return;
-            if (!(e.target as HTMLElement).closest('.controls')) {
-              setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0);
-            }
-          }}
+          onClick={(e) => { if (!canModify) return; if (!(e.target as HTMLElement).closest('.controls')) { setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0); } }}
           sx={{
             backgroundColor, border: `1px solid ${borderColor}`, borderRadius: currentSize === 'xcompact' ? '4px' : '12px', padding: currentSize === 'xcompact' ? '4px' : '10px',
             cursor: 'pointer', transition: 'transform 0.12s ease, box-shadow 0.12s ease', opacity: snapshot.isDragging ? 0.96 : 1,
@@ -158,9 +156,7 @@ export function KanbanCard({
             minHeight: currentSize === 'xcompact' ? '18px' : currentSize === 'large' ? '150px' : '80px',
             display: 'flex', flexDirection: 'column', position: 'relative',
             '&:hover': { transform: snapshot.isDragging ? 'rotate(2deg) scale(1.03)' : 'translateY(-2px)', boxShadow: '0 6px 14px rgba(0,0,0,0.18)' },
-            // ✅ Animation: 5x blinken, dann stop
-            animation: highlighted ? `${blinkAnimation} 1s 5` : 'none',
-            borderColor: highlighted ? '#ffc107' : borderColor,
+            animation: highlighted ? `${blinkAnimation} 1s 5` : 'none', borderColor: highlighted ? '#ffc107' : borderColor,
           }}
         >
           {currentSize === 'xcompact' ? (
@@ -175,8 +171,10 @@ export function KanbanCard({
                   <Box sx={{ width: 12, height: 12, borderRadius: '50%', backgroundColor: ampelColor, border: '1px solid var(--line)', flexShrink: 0 }} />
                   <Typography variant="subtitle2" sx={{ fontWeight: 700, fontSize: '14px', color: 'var(--ink)' }}>{card.Nummer}</Typography>
                 </Box>
-
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  {hasChecklist && (
+                    <Chip label={`${doneChecklist}/${totalChecklist}`} size="small" sx={{ height: 18, fontSize: '10px', backgroundColor: doneChecklist===totalChecklist ? '#e8f5e9' : '#f5f5f5', color: doneChecklist===totalChecklist ? '#2e7d32' : 'inherit' }} />
+                  )}
                   {hasPriority && <Chip label="!" size="small" color="error" sx={{ fontWeight: 700, height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '12px' } }} />}
                   <Box className="controls" sx={{ display: 'flex', gap: 0.5 }}>
                     <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: currentSize === 'large' ? '#e3f2fd' : 'transparent', color: currentSize === 'large' ? '#1976d2' : 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} title="Groß/Normal umschalten" disabled={!canModify} onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Collapsed: currentSize === 'large' ? '' : 'large' }); }}>↕</IconButton>
@@ -187,37 +185,14 @@ export function KanbanCard({
                 </Box>
               </Box>
 
-              {/* Nicht fett, max 2 Zeilen */}
-              {card.Teil && (
-                <Typography 
-                  variant="body2" 
-                  sx={{ 
-                    fontSize: '12px', 
-                    fontWeight: 400,
-                    lineHeight: 1.3, 
-                    color: 'var(--muted)', 
-                    overflow: 'hidden', 
-                    display: '-webkit-box', 
-                    WebkitLineClamp: 2, 
-                    WebkitBoxOrient: 'vertical', 
-                    mb: 1 
-                  }}
-                >
-                  {card.Teil}
-                </Typography>
-              )}
-              
+              {card.Teil && <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 400, lineHeight: 1.3, color: 'var(--muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', mb: 1 }}>{card.Teil}</Typography>}
               {statusKurz && (
                 <Tooltip title={statusKurz} enterDelay={1000} arrow>
                   <Typography variant="caption" sx={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: currentSize === 'large' ? 'clip' : 'ellipsis', whiteSpace: currentSize === 'large' ? 'pre-wrap' : 'nowrap', display: currentSize === 'large' ? '-webkit-box' : 'block', WebkitLineClamp: currentSize === 'large' ? 6 : undefined, WebkitBoxOrient: currentSize === 'large' ? 'vertical' : undefined, mb: 0.5, wordBreak: currentSize === 'large' ? 'break-word' : 'normal', cursor: 'help' }}>{statusKurz}</Typography>
                 </Tooltip>
               )}
               
-              {currentSize === 'large' && card.Bild && (
-                <Box sx={{ mb: 1, display: 'flex', justifyContent: 'center' }}>
-                  <img src={card.Bild} alt="Projektbild" style={{ maxWidth: '100%', maxHeight: '60px', borderRadius: '6px', objectFit: 'cover' }} />
-                </Box>
-              )}
+              {currentSize === 'large' && card.Bild && (<Box sx={{ mb: 1, display: 'flex', justifyContent: 'center' }}><img src={card.Bild} alt="Projektbild" style={{ maxWidth: '100%', maxHeight: '60px', borderRadius: '6px', objectFit: 'cover' }} /></Box>)}
 
                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 'auto', fontSize: '10px' }}>
                 <Typography variant="caption" sx={{ fontSize: '10px', color: 'var(--muted)' }}>{card.Verantwortlich || ''}</Typography>
@@ -226,25 +201,27 @@ export function KanbanCard({
               
               {(card.TR_Datum || card.TR_Neu || sopDate) && (
                   <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid var(--line)', display: 'flex', justifyContent: sopDate ? 'space-between' : 'center', gap: 0.5, alignItems: 'center' }}>
-                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
                        {renderTRChip('TR', card.TR_Datum, '#2e7d32', '1px solid #c8e6c9', '#e8f5e8')}
-                       {renderTRChip('TR neu', card.TR_Neu, '#1976d2', '1px solid #bbdefb', '#e3f2fd')}
+                       
+                       {/* ✅ KORREKTUR: TR Neu + Haken + Diff */}
+                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          {renderTRChip('TR neu', card.TR_Neu, '#1976d2', '1px solid #bbdefb', '#e3f2fd')}
+                          {trCompleted && (
+                              <CheckCircle sx={{ fontSize: '16px', color: '#2e7d32' }} />
+                          )}
+                          {/* Differenz immer anzeigen, wenn beide Daten da sind */}
+                          {trDiff !== null && (
+                              <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 600, color: trDiff > 0 ? '#d32f2f' : '#2e7d32' }}>
+                                  {trDiff > 0 ? `+${trDiff}` : trDiff}
+                              </Typography>
+                          )}
+                       </Box>
                     </Box>
                     {sopDate && <Chip label={`SOP: ${sopDate.toLocaleDateString('de-DE')}`} size="small" sx={{ fontSize: '10px', height: '18px', backgroundColor: '#f3e5f5', color: '#6a1b9a', border: '1px solid #e1bee7', '& .MuiChip-label': { px: 0.8, py: 0 } }} />}
                   </Box>
               )}
 
-              {(card.TR_Neu || card.TR_Datum) && trCompleted && (
-                <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                  <Chip label="✓ TR erledigt" size="small" color="success" />
-                  <Typography variant="caption" sx={{ display: 'block', color: '#2e7d32', fontWeight: 500 }}>
-                    Abschluss: {trCompletedDate ? trCompletedDate.toLocaleDateString('de-DE') : 'Datum unbekannt'}
-                    {trCompletionDiff !== null ? ` (${trCompletionDiff >= 0 ? '+' : ''}${trCompletionDiff} Tage)` : ''}
-                  </Typography>
-                </Box>
-              )}
-
-              {/* ✅ WIEDER EINGEFÜGT: Team-Anzeige bei großer Karte */}
               {currentSize === 'large' && card.Team && Array.isArray(card.Team) && card.Team.length > 0 && (
                   <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid var(--line)' }}>
                     <Typography variant="caption" sx={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 600, display: 'block', mb: 0.5 }}>
@@ -261,13 +238,11 @@ export function KanbanCard({
 
                           const lookupUser = member.userId ? usersById.get(String(member.userId)) : undefined;
                           const resolvedName = (lookupUser?.full_name || lookupUser?.name || '').trim() || (member.name || '').trim();
-                          const fallbackEmail = lookupUser?.email || member.email || '';
-                          const displayName = resolvedName || (fallbackEmail ? fallbackEmail.split('@')[0] : 'Unbekannt');
+                          const displayName = resolvedName || 'Unbekannt';
                           const department = lookupUser?.department || lookupUser?.company || member.department || member.company || '';
                           
                           const labelParts = [displayName];
                           if (department) labelParts.push(`– ${department}`);
-                          if (member.role) labelParts.push(`(${member.role})`);
                           const label = labelParts.join(' ');
 
                           return (

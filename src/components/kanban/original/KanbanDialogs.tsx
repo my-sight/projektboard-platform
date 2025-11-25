@@ -28,26 +28,43 @@ import {
   TableRow,
   TextField,
   Typography,
+  Stack,
+  InputAdornment
 } from '@mui/material';
+import { ProjectBoardCard } from '@/types';
+import { Delete, Add } from '@mui/icons-material';
+
+// DatePicker Imports
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { DatePicker } from '@mui/x-date-pickers/DatePicker';
+import dayjs from 'dayjs';
+import 'dayjs/locale/de';
+
+dayjs.locale('de');
+
+// --- EDIT CARD DIALOG ---
 
 export interface EditCardDialogProps {
-  selectedCard: any | null;
+  selectedCard: ProjectBoardCard | null;
   editModalOpen: boolean;
   setEditModalOpen: (open: boolean) => void;
   editTabValue: number;
   setEditTabValue: (value: number) => void;
-  rows: any[];
-  setRows: (rows: any[]) => void;
+  rows: ProjectBoardCard[];
+  setRows: (rows: ProjectBoardCard[]) => void;
   users: any[];
   lanes: string[];
   checklistTemplates: Record<string, string[]>;
-  inferStage: (card: any) => string;
-  addStatusEntry: (card: any) => void;
-  updateStatusSummary: (card: any) => void;
-  handleTRNeuChange: (card: any, newDate: string) => void;
+  inferStage: (card: ProjectBoardCard) => string;
+  addStatusEntry: (card: ProjectBoardCard) => void;
+  updateStatusSummary: (card: ProjectBoardCard) => void;
+  handleTRNeuChange: (card: ProjectBoardCard, newDate: string) => void;
   saveCards: () => void;
-  idFor: (card: any) => string;
-  setSelectedCard: (card: any) => void;
+  patchCard: (card: ProjectBoardCard, changes: Partial<ProjectBoardCard>) => Promise<void | boolean>;
+  idFor: (card: ProjectBoardCard) => string;
+  setSelectedCard: (card: ProjectBoardCard) => void;
+  canEdit?: boolean;
 }
 
 export function EditCardDialog({
@@ -66,8 +83,10 @@ export function EditCardDialog({
   updateStatusSummary,
   handleTRNeuChange,
   saveCards,
+  patchCard,
   idFor,
   setSelectedCard,
+  canEdit = true, 
 }: EditCardDialogProps) {
   if (!selectedCard) return null;
 
@@ -75,17 +94,60 @@ export function EditCardDialog({
   const tasks = checklistTemplates[stage] || [];
   const stageChecklist = (selectedCard.ChecklistDone && selectedCard.ChecklistDone[stage]) || {};
 
+  // Helper für sofortiges Speichern (Patch)
+  const handlePatch = (key: keyof ProjectBoardCard, value: any) => {
+     if (selectedCard) {
+         const updated = { ...selectedCard, [key]: value };
+         setSelectedCard(updated as ProjectBoardCard);
+         patchCard(selectedCard, { [key]: value });
+     }
+  };
+
+  // Helper: Bild-Upload
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const result = ev.target?.result;
+          if (typeof result === 'string') {
+              handlePatch('Bild', result);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+  };
+
+  // Helper: Datum lokal (Anzeige)
+  const handleDateChangeLocal = (key: keyof ProjectBoardCard, newValue: dayjs.Dayjs | null) => {
+      if (selectedCard) {
+          const dateStr = newValue && newValue.isValid() ? newValue.format('YYYY-MM-DD') : null;
+          setSelectedCard({ ...selectedCard, [key]: dateStr } as ProjectBoardCard);
+      }
+  };
+
+  // Helper: Datum speichern (Server)
+  const handleDateAccept = (key: keyof ProjectBoardCard, newValue: dayjs.Dayjs | null) => {
+      if (selectedCard) {
+          const dateStr = newValue ? newValue.format('YYYY-MM-DD') : null;
+          patchCard(selectedCard, { [key]: dateStr });
+      }
+  };
+
+  // Schließen & Speichern
+  const handleClose = () => {
+      saveCards();
+      setEditModalOpen(false);
+  };
+
   return (
     <Dialog
       open={editModalOpen}
-      onClose={() => setEditModalOpen(false)}
+      onClose={handleClose}
       maxWidth="md"
       fullWidth
       PaperProps={{
-        sx: {
-          backgroundColor: 'background.paper',
-          color: 'text.primary',
-        },
+        sx: { backgroundColor: 'background.paper', color: 'text.primary' },
       }}
     >
       <DialogTitle
@@ -98,18 +160,20 @@ export function EditCardDialog({
         }}
       >
         <Typography variant="h6">
-          Karte bearbeiten: {selectedCard['Nummer']} - {selectedCard['Teil']}
+          Karte {canEdit ? 'bearbeiten' : 'ansehen'}: {selectedCard.Nummer} - {selectedCard.Teil}
         </Typography>
-        <IconButton onClick={() => setEditModalOpen(false)}>×</IconButton>
+        <IconButton onClick={handleClose}>×</IconButton>
       </DialogTitle>
 
       <DialogContent sx={{ p: 0 }}>
+       <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
         <Tabs value={editTabValue} onChange={(e, v) => setEditTabValue(v)}>
           <Tab label="Details" />
           <Tab label="Status & Checkliste" />
           <Tab label="Team" />
         </Tabs>
 
+        {/* TAB 1: DETAILS */}
         {editTabValue === 0 && (
           <Box sx={{ p: 3 }}>
             <Box
@@ -124,35 +188,41 @@ export function EditCardDialog({
               <Typography>Nummer</Typography>
               <TextField
                 size="small"
-                value={selectedCard['Nummer'] || ''}
-                onChange={(e) => {
-                  selectedCard['Nummer'] = e.target.value;
-                  setRows([...rows]);
-                }}
+                disabled={!canEdit}
+                value={selectedCard.Nummer || ''}
+                onChange={(e) => handlePatch('Nummer', e.target.value)}
               />
 
               <Typography>Name</Typography>
               <TextField
                 size="small"
-                value={selectedCard['Teil'] || ''}
-                onChange={(e) => {
-                  selectedCard['Teil'] = e.target.value;
-                  setRows([...rows]);
-                }}
+                disabled={!canEdit}
+                value={selectedCard.Teil || ''}
+                onChange={(e) => handlePatch('Teil', e.target.value)}
               />
 
               <Typography>Verantwortlich</Typography>
               <Select
                 size="small"
-                value={selectedCard['Verantwortlich'] || ''}
+                disabled={!canEdit}
+                value={selectedCard.Verantwortlich || ''}
                 onChange={(e) => {
-                  selectedCard['Verantwortlich'] = e.target.value;
-                  setRows([...rows]);
+                    const selectedName = e.target.value;
+                    const selectedUser = users.find(u => (u.full_name || u.name || u.email) === selectedName);
+                    
+                    const updates: any = { Verantwortlich: selectedName };
+                    if (selectedUser && selectedUser.email) {
+                        updates['VerantwortlichEmail'] = selectedUser.email;
+                    }
+                    
+                    if (selectedCard) {
+                        const updated = { ...selectedCard, ...updates };
+                        setSelectedCard(updated as ProjectBoardCard);
+                        patchCard(selectedCard, updates);
+                    }
                 }}
               >
-                <MenuItem value="">
-                  <em>Nicht zugewiesen</em>
-                </MenuItem>
+                <MenuItem value=""><em>Nicht zugewiesen</em></MenuItem>
                 {users.map((user: any) => (
                   <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
                     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
@@ -160,71 +230,65 @@ export function EditCardDialog({
                         {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
                         {user.department || user.company ? ` – ${user.department || user.company}` : ''}
                       </Typography>
-                      {user.email && (
-                        <Typography variant="caption" color="text.secondary">
-                          {user.email}
-                        </Typography>
-                      )}
+                      {user.email && <Typography variant="caption" color="text.secondary">{user.email}</Typography>}
                     </Box>
                   </MenuItem>
                 ))}
               </Select>
 
               <Typography>Fällig bis</Typography>
-              <TextField
-                size="small"
-                type="date"
-                value={String(selectedCard['Due Date'] || '').slice(0, 10)}
-                onChange={(e) => {
-                  selectedCard['Due Date'] = e.target.value;
-                  setRows([...rows]);
-                }}
+              <DatePicker 
+                value={selectedCard['Due Date'] ? dayjs(selectedCard['Due Date']) : null}
+                onChange={(val) => handleDateChangeLocal('Due Date', val)}
+                onAccept={(val) => handleDateAccept('Due Date', val)}
+                disabled={!canEdit}
+                slotProps={{ textField: { size: 'small', fullWidth: true } }}
               />
 
               <Typography>Priorität</Typography>
               <Checkbox
-                checked={toBoolean(selectedCard['Priorität'])}
-                onChange={(e) => {
-                  selectedCard['Priorität'] = e.target.checked;
-                  setRows([...rows]);
-                  setTimeout(() => saveCards(), 500);
-                }}
+                checked={toBoolean(selectedCard.Priorität)}
+                disabled={!canEdit}
+                onChange={(e) => handlePatch('Priorität', e.target.checked)}
               />
 
               <Typography>SOP</Typography>
-              <TextField
-                size="small"
-                type="date"
-                value={String(selectedCard['SOP_Datum'] || '').slice(0, 10)}
-                onChange={(e) => {
-                  selectedCard['SOP_Datum'] = e.target.value;
-                  setRows([...rows]);
-                }}
+              <DatePicker 
+                value={selectedCard.SOP_Datum ? dayjs(selectedCard.SOP_Datum) : null}
+                onChange={(val) => handleDateChangeLocal('SOP_Datum', val)}
+                onAccept={(val) => handleDateAccept('SOP_Datum', val)}
+                disabled={!canEdit}
+                slotProps={{ textField: { size: 'small', fullWidth: true } }}
               />
+
+              <Typography>Swimlane</Typography>
+              <Select
+                size="small"
+                disabled={!canEdit}
+                value={selectedCard.Swimlane || ''}
+                onChange={(e) => handlePatch('Swimlane', e.target.value)}
+              >
+                {lanes.map((lane) => (
+                  <MenuItem key={lane} value={lane}>
+                    {lane}
+                  </MenuItem>
+                ))}
+              </Select>
 
               <Typography>Bild</Typography>
               <TextField
                 size="small"
                 type="file"
+                disabled={!canEdit}
                 inputProps={{ accept: 'image/*' }}
-                onChange={(e) => {
-                  const file = (e.target as HTMLInputElement).files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                      selectedCard['Bild'] = ev.target?.result;
-                      setRows([...rows]);
-                    };
-                    reader.readAsDataURL(file);
-                  }
-                }}
+                onChange={handleImageUpload}
               />
             </Box>
 
-            {selectedCard['Bild'] && (
+            {selectedCard.Bild && (
               <Box sx={{ mb: 2 }}>
                 <img
-                  src={selectedCard['Bild']}
+                  src={selectedCard.Bild}
                   alt="Karten-Bild"
                   style={{ maxWidth: '300px', width: '100%', height: 'auto', borderRadius: '8px' }}
                 />
@@ -233,16 +297,17 @@ export function EditCardDialog({
           </Box>
         )}
 
+        {/* TAB 2: STATUS & CHECKLISTE */}
         {editTabValue === 1 && (
           <Box sx={{ p: 3 }}>
             <Box sx={{ mb: 4 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6">Statushistorie</Typography>
-                <Button variant="outlined" size="small" onClick={() => addStatusEntry(selectedCard)}>
+                <Button variant="outlined" size="small" onClick={() => addStatusEntry(selectedCard)} disabled={!canEdit}>
                   🕓 Neuer Eintrag
                 </Button>
               </Box>
-
+              
               <Box sx={{ maxHeight: '300px', overflow: 'auto', mb: 3 }}>
                 {(selectedCard.StatusHistory || []).map((entry: any, idx: number) => (
                   <Box key={idx} sx={{ mb: 3, border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
@@ -259,25 +324,22 @@ export function EditCardDialog({
                               maxRows={3}
                               placeholder="Statusmeldung"
                               value={entry.message?.text || ''}
+                              disabled={!canEdit}
                               onChange={(e) => {
                                 if (!entry.message) entry.message = { text: '', escalation: false };
                                 entry.message.text = e.target.value;
                                 updateStatusSummary(selectedCard);
-                                setRows([...rows]);
+                                setRows([...rows]); 
                               }}
+                              onBlur={() => saveCards()} 
                             />
                           </TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {['qualitaet', 'kosten', 'termine'].map((key) => {
-                          const labels: Record<string, string> = {
-                            qualitaet: 'Qualität',
-                            kosten: 'Kosten',
-                            termine: 'Termine',
-                          };
+                          const labels: Record<string, string> = { qualitaet: 'Qualität', kosten: 'Kosten', termine: 'Termine' };
                           const val = entry[key] || { text: '', escalation: false };
-
                           return (
                             <TableRow key={key}>
                               <TableCell>{labels[key]}</TableCell>
@@ -289,17 +351,14 @@ export function EditCardDialog({
                                   minRows={1}
                                   maxRows={4}
                                   value={val.text || ''}
+                                  disabled={!canEdit}
                                   onChange={(e) => {
                                     if (!entry[key]) entry[key] = { text: '', escalation: false };
                                     entry[key].text = e.target.value;
                                     updateStatusSummary(selectedCard);
                                     setRows([...rows]);
                                   }}
-                                  sx={{
-                                    '& .MuiInputBase-root': {
-                                      alignItems: 'flex-start',
-                                    },
-                                  }}
+                                  onBlur={() => saveCards()}
                                 />
                               </TableCell>
                               <TableCell>
@@ -308,11 +367,13 @@ export function EditCardDialog({
                                     <Checkbox
                                       size="small"
                                       checked={val.escalation || false}
+                                      disabled={!canEdit}
                                       onChange={(e) => {
                                         if (!entry[key]) entry[key] = { text: '', escalation: false };
                                         entry[key].escalation = e.target.checked;
                                         updateStatusSummary(selectedCard);
                                         setRows([...rows]);
+                                        saveCards();
                                       }}
                                     />
                                   }
@@ -329,22 +390,22 @@ export function EditCardDialog({
               </Box>
             </Box>
 
-            <Box>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                Checkliste für Phase: {stage}
-              </Typography>
-              <List>
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h6" sx={{ mb: 1 }}>Checkliste: {stage}</Typography>
+              <List dense>
                 {tasks.map((task) => {
                   const checked = stageChecklist[task];
                   return (
                     <ListItem key={task} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Checkbox
                         checked={Boolean(checked)}
+                        disabled={!canEdit}
                         onChange={(e) => {
                           if (!selectedCard.ChecklistDone) selectedCard.ChecklistDone = {};
                           if (!selectedCard.ChecklistDone[stage]) selectedCard.ChecklistDone[stage] = {};
                           selectedCard.ChecklistDone[stage][task] = e.target.checked;
                           setRows([...rows]);
+                          saveCards();
                         }}
                       />
                       <Typography variant="body2">{task}</Typography>
@@ -355,386 +416,182 @@ export function EditCardDialog({
             </Box>
 
             <Box sx={{ mt: 3 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                TR-Datum (Original)
-              </Typography>
-              {selectedCard['TR_Datum'] ? (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 1,
-                    p: 1,
-                    backgroundColor: 'action.hover',
-                    borderRadius: 1,
-                  }}
-                >
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {new Date(selectedCard['TR_Datum']).toLocaleDateString('de-DE')}
-                  </Typography>
-                  <Chip label="Gesperrt" size="small" color="default" sx={{ fontSize: '10px' }} />
-                </Box>
-              ) : (
-                <TextField
-                  size="small"
-                  type="date"
-                  value={selectedCard['TR_Datum'] || ''}
-                  onChange={(e) => {
-                    if (e.target.value && !selectedCard['TR_Datum']) {
-                      selectedCard['TR_Datum'] = e.target.value;
-                      setRows([...rows]);
-                    }
-                  }}
-                  helperText="Kann nach Eingabe nicht mehr geändert werden"
-                  InputLabelProps={{ shrink: true }}
-                />
-              )}
-
-              <Box sx={{ mt: 2 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  TR neu
-                </Typography>
-                <TextField
-                  size="small"
-                  type="date"
-                  value={selectedCard['TR_Neu'] || ''}
-                  onChange={(e) => handleTRNeuChange(selectedCard, e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                />
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>TR-Datum</Typography>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                 <DatePicker 
+                    label="Original"
+                    value={selectedCard.TR_Datum ? dayjs(selectedCard.TR_Datum) : null}
+                    onChange={(val) => handleDateChangeLocal('TR_Datum', val)}
+                    onAccept={(val) => handleDateAccept('TR_Datum', val)}
+                    disabled={!canEdit}
+                    slotProps={{ textField: { size: 'small' } }}
+                 />
+                
+                <DatePicker 
+                    label="Aktuell (Neu)"
+                    value={selectedCard.TR_Neu ? dayjs(selectedCard.TR_Neu) : null}
+                    onChange={(val) => handleDateChangeLocal('TR_Neu', val)}
+                    onAccept={(val) => {
+                        const dateStr = val ? val.format('YYYY-MM-DD') : '';
+                        handleTRNeuChange(selectedCard, dateStr);
+                    }}
+                    disabled={!canEdit}
+                    slotProps={{ textField: { size: 'small' } }}
+                 />
               </Box>
 
-              <TextField
-                label="TR-Datum"
-                type="date"
-                value={(selectedCard && (selectedCard['TR_Neu'] || selectedCard['TR_Datum'])) || ''}
-                onChange={(e) => {
-                  const newCard = { ...selectedCard };
-                  newCard['TR_Neu'] = e.target.value;
-                  setSelectedCard(newCard);
-                }}
-                InputLabelProps={{ shrink: true }}
-                sx={{ mt: 2, mb: 2 }}
-              />
-
-              {(selectedCard['TR_Neu'] || selectedCard['TR_Datum']) && (
+              {selectedCard.TR_History && selectedCard.TR_History.length > 0 && (
+                  <Box sx={{ mt: 1.5, pl: 1.5, borderLeft: '3px solid rgba(0,0,0,0.1)' }}>
+                      <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>Historie:</Typography>
+                      {selectedCard.TR_History.map((entry: any, idx: number) => {
+                          if (entry.date === selectedCard.TR_Neu) return null;
+                          if (idx > 0 && selectedCard.TR_History[idx-1].date === entry.date) return null;
+                          
+                          return (
+                              <Typography key={idx} variant="caption" sx={{ display: 'block', textDecoration: 'line-through', color: 'text.disabled' }}>
+                                  {new Date(entry.date).toLocaleDateString('de-DE')} 
+                                  {entry.changedBy && ` (${entry.changedBy})`}
+                              </Typography>
+                          );
+                      })}
+                  </Box>
+              )}
+              
+               {(selectedCard.TR_Neu || selectedCard.TR_Datum) && (
                 <FormControlLabel
                   control={
                     <Checkbox
-                      checked={toBoolean(selectedCard['TR_Completed'])}
+                      checked={toBoolean(selectedCard.TR_Completed)}
+                      disabled={!canEdit}
                       onChange={(e) => {
                         const checked = e.target.checked;
-                        const completionTimestamp = checked ? new Date().toISOString() : null;
-                        const newCard = { ...selectedCard, TR_Completed: checked };
-                        newCard['TR_Completed_At'] = completionTimestamp;
-                        newCard['TR_Completed_Date'] = completionTimestamp;
-                        setSelectedCard(newCard);
-
-                        const index = rows.findIndex((row) => idFor(row) === idFor(selectedCard));
-                        if (index >= 0) {
-                          const updatedRows = [...rows];
-                          updatedRows[index] = {
-                            ...updatedRows[index],
-                            TR_Completed: checked,
-                            TR_Completed_At: completionTimestamp,
-                            TR_Completed_Date: completionTimestamp,
-                          };
-                          setRows(updatedRows);
-                          setTimeout(() => saveCards(), 500);
-                        }
-                      }}
-                      sx={{
-                        color: 'success.main',
-                        '&.Mui-checked': {
-                          color: 'success.main',
-                        },
+                        const ts = checked ? new Date().toISOString() : null;
+                        patchCard(selectedCard, { 
+                            TR_Completed: checked, 
+                            TR_Completed_At: ts, 
+                            TR_Completed_Date: ts 
+                        });
+                        const updated = { ...selectedCard, TR_Completed: checked, TR_Completed_At: ts, TR_Completed_Date: ts };
+                        setSelectedCard(updated as ProjectBoardCard);
                       }}
                     />
                   }
                   label="TR abgeschlossen"
-                  sx={{ mt: 1, mb: 2 }}
+                  sx={{ mt: 1, ml: 2 }}
                 />
               )}
-
-              {(selectedCard['TR_Datum'] || selectedCard['TR_Neu'] || (selectedCard['TR_History'] && selectedCard['TR_History'].length > 0)) && (
-                <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid var(--line)' }}>
-                  <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                    TR-Termine
-                  </Typography>
-
-                  {selectedCard['TR_Datum'] && (
-                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#4caf50', mb: 0.5 }}>
-                      TR ursprünglich: {new Date(selectedCard['TR_Datum']).toLocaleDateString('de-DE')}
-                    </Typography>
-                  )}
-
-                  {(() => {
-                    const history = selectedCard['TR_History'] || [];
-                    const currentTRNeu = selectedCard['TR_Neu'];
-                    const uniqueDates = new Set();
-                    const uniqueEntries: any[] = [];
-
-                    history.forEach((entry: any) => {
-                      const entryDate = entry.date;
-                      if (entryDate !== currentTRNeu && !uniqueDates.has(entryDate)) {
-                        uniqueDates.add(entryDate);
-                        uniqueEntries.push(entry);
-                      }
-                    });
-
-                    return (
-                      uniqueEntries.length > 0 && (
-                        <Box sx={{ mb: 1 }}>
-                          {uniqueEntries.map((trEntry: any, idx: number) => (
-                            <Typography
-                              key={`${trEntry.date}-${idx}`}
-                              variant="body2"
-                              sx={{
-                                color: 'var(--muted)',
-                                display: 'block',
-                                textDecoration: 'line-through',
-                                opacity: 0.7,
-                                mb: 0.5,
-                              }}
-                            >
-                              TR geändert: {new Date(trEntry.date).toLocaleDateString('de-DE')}
-                              {trEntry.changedBy && (
-                                <span style={{ fontSize: '12px', marginLeft: '8px' }}>(von {trEntry.changedBy})</span>
-                              )}
-                            </Typography>
-                          ))}
-                        </Box>
-                      )
-                    );
-                  })()}
-
-                  {selectedCard['TR_Neu'] && (
-                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#2196f3' }}>
-                      TR aktuell: {new Date(selectedCard['TR_Neu']).toLocaleDateString('de-DE')}
-                    </Typography>
-                  )}
-                </Box>
-              )}
             </Box>
           </Box>
         )}
 
+        {/* TAB 3: TEAM */}
         {editTabValue === 2 && (
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>
-              Team-Mitglieder
-            </Typography>
-
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {(() => {
-                const userList = Array.isArray(users) ? users : [];
-                const userById = new Map<string, any>();
-                userList.forEach((user: any) => {
-                  if (user.id) {
-                    userById.set(user.id, user);
-                  }
-                });
-
-                const formatUserLabel = (user: any) => {
-                  if (!user) return 'Mitglied auswählen';
-                  const baseName = user.full_name || user.name || user.email || 'Unbekannt';
-                  const department = user.department || user.company;
-                  return department ? `${baseName} – ${department}` : baseName;
-                };
-
-                return (selectedCard.Team || []).map((member: any, idx: number) => {
-                  const memberId = `team-member-${idx}`;
-                  const selectedUser = member.userId ? userById.get(member.userId) : null;
-
-                  return (
-                    <Box
-                      key={idx}
-                      sx={{
-                        display: 'grid',
-                        gridTemplateColumns: '3fr 2fr auto',
-                        alignItems: 'flex-start',
-                        gap: 1,
-                        border: '1px solid var(--line)',
-                        borderRadius: 1,
-                        p: 1,
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                        <FormControl size="small" fullWidth>
-                          <InputLabel id={`${memberId}-label`}>Mitglied</InputLabel>
-                          <Select
-                            labelId={`${memberId}-label`}
-                            id={memberId}
-                            value={member.userId || ''}
-                            label="Mitglied"
-                            onChange={(e) => {
-                              const userId = String(e.target.value);
-                              if (userId) {
-                                const selected = userById.get(userId) || null;
-                                if (selected) {
-                                  const displayName =
-                                    selected.full_name || selected.name || selected.email || 'Unbekannt';
-                                  selectedCard.Team[idx] = {
-                                    ...selectedCard.Team[idx],
-                                    userId,
-                                    name: displayName,
-                                    email: selected.email || '',
-                                    department: selected.department || selected.company || '',
-                                  };
+             <Typography variant="h6" sx={{ mb: 2 }}>Projekt-Team</Typography>
+             
+             <Stack spacing={2} sx={{ mt: 1 }}>
+                 {(selectedCard.Team || []).map((member: any, idx: number) => (
+                     <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 2, alignItems: 'center', p: 2, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1 }}>
+                         
+                         <FormControl size="small" fullWidth>
+                           <InputLabel>Mitglied</InputLabel>
+                           <Select
+                             value={member.userId || ''}
+                             label="Mitglied"
+                             disabled={!canEdit}
+                             onChange={(e) => {
+                                const selectedId = e.target.value;
+                                const user = users.find((u: any) => u.id === selectedId);
+                                const newTeam = [...(selectedCard.Team || [])];
+                                if (user) {
+                                   newTeam[idx] = { 
+                                       ...newTeam[idx], 
+                                       userId: user.id,
+                                       name: user.full_name || user.name || user.email,
+                                       email: user.email,
+                                       department: user.department || user.company,
+                                       userEmail: user.email
+                                   };
                                 }
-                              } else {
-                                selectedCard.Team[idx] = {
-                                  ...selectedCard.Team[idx],
-                                  userId: '',
-                                  name: '',
-                                  email: '',
-                                  department: '',
-                                };
-                              }
-                              setRows([...rows]);
+                                handlePatch('Team', newTeam);
+                             }}
+                           >
+                             <MenuItem value=""><em>Bitte wählen</em></MenuItem>
+                             {users.map((user: any) => (
+                               <MenuItem key={user.id} value={user.id}>
+                                 <Box>
+                                   <Typography variant="body2">{user.full_name || user.name || user.email}</Typography>
+                                 </Box>
+                               </MenuItem>
+                             ))}
+                           </Select>
+                         </FormControl>
+
+                         <TextField 
+                            label="Rolle" 
+                            size="small" 
+                            value={member.role || ''} 
+                            disabled={!canEdit}
+                            onChange={(e) => {
+                                const newTeam = [...(selectedCard.Team || [])];
+                                newTeam[idx] = { ...newTeam[idx], role: e.target.value };
+                                handlePatch('Team', newTeam);
                             }}
-                            renderValue={(selected) => {
-                              if (!selected) return 'Mitglied auswählen';
-                              const user = userById.get(String(selected));
-                              return formatUserLabel(user);
-                            }}
-                          >
-                            <MenuItem value="">
-                              <em>Mitglied auswählen</em>
-                            </MenuItem>
-                            {userList
-                              .filter((user: any) => user.id)
-                              .map((user: any) => (
-                                <MenuItem key={user.id} value={user.id}>
-                                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                      {user.full_name || user.name || user.email || 'Unbekannt'}
-                                    </Typography>
-                                    {(user.department || user.company) && (
-                                      <Typography variant="caption" color="text.secondary">
-                                        {(user.department || user.company) as string}
-                                      </Typography>
-                                    )}
-                                    {user.email && (
-                                      <Typography variant="caption" color="text.secondary">
-                                        {user.email}
-                                      </Typography>
-                                    )}
-                                  </Box>
-                                </MenuItem>
-                              ))}
-                          </Select>
-                        </FormControl>
+                         />
+                         
+                         <IconButton color="error" disabled={!canEdit} onClick={() => {
+                             const newTeam = [...(selectedCard.Team || [])];
+                             newTeam.splice(idx, 1);
+                             handlePatch('Team', newTeam);
+                         }}>
+                             <Delete />
+                         </IconButton>
+                     </Box>
+                 ))}
+             </Stack>
 
-                        {selectedUser && (
-                          <Box>
-                            <Typography variant="caption" color="text.secondary">
-                              {selectedUser.email}
-                            </Typography>
-                            {selectedUser.department && (
-                              <Typography variant="caption" color="text.secondary" display="block">
-                                Abteilung: {selectedUser.department}
-                              </Typography>
-                            )}
-                          </Box>
-                        )}
-                      </Box>
-
-                      <TextField
-                        size="small"
-                        label="Rolle"
-                        value={member.role || ''}
-                        onChange={(e) => {
-                          selectedCard.Team[idx].role = e.target.value;
-                          setRows([...rows]);
-                        }}
-                        sx={{ minWidth: 120 }}
-                        placeholder="z.B. Dev, Design..."
-                      />
-
-                      <IconButton
-                        color="error"
-                        size="small"
-                        onClick={() => {
-                          selectedCard.Team.splice(idx, 1);
-                          setRows([...rows]);
-                        }}
-                        title="Mitglied entfernen"
-                        sx={{
-                          flexShrink: 0,
-                          mt: 0.5,
-                          '&:hover': { backgroundColor: 'error.light', color: 'white' },
-                        }}
-                      >
-                        🗑️
-                      </IconButton>
-                    </Box>
-                  );
-                });
-              })()}
-            </Box>
-
-            <Button
-              variant="outlined"
-              onClick={() => {
-                if (!selectedCard.Team) selectedCard.Team = [];
-                selectedCard.Team.push({ userId: '', name: '', email: '', department: '', role: '' });
-                setRows([...rows]);
-              }}
-              sx={{ mt: 1 }}
-            >
-              + Team-Mitglied hinzufügen
-            </Button>
-
-            {selectedCard.Team && selectedCard.Team.length > 0 && (
-              <Box sx={{ mt: 3, p: 2, backgroundColor: 'action.hover', borderRadius: 1 }}>
-                <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                  Team-Übersicht:
-                </Typography>
-                <Typography variant="body2">{selectedCard.Team.length} Mitglieder</Typography>
-                <Typography variant="body2">
-                  Rollen: {Array.from(new Set(selectedCard.Team.map((m: any) => m.role).filter(Boolean))).join(', ')}
-                </Typography>
-                {(() => {
-                  const departments = Array.from(
-                    new Set(
-                      (selectedCard.Team || [])
-                        .map((m: any) => (m.department || m.company || '').toString().trim())
-                        .filter(Boolean),
-                    ),
-                  );
-                  if (!departments.length) return null;
-                  return (
-                    <Typography variant="body2">
-                      Abteilungen: {departments.join(', ')}
-                    </Typography>
-                  );
-                })()}
-              </Box>
-            )}
+             <Button 
+                variant="outlined" 
+                startIcon={<Add />} 
+                disabled={!canEdit}
+                onClick={() => {
+                    const newTeam = [...(selectedCard.Team || []), { userId: '', name: '', role: '' }];
+                    handlePatch('Team', newTeam);
+                }}
+                sx={{ mt: 2 }}
+             >
+                 Mitglied hinzufügen
+             </Button>
           </Box>
         )}
+       </LocalizationProvider>
       </DialogContent>
 
+      {/* ✅ DIALOG ACTIONS mit LÖSCHEN-BUTTON LINKS */}
       <DialogActions sx={{ borderTop: 1, borderColor: 'divider', p: 2, justifyContent: 'space-between' }}>
-        <Button
-          variant="outlined"
-          color="error"
-          onClick={() => {
-            if (window.confirm(`Soll die Karte "${selectedCard['Nummer']} – ${selectedCard['Teil']}" wirklich gelöscht werden?`)) {
-              if (window.confirm('Bist Du sicher, dass diese Karte dauerhaft gelöscht werden soll?')) {
-                const idx = rows.findIndex((r) => idFor(r) === idFor(selectedCard));
-                if (idx >= 0) {
-                  rows.splice(idx, 1);
-                  setRows([...rows]);
-                  setEditModalOpen(false);
-                }
-              }
-            }
-          }}
-        >
-          Löschen
-        </Button>
-        <Button variant="contained" onClick={() => setEditModalOpen(false)}>
+        {canEdit ? (
+             <Button 
+               color="error" 
+               onClick={() => {
+                  if (window.confirm('Karte wirklich löschen?')) {
+                      // Da wir rows nicht haben (bzw. nicht manipulieren sollten), machen wir das via Parent Reload
+                      // Alternativ: Direktes Array-Splicing (wie früher), aber das ist etwas dirty.
+                      // Beste Lösung: Wir nutzen eine delete-Funktion falls vorhanden, oder den alten Weg:
+                      const idx = rows.findIndex(r => idFor(r) === idFor(selectedCard));
+                      if (idx !== -1) {
+                          rows.splice(idx, 1);
+                          setRows([...rows]);
+                          saveCards(); // Autosave triggered
+                          setEditModalOpen(false);
+                      }
+                  }
+               }}
+             >
+               Löschen
+             </Button>
+        ) : <Box />}
+
+        <Button variant="contained" onClick={handleClose}>
           Schließen
         </Button>
       </DialogActions>
@@ -742,12 +599,13 @@ export function EditCardDialog({
   );
 }
 
+// --- ARCHIVE DIALOG ---
 export interface ArchiveDialogProps {
   archiveOpen: boolean;
   setArchiveOpen: (open: boolean) => void;
-  archivedCards: any[];
-  restoreCard: (card: any) => void;
-  deleteCardPermanently: (card: any) => void;
+  archivedCards: ProjectBoardCard[];
+  restoreCard: (card: ProjectBoardCard) => void;
+  deleteCardPermanently: (card: ProjectBoardCard) => void;
 }
 
 export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, restoreCard, deleteCardPermanently }: ArchiveDialogProps) {
@@ -798,23 +656,27 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
   );
 }
 
+// --- NEW CARD DIALOG ---
+
 export interface NewCardDialogProps {
   newCardOpen: boolean;
   setNewCardOpen: (open: boolean) => void;
   cols: { name: string }[];
   lanes: string[];
-  rows: any[];
-  setRows: (rows: any[]) => void;
+  rows: ProjectBoardCard[];
+  setRows: (rows: ProjectBoardCard[]) => void;
   users: any[];
+  saveCards?: () => void;
 }
 
-export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users }: NewCardDialogProps) {
-  const [newCard, setNewCard] = useState(() => ({
+export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users, saveCards }: NewCardDialogProps) {
+  const [newCard, setNewCard] = useState<Partial<ProjectBoardCard & { VerantwortlichEmail?: string }>>(() => ({
     Nummer: '',
     Teil: '',
     'Board Stage': cols[0]?.name || '',
     'Status Kurz': '',
     Verantwortlich: '',
+    VerantwortlichEmail: '', 
     'Due Date': '',
     'Priorität': false,
     SOP_Datum: '',
@@ -826,25 +688,26 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
     TR_History: [] as any[],
   }));
 
+  const availableUsers = useMemo(() => users || [], [users]);
+
   const handleSave = () => {
-    if (!newCard.Nummer.trim() || !newCard.Teil.trim()) {
+    if (!newCard.Nummer?.trim() || !newCard.Teil?.trim()) {
       alert('Nummer und Teil sind Pflichtfelder!');
       return;
     }
-
-    if (rows.some((r) => r.Nummer === newCard.Nummer)) {
-      alert('Diese Nummer existiert bereits!');
-      return;
-    }
-
-    setRows([...rows, { ...newCard }]);
+    
+    setRows([...rows, newCard as ProjectBoardCard]);
     setNewCardOpen(false);
+    
+    if (saveCards) setTimeout(() => saveCards(), 100);
+    
     setNewCard({
       Nummer: '',
       Teil: '',
       'Board Stage': cols[0]?.name || '',
       'Status Kurz': '',
       Verantwortlich: '',
+      VerantwortlichEmail: '',
       'Due Date': '',
       'Priorität': false,
       SOP_Datum: '',
@@ -857,12 +720,11 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
     });
   };
 
-  const availableUsers = useMemo(() => users || [], [users]);
-
   return (
     <Dialog open={newCardOpen} onClose={() => setNewCardOpen(false)} maxWidth="sm" fullWidth>
       <DialogTitle>➕ Neue Karte erstellen</DialogTitle>
       <DialogContent sx={{ pt: 2 }}>
+       <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField
             label="Nummer *"
@@ -875,25 +737,19 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
             onChange={(e) => setNewCard({ ...newCard, Teil: e.target.value })}
           />
           <FormControl fullWidth>
-            <InputLabel>Phase</InputLabel>
-            <Select
-              value={newCard['Board Stage']}
-              label="Phase"
-              onChange={(e) => setNewCard({ ...newCard, 'Board Stage': e.target.value as string })}
-            >
-              {cols.map((col) => (
-                <MenuItem key={col.name} value={col.name}>
-                  {col.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl fullWidth>
             <InputLabel>Verantwortlich</InputLabel>
             <Select
               value={newCard.Verantwortlich}
               label="Verantwortlich"
-              onChange={(e) => setNewCard({ ...newCard, Verantwortlich: e.target.value as string })}
+              onChange={(e) => {
+                  const selectedName = e.target.value;
+                  const user = users.find(u => (u.full_name || u.name || u.email) === selectedName);
+                  setNewCard({ 
+                      ...newCard, 
+                      Verantwortlich: selectedName as string,
+                      VerantwortlichEmail: user?.email || ''
+                  });
+              }}
             >
               <MenuItem value="">
                 <em>Keiner</em>
@@ -903,39 +759,37 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
                   <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
-                      {user.department || user.company ? ` – ${user.department || user.company}` : ''}
                     </Typography>
-                    {user.email && (
-                      <Typography variant="caption" color="text.secondary">
-                        {user.email}
-                      </Typography>
-                    )}
                   </Box>
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
-          <FormControl fullWidth>
-            <InputLabel>Projekt/Kategorie</InputLabel>
-            <Select
-              value={newCard.Swimlane}
-              label="Projekt/Kategorie"
-              onChange={(e) => setNewCard({ ...newCard, Swimlane: e.target.value as string })}
-            >
-              {lanes.map((lane) => (
-                <MenuItem key={lane} value={lane}>
-                  {lane}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <TextField
-            label="Fälligkeitsdatum"
-            type="date"
-            value={newCard['Due Date']}
-            onChange={(e) => setNewCard({ ...newCard, 'Due Date': e.target.value })}
-            InputLabelProps={{ shrink: true }}
+          
+          {lanes.length > 0 && (
+              <FormControl fullWidth>
+                 <InputLabel>Swimlane</InputLabel>
+                 <Select
+                    value={newCard.Swimlane || ''}
+                    label="Swimlane"
+                    onChange={(e) => setNewCard({...newCard, Swimlane: e.target.value as string})}
+                 >
+                    {lanes.map((lane) => (
+                      <MenuItem key={lane} value={lane}>
+                        {lane}
+                      </MenuItem>
+                    ))}
+                 </Select>
+              </FormControl>
+          )}
+          
+          <DatePicker 
+             label="Fälligkeitsdatum"
+             value={newCard['Due Date'] ? dayjs(newCard['Due Date']) : null}
+             onChange={(val) => setNewCard({ ...newCard, 'Due Date': val ? val.format('YYYY-MM-DD') : '' })}
+             slotProps={{ textField: { fullWidth: true } }}
           />
+
           <FormControlLabel
             control={(
               <Checkbox
@@ -947,13 +801,14 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
             )}
             label="Priorität"
           />
-          <TextField
-            label="SOP Datum"
-            type="date"
-            value={newCard.SOP_Datum}
-            onChange={(e) => setNewCard({ ...newCard, SOP_Datum: e.target.value })}
-            InputLabelProps={{ shrink: true }}
+
+          <DatePicker 
+             label="SOP Datum"
+             value={newCard.SOP_Datum ? dayjs(newCard.SOP_Datum) : null}
+             onChange={(val) => setNewCard({ ...newCard, SOP_Datum: val ? val.format('YYYY-MM-DD') : '' })}
+             slotProps={{ textField: { fullWidth: true } }}
           />
+
           <TextField
             label="Status"
             value={newCard['Status Kurz']}
@@ -963,6 +818,7 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
             rows={2}
           />
         </Box>
+       </LocalizationProvider>
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setNewCardOpen(false)}>Abbrechen</Button>

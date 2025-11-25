@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Badge,
   Box,
   Button,
   Card,
@@ -23,9 +22,9 @@ import {
   TextField,
   Typography,
   Divider,
+  Badge
 } from '@mui/material';
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
-import { useTheme } from '@/theme/ThemeRegistry';
 import { useAuth } from '../contexts/AuthContext';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import BoardManagementPanel from '@/components/board/BoardManagementPanel';
@@ -55,13 +54,11 @@ export default function HomePage() {
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'management' | 'board' | 'team-management' | 'team-board'>('list');
   
-  // State für Deep-Link (Karte highlighten)
   const [openCardId, setOpenCardId] = useState<string | null>(null);
 
   const { user, loading, signOut } = useAuth();
   const boardRef = useRef<OriginalKanbanBoardHandle>(null);
 
-  // Board Management States
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperuser, setIsSuperuser] = useState(false);
@@ -80,7 +77,6 @@ export default function HomePage() {
     setKpiCount(0);
   }, [selectedBoard]);
 
-  // Auth-Check
   useEffect(() => {
     if (!supabase) return;
     if (!loading && !user) {
@@ -137,12 +133,11 @@ export default function HomePage() {
   const currentUserId = user?.id ?? null;
   const isSelectedBoardAdmin = selectedBoard?.boardAdminId === currentUserId;
 
-  // Handler für das Öffnen aus dem Dashboard
   const handleOpenBoardFromDashboard = (boardId: string, cardId?: string, type: 'standard' | 'team' = 'standard') => {
     const board = boards.find(b => b.id === boardId);
     if (board) {
       setSelectedBoard(board);
-      if (cardId) setOpenCardId(cardId); // ID für Highlight setzen
+      if (cardId) setOpenCardId(cardId);
       
       if (type === 'team') {
           setViewMode('team-board');
@@ -180,7 +175,7 @@ export default function HomePage() {
   if (!supabase) return <Container maxWidth="sm" sx={{ py: 8 }}><SupabaseConfigNotice /></Container>;
   if (!user) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 Weiterleitung...</Typography></Box>;
 
-  // --- BOARD VIEW (Standard) ---
+  // BOARD VIEW (Standard)
   if (selectedBoard && selectedBoard.boardType === 'standard' && viewMode === 'board') {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -190,8 +185,8 @@ export default function HomePage() {
             <Typography variant="h6">{selectedBoard.name || 'Board'}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Button variant="outlined" onClick={() => boardRef.current?.openArchive()}>Archiv{archivedCount !== null ? ` (${archivedCount})` : ''}</Button>
-            <IconButton onClick={() => boardRef.current?.openSettings()}>⚙️</IconButton>
+            {/* Archiv-Button entfernt */}
+            {/* Settings-Button entfernt (ist im Board) */}
             <Typography variant="body2">👋 {user.email}</Typography>
             <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
           </Box>
@@ -202,15 +197,15 @@ export default function HomePage() {
             boardId={selectedBoard.id} 
             onArchiveCountChange={setArchivedCount} 
             onKpiCountChange={setKpiCount} 
-            highlightCardId={openCardId} // ID für Highlight übergeben
-            onExit={() => { setViewMode('list'); setOpenCardId(null); }} // Zurück-Funktion
+            highlightCardId={openCardId}
+            onExit={() => { setViewMode('list'); setOpenCardId(null); }}
           />
         </Box>
       </Box>
     );
   }
 
-  // --- TEAM BOARD VIEW ---
+  // TEAM BOARD VIEW
   if (selectedBoard && selectedBoard.boardType === 'team' && viewMode === 'team-board') {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -226,16 +221,16 @@ export default function HomePage() {
         </Box>
         <Box sx={{ flex: 1, overflow: 'hidden' }}>
           <TeamKanbanBoard 
-            boardId={selectedBoard.id} 
-            highlightCardId={openCardId} // ID für Highlight übergeben
-            onExit={() => { setViewMode('list'); setOpenCardId(null); }} // Zurück-Funktion
+              boardId={selectedBoard.id} 
+              highlightCardId={openCardId}
+              onExit={() => { setViewMode('list'); setOpenCardId(null); }}
           />
         </Box>
       </Box>
     );
   }
 
-  // --- MANAGEMENT VIEWS ---
+  // MANAGEMENT VIEWS
   if (selectedBoard && viewMode === 'management') {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -260,7 +255,6 @@ export default function HomePage() {
     );
   }
 
-  // --- STARTSEITE (LIST VIEW) ---
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 4 }}>
@@ -273,12 +267,12 @@ export default function HomePage() {
 
       {message && <Alert severity={message.startsWith('✅') ? 'success' : 'error'} sx={{ mb: 3 }}>{message}</Alert>}
 
-      {/* 1. Dashboard (Ganz oben) */}
+      {/* 1. Dashboard */}
       <PersonalDashboard onOpenBoard={handleOpenBoardFromDashboard} />
       
       <Divider sx={{ my: 6 }} />
 
-      {/* 2. Boards (Darunter) */}
+      {/* 2. Boards */}
       <Typography variant="h5" sx={{ mb: 2 }}>Projektboards</Typography>
       <Grid container spacing={3}>
         {isAdmin && (
