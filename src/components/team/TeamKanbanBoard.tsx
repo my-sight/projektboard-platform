@@ -20,7 +20,8 @@ import {
   Typography,
   Avatar,
   Collapse,
-  LinearProgress
+  LinearProgress,
+  Grid
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -36,7 +37,8 @@ import {
   AddCircleOutline,
   Delete,
   AccessTime,
-  PriorityHigh as PriorityHighIcon
+  PriorityHigh as PriorityHighIcon,
+  Assessment // KPI Icon
 } from '@mui/icons-material';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
 import { useSnackbar } from 'notistack';
@@ -166,6 +168,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   const [topTopics, setTopTopics] = useState<TopTopic[]>([]);
   const [topTopicsOpen, setTopTopicsOpen] = useState(false);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
+  
+  // KPI Dialog State
+  const [kpiOpen, setKpiOpen] = useState(false);
 
   const [filters, setFilters] = useState({
     mine: false,
@@ -173,6 +178,34 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     important: false,
     watch: false
   });
+
+  // --- KPI Calculation ---
+  const kpiStats = useMemo(() => {
+      const active = cards.filter(c => c.status === 'flow' || c.status === 'flow1');
+      const backlog = cards.filter(c => c.status === 'backlog');
+      const today = new Date().toISOString().split('T')[0];
+      const overdue = cards.filter(c => c.dueDate && c.dueDate < today);
+      
+      // Workload per Member
+      const memberLoad = members.map(m => {
+          const count = active.filter(c => c.assigneeId === m.profile_id).length;
+          return { 
+              name: m.profile?.full_name || m.profile?.email || '?', 
+              count,
+              avatar: getInitials(m.profile?.full_name || m.profile?.email || '')
+          };
+      }).sort((a, b) => b.count - a.count);
+
+      return {
+          activeCount: active.length,
+          backlogCount: backlog.length,
+          doneCount: completedCount, // Persistierter Zähler
+          overdueCount: overdue.length,
+          importantCount: cards.filter(c => c.important).length,
+          watchCount: cards.filter(c => c.watch).length,
+          memberLoad
+      };
+  }, [cards, members, completedCount]);
 
   // --- Data Loading ---
   const persistAllCards = useCallback(async (entries: TeamBoardCard[]) => {
@@ -280,7 +313,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       setCollapsedLanes(prev => ({...prev, [memberId]: !prev[memberId]}));
   };
 
-  // Toggle Funktion
   const toggleCardProperty = async (card: TeamBoardCard, property: 'important' | 'watch', e: React.MouseEvent) => {
       e.stopPropagation();
       if (!canModify) return;
@@ -383,6 +415,103 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     } catch { enqueueSnackbar('Fehler beim Abschließen', { variant: 'error' }); loadCards(); } finally { setFlowSaving(false); }
   };
 
+  // --- KPI DIALOG ---
+  const TeamKPIDialog = ({ open, onClose }: any) => (
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Assessment color="primary" /> Team Performance & KPIs
+          </DialogTitle>
+          <DialogContent dividers>
+              <Grid container spacing={3}>
+                  {/* Key Metrics */}
+                  <Grid item xs={12} sm={4}>
+                      <Card variant="outlined" sx={{ textAlign: 'center', height: '100%', bgcolor: 'rgba(25, 118, 210, 0.04)' }}>
+                          <CardContent>
+                              <Typography variant="h3" color="primary" fontWeight="bold">{kpiStats.activeCount}</Typography>
+                              <Typography variant="body2" color="text.secondary">Aktive Aufgaben (Flow)</Typography>
+                          </CardContent>
+                      </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                      <Card variant="outlined" sx={{ textAlign: 'center', height: '100%', bgcolor: 'rgba(46, 125, 50, 0.04)' }}>
+                          <CardContent>
+                              <Typography variant="h3" color="success.main" fontWeight="bold">{kpiStats.doneCount}</Typography>
+                              <Typography variant="body2" color="text.secondary">Erledigt (Gesamt)</Typography>
+                          </CardContent>
+                      </Card>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                      <Card variant="outlined" sx={{ textAlign: 'center', height: '100%', bgcolor: kpiStats.overdueCount > 0 ? 'rgba(211, 47, 47, 0.04)' : 'transparent' }}>
+                          <CardContent>
+                              <Typography variant="h3" color={kpiStats.overdueCount > 0 ? 'error.main' : 'text.secondary'} fontWeight="bold">{kpiStats.overdueCount}</Typography>
+                              <Typography variant="body2" color="text.secondary">Überfällig</Typography>
+                          </CardContent>
+                      </Card>
+                  </Grid>
+
+                  {/* Member Workload */}
+                  <Grid item xs={12} md={6}>
+                      <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ mt: 2 }}>
+                          👥 Auslastung (Aktive Aufgaben)
+                      </Typography>
+                      <Card variant="outlined">
+                          <CardContent>
+                              <Stack spacing={2}>
+                                  {kpiStats.memberLoad.slice(0, 5).map((m, i) => (
+                                      <Box key={i}>
+                                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5, fontSize: '0.85rem' }}>
+                                              <Stack direction="row" spacing={1} alignItems="center">
+                                                  <Avatar sx={{ width: 20, height: 20, fontSize: '0.6rem' }}>{m.avatar}</Avatar>
+                                                  <span>{m.name}</span>
+                                              </Stack>
+                                              <strong>{m.count}</strong>
+                                          </Box>
+                                          <LinearProgress 
+                                              variant="determinate" 
+                                              value={Math.min(100, (m.count / 5) * 100)} 
+                                              color={m.count > 4 ? "error" : "primary"}
+                                              sx={{ height: 8, borderRadius: 4, bgcolor: 'rgba(0,0,0,0.05)' }} 
+                                          />
+                                      </Box>
+                                  ))}
+                              </Stack>
+                          </CardContent>
+                      </Card>
+                  </Grid>
+                  
+                  {/* Task Types */}
+                   <Grid item xs={12} md={6}>
+                      <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ mt: 2 }}>
+                          📊 Status & Backlog
+                      </Typography>
+                      <Card variant="outlined" sx={{ height: 'fit-content' }}>
+                          <CardContent>
+                              <Stack spacing={2}>
+                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, border: '1px solid var(--line)', borderRadius: 2 }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Warning color="error" fontSize="small" /> Wichtig</Box>
+                                      <Typography fontWeight="bold">{kpiStats.importantCount}</Typography>
+                                   </Box>
+                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, border: '1px solid var(--line)', borderRadius: 2 }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><AccessTime color="primary" fontSize="small" /> Wiedervorlage</Box>
+                                      <Typography fontWeight="bold">{kpiStats.watchCount}</Typography>
+                                   </Box>
+                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, border: '1px solid var(--line)', borderRadius: 2, bgcolor: 'rgba(0,0,0,0.02)' }}>
+                                      <Typography color="text.secondary">Im Backlog</Typography>
+                                      <Typography fontWeight="bold">{kpiStats.backlogCount}</Typography>
+                                   </Box>
+                              </Stack>
+                          </CardContent>
+                      </Card>
+                   </Grid>
+              </Grid>
+          </DialogContent>
+          <DialogActions>
+              <Button onClick={onClose}>Schließen</Button>
+          </DialogActions>
+      </Dialog>
+  );
+
+  // Top Themen Dialog
   const TopTopicsDialog = ({ open, onClose }: any) => {
       const [localTopics, setLocalTopics] = useState<TopTopic[]>(topTopics);
       useEffect(() => { setLocalTopics(topTopics); }, [topTopics]);
@@ -454,7 +583,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const isImportant = card.important;
     const isWatch = card.watch;
 
-    // Rahmenfarbe Logik: Gelb (Highlight) > Rot (Wichtig) > Blau (Watch) > Standard
     const borderColor = isHighlighted ? '#ffc107' : (isImportant ? '#d32f2f' : (isWatch ? '#1976d2' : 'rgba(0,0,0,0.12)'));
 
     return (
@@ -483,9 +611,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             }} 
             onClick={() => openEditDialog(card)}
           >
-            {/* ACTION ICONS */}
             <Box sx={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 0.5, zIndex: 2 }}>
-                {/* WICHTIG */}
                 <IconButton 
                     size="small" 
                     onClick={(e) => toggleCardProperty(card, 'important', e)}
@@ -503,7 +629,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                     <PriorityHighIcon sx={{ fontSize: 16, fontWeight: 'bold' }} />
                 </IconButton>
                 
-                {/* WATCH */}
                 <IconButton 
                     size="small" 
                     onClick={(e) => toggleCardProperty(card, 'watch', e)}
@@ -522,9 +647,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
             <CardContent sx={{ 
                 pl: 1.5, 
-                pr: 7, // Mehr Platz für Icons
+                pr: 7, 
                 py: 1.5, 
-                pb: '12px !important', // Override Mui default
+                pb: '12px !important', 
                 display: 'flex', flexDirection: 'column', gap: 0.5, height: '100%' 
             }}>
               <Tooltip title={card.description} placement="top-start" arrow enterDelay={1000}>
@@ -549,7 +674,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   return (
     <Box sx={{ p: 2, backgroundColor: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
       
-      {/* HEADER */}
       <Box sx={{ p: 1, borderBottom: '1px solid var(--line)', backgroundColor: 'var(--panel)', borderRadius: '12px', display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             {onExit && <Button onClick={onExit} startIcon={<ArrowBack />}>Zurück</Button>}
@@ -560,16 +684,19 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                  <Chip icon={<AccessTime />} label="Wiedervorlage" clickable color={filters.watch ? "info" : "default"} onClick={() => setFilters(prev => ({ ...prev, watch: !prev.watch }))} variant={filters.watch ? "filled" : "outlined"} />
             </Box>
         </Box>
-        <Tooltip title="Top Themen">
-            <IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}><Star fontSize="small" color="warning" /></IconButton>
-        </Tooltip>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+             <Tooltip title="Top Themen">
+                 <IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}><Star fontSize="small" color="warning" /></IconButton>
+             </Tooltip>
+             <Tooltip title="KPI Dashboard">
+                 <IconButton onClick={() => setKpiOpen(true)}><Assessment fontSize="small" color="primary" /></IconButton>
+             </Tooltip>
+        </Box>
       </Box>
 
-      {/* MAIN SPLIT VIEW */}
       <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'hidden', display: 'flex', gap: 2 }}>
         <DragDropContext onDragEnd={handleDragEnd}>
           
-            {/* --- LEFT: BACKLOG --- */}
             <Box sx={{ width: BACKLOG_WIDTH, minWidth: BACKLOG_WIDTH, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '12px', height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
                <Box sx={{ p: 2, borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'rgba(0,0,0,0.02)' }}>
                   <Typography variant="h6" sx={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', fontWeight: 700 }}>
@@ -587,10 +714,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                </Droppable>
             </Box>
 
-            {/* --- RIGHT: TEAM FLOW --- */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '12px', height: '100%', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
                
-               {/* TABLE HEADER (Sticky) */}
                <Box sx={{ display: 'flex', borderBottom: '1px solid var(--line)', bgcolor: 'rgba(0,0,0,0.02)', zIndex: 10 }}>
                    <Box sx={{ width: COL_WIDTHS.member, p: 1.5, fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary' }}>Mitglied</Box>
                    <Box sx={{ flex: 1, p: 1.5, borderLeft: '1px solid var(--line)', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary' }}>{statusLabels.flow1}</Box>
@@ -604,17 +729,14 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                    </Box>
                </Box>
                
-               {/* SWIMLANES (Scrollable) */}
                <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
                    {memberColumns.map(({ member, flow1, flow, done }) => {
                        const isCollapsed = collapsedLanes[member.id];
                        
                        return (
                            <Card key={member.id} sx={{ overflow: 'visible', borderRadius: '12px', border: '1px solid var(--line)', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
-                               {/* SWIMLANE CONTENT (FLEX ROW) */}
                                <Box sx={{ display: 'flex', minHeight: isCollapsed ? 'auto' : 160 }}>
                                    
-                                   {/* 1. MEMBER INFO COLUMN */}
                                    <Box sx={{ width: COL_WIDTHS.member, minWidth: COL_WIDTHS.member, p: 2, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: 'var(--panel)', borderRight: '1px solid var(--line)' }}>
                                        <Stack direction="row" alignItems="center" justifyContent="space-between">
                                            <Avatar sx={{ width: 32, height: 32, fontSize: '0.8rem', bgcolor: 'primary.main' }}>{getInitials(member.profile?.full_name || member.profile?.email || '?')}</Avatar>
@@ -626,7 +748,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                        </Box>
                                    </Box>
 
-                                   {/* 2-4. TASK COLUMNS */}
                                    {!isCollapsed && (
                                        <>
                                            {[flow1, flow, done].map((rows, i) => {
@@ -636,11 +757,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                return (
                                                    <Box key={status} sx={{ flex: 1, borderRight: i<2 ? '1px solid var(--line)' : 'none', display: 'flex', flexDirection: 'column' }}>
                                                        
-                                                       {/* Column Header with Count */}
                                                        <Box sx={{ px: 2, py: 1, borderBottom: '1px dashed var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                            <Typography variant="caption" color="text.disabled" fontWeight={600} sx={{ textTransform: 'uppercase' }}>{rows.length} Aufgaben</Typography>
                                                            
-                                                           {/* BUTTON OR PLACEHOLDER */}
                                                            {allowQuickAdd ? (
                                                                <Tooltip title="Schnell hinzufügen">
                                                                    <IconButton size="small" onClick={() => openQuickAdd(member.profile_id, status as TeamBoardStatus)} sx={{ p: 0.5, color: 'primary.main', '&:hover': { bgcolor: 'primary.light', color: 'white' } }}>
@@ -709,6 +828,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       </Dialog>
       
       <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
+      <TeamKPIDialog open={kpiOpen} onClose={() => setKpiOpen(false)} />
     </Box>
   );
 }
