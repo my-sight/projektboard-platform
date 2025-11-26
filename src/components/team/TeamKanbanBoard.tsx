@@ -38,7 +38,7 @@ import {
   Delete,
   AccessTime,
   PriorityHigh as PriorityHighIcon,
-  Assessment // KPI Icon
+  Assessment
 } from '@mui/icons-material';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
 import { useSnackbar } from 'notistack';
@@ -102,6 +102,13 @@ const parseDroppableKey = (value: string): DroppableInfo => {
   const status = (['backlog', 'flow1', 'flow', 'done'] as TeamBoardStatus[]).includes(rawStatus as TeamBoardStatus) ? (rawStatus as TeamBoardStatus) : 'backlog';
   const assigneeId = rawAssignee === 'unassigned' ? null : rawAssignee;
   return { assigneeId, status };
+};
+
+// Hilfsfunktion: Datum in einer Woche berechnen (YYYY-MM-DD)
+const getNextWeekDateString = () => {
+  const d = new Date();
+  d.setDate(d.getDate() + 7); // +1 Woche
+  return d.toISOString().split('T')[0];
 };
 
 // Data Helpers
@@ -199,7 +206,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       return {
           activeCount: active.length,
           backlogCount: backlog.length,
-          doneCount: completedCount, // Persistierter Zähler
+          doneCount: completedCount,
           overdueCount: overdue.length,
           importantCount: cards.filter(c => c.important).length,
           watchCount: cards.filter(c => c.watch).length,
@@ -295,12 +302,21 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   }, [boardId]);
 
   // --- Actions ---
-  const openCreateDialog = () => { if (!canModify) return; setEditingCard(null); setDraft(defaultDraft); setDueDateError(false); setDialogOpen(true); };
   
+  // ✅ NEU: Datum vorselektieren (+1 Woche)
+  const openCreateDialog = () => { 
+      if (!canModify) return; 
+      setEditingCard(null); 
+      setDraft({ ...defaultDraft, dueDate: getNextWeekDateString() }); 
+      setDueDateError(false); 
+      setDialogOpen(true); 
+  };
+  
+  // ✅ NEU: Datum vorselektieren (+1 Woche)
   const openQuickAdd = (assigneeId: string, status: TeamBoardStatus) => {
       if (!canModify) return;
       setEditingCard(null);
-      setDraft({ ...defaultDraft, assigneeId, status });
+      setDraft({ ...defaultDraft, assigneeId, status, dueDate: getNextWeekDateString() });
       setDueDateError(false);
       setDialogOpen(true);
   };
@@ -313,6 +329,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       setCollapsedLanes(prev => ({...prev, [memberId]: !prev[memberId]}));
   };
 
+  // Toggle Funktion
   const toggleCardProperty = async (card: TeamBoardCard, property: 'important' | 'watch', e: React.MouseEvent) => {
       e.stopPropagation();
       if (!canModify) return;
@@ -583,6 +600,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const isImportant = card.important;
     const isWatch = card.watch;
 
+    // Rahmenfarbe Logik: Gelb (Highlight) > Rot (Wichtig) > Blau (Watch) > Standard (Dezent)
     const borderColor = isHighlighted ? '#ffc107' : (isImportant ? '#d32f2f' : (isWatch ? '#1976d2' : 'rgba(0,0,0,0.12)'));
 
     return (
@@ -611,7 +629,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             }} 
             onClick={() => openEditDialog(card)}
           >
+            {/* ACTION ICONS */}
             <Box sx={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 0.5, zIndex: 2 }}>
+                {/* WICHTIG */}
                 <IconButton 
                     size="small" 
                     onClick={(e) => toggleCardProperty(card, 'important', e)}
@@ -619,7 +639,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                         width: 24, height: 24,
                         color: isImportant ? '#d32f2f' : 'rgba(0,0,0,0.2)',
                         border: '1.5px solid',
-                        borderColor: 'currentColor',
+                        borderColor: isImportant ? '#d32f2f' : 'transparent',
                         bgcolor: 'transparent',
                         p: 0,
                         '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.04)', borderColor: '#d32f2f', color: '#d32f2f' }
@@ -629,6 +649,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                     <PriorityHighIcon sx={{ fontSize: 16, fontWeight: 'bold' }} />
                 </IconButton>
                 
+                {/* WATCH */}
                 <IconButton 
                     size="small" 
                     onClick={(e) => toggleCardProperty(card, 'watch', e)}
@@ -647,9 +668,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
             <CardContent sx={{ 
                 pl: 1.5, 
-                pr: 7, 
+                pr: 7, // Platz für Icons lassen
                 py: 1.5, 
-                pb: '12px !important', 
+                pb: '12px !important', // Mui Reset
                 display: 'flex', flexDirection: 'column', gap: 0.5, height: '100%' 
             }}>
               <Tooltip title={card.description} placement="top-start" arrow enterDelay={1000}>
@@ -674,6 +695,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   return (
     <Box sx={{ p: 2, backgroundColor: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
       
+      {/* HEADER */}
       <Box sx={{ p: 1, borderBottom: '1px solid var(--line)', backgroundColor: 'var(--panel)', borderRadius: '12px', display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             {onExit && <Button onClick={onExit} startIcon={<ArrowBack />}>Zurück</Button>}
@@ -694,9 +716,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         </Box>
       </Box>
 
+      {/* MAIN SPLIT VIEW */}
       <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'hidden', display: 'flex', gap: 2 }}>
         <DragDropContext onDragEnd={handleDragEnd}>
           
+            {/* --- LEFT: BACKLOG --- */}
             <Box sx={{ width: BACKLOG_WIDTH, minWidth: BACKLOG_WIDTH, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '12px', height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
                <Box sx={{ p: 2, borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'rgba(0,0,0,0.02)' }}>
                   <Typography variant="h6" sx={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', fontWeight: 700 }}>
@@ -714,8 +738,10 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                </Droppable>
             </Box>
 
+            {/* --- RIGHT: TEAM FLOW --- */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '12px', height: '100%', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
                
+               {/* TABLE HEADER (Sticky) */}
                <Box sx={{ display: 'flex', borderBottom: '1px solid var(--line)', bgcolor: 'rgba(0,0,0,0.02)', zIndex: 10 }}>
                    <Box sx={{ width: COL_WIDTHS.member, p: 1.5, fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary' }}>Mitglied</Box>
                    <Box sx={{ flex: 1, p: 1.5, borderLeft: '1px solid var(--line)', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary' }}>{statusLabels.flow1}</Box>
@@ -729,14 +755,17 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                    </Box>
                </Box>
                
+               {/* SWIMLANES (Scrollable) */}
                <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
                    {memberColumns.map(({ member, flow1, flow, done }) => {
                        const isCollapsed = collapsedLanes[member.id];
                        
                        return (
                            <Card key={member.id} sx={{ overflow: 'visible', borderRadius: '12px', border: '1px solid var(--line)', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
+                               {/* SWIMLANE CONTENT (FLEX ROW) */}
                                <Box sx={{ display: 'flex', minHeight: isCollapsed ? 'auto' : 160 }}>
                                    
+                                   {/* 1. MEMBER INFO COLUMN */}
                                    <Box sx={{ width: COL_WIDTHS.member, minWidth: COL_WIDTHS.member, p: 2, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: 'var(--panel)', borderRight: '1px solid var(--line)' }}>
                                        <Stack direction="row" alignItems="center" justifyContent="space-between">
                                            <Avatar sx={{ width: 32, height: 32, fontSize: '0.8rem', bgcolor: 'primary.main' }}>{getInitials(member.profile?.full_name || member.profile?.email || '?')}</Avatar>
@@ -748,6 +777,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                        </Box>
                                    </Box>
 
+                                   {/* 2-4. TASK COLUMNS */}
                                    {!isCollapsed && (
                                        <>
                                            {[flow1, flow, done].map((rows, i) => {
@@ -757,9 +787,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                return (
                                                    <Box key={status} sx={{ flex: 1, borderRight: i<2 ? '1px solid var(--line)' : 'none', display: 'flex', flexDirection: 'column' }}>
                                                        
+                                                       {/* Column Header with Count */}
                                                        <Box sx={{ px: 2, py: 1, borderBottom: '1px dashed var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                            <Typography variant="caption" color="text.disabled" fontWeight={600} sx={{ textTransform: 'uppercase' }}>{rows.length} Aufgaben</Typography>
                                                            
+                                                           {/* BUTTON OR PLACEHOLDER */}
                                                            {allowQuickAdd ? (
                                                                <Tooltip title="Schnell hinzufügen">
                                                                    <IconButton size="small" onClick={() => openQuickAdd(member.profile_id, status as TeamBoardStatus)} sx={{ p: 0.5, color: 'primary.main', '&:hover': { bgcolor: 'primary.light', color: 'white' } }}>
