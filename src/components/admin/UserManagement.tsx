@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, SyntheticEvent } from 'react';
 import {
   Box,
   Typography,
@@ -31,13 +31,26 @@ import {
   Switch,
   Stack,
   Tooltip,
-  IconButton
+  IconButton,
+  LinearProgress,
+  Tabs,
+  Tab,
+  Divider
 } from '@mui/material';
-import DeleteIcon from '@mui/icons-material/Delete';
+import { 
+    Delete as DeleteIcon, 
+    UploadFile as UploadFileIcon, 
+    PersonAdd as PersonAddIcon,
+    Business as BusinessIcon,
+    People as PeopleIcon,
+    Dashboard as DashboardIcon,
+    Add as AddIcon
+} from '@mui/icons-material';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 
+// --- TYPEN ---
 interface UserProfile {
   id: string;
   email: string;
@@ -65,6 +78,15 @@ interface BoardSummary {
   boardType: 'standard' | 'team';
 }
 
+interface CsvUser {
+  email: string;
+  password?: string;
+  full_name: string;
+  company: string;
+  role: string;
+  generatedPassword?: string;
+}
+
 function normalizeUserProfile(profile: any): UserProfile {
   return {
     id: profile.id,
@@ -79,832 +101,497 @@ function normalizeUserProfile(profile: any): UserProfile {
   };
 }
 
+// --- PARSER ---
+const parseCSV = (text: string): string[][] => {
+  const cleanText = text.replace(/^\uFEFF/, ''); // BOM entfernen
+  const rows: string[][] = [];
+  let currentRow: string[] = [''];
+  let colIndex = 0;
+  let inQuotes = false;
+  
+  const firstLineEnd = cleanText.indexOf('\n');
+  const firstLine = cleanText.substring(0, firstLineEnd > -1 ? firstLineEnd : cleanText.length);
+  const delimiter = firstLine.includes(';') ? ';' : ',';
+
+  for (let i = 0; i < cleanText.length; i++) {
+    const char = cleanText[i];
+    const nextChar = cleanText[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        currentRow[colIndex] += '"';
+        i++; 
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === delimiter && !inQuotes) {
+      colIndex++;
+      currentRow[colIndex] = '';
+    } else if ((char === '\r' || char === '\n') && !inQuotes) {
+      if (char === '\r' && nextChar === '\n') i++;
+      if (currentRow.length > 1 || (currentRow[0] && currentRow[0].trim() !== '')) {
+          rows.push(currentRow.map(c => c.trim()));
+      }
+      currentRow = [''];
+      colIndex = 0;
+    } else {
+      currentRow[colIndex] += char;
+    }
+  }
+  if (currentRow.length > 1 || (currentRow[0] && currentRow[0].trim() !== '')) {
+      rows.push(currentRow.map(c => c.trim()));
+  }
+  return rows;
+};
+
+// --- TAB PANEL HELPER ---
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function CustomTabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div role="tabpanel" hidden={value !== index} {...other}>
+      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
+    </div>
+  );
+}
+
 export default function UserManagement() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
-
-  if (!supabase) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <SupabaseConfigNotice />
-      </Box>
-    );
-  }
-
+  
+  // --- STATE ---
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [boards, setBoards] = useState<BoardSummary[]>([]);
   const [boardAdminSelections, setBoardAdminSelections] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  
+  // Tabs
+  const [currentTab, setCurrentTab] = useState(0);
 
+  // Dialogs
   const [createUserDialogOpen, setCreateUserDialogOpen] = useState(false);
+  const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+
+  // Form Fields
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserName, setNewUserName] = useState('');
   const [newUserDepartment, setNewUserDepartment] = useState('');
-  const [editableNames, setEditableNames] = useState<Record<string, string>>({});
-
-  const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false);
   const [newDepartmentName, setNewDepartmentName] = useState('');
+  
+  // Import
+  const [importData, setImportData] = useState<CsvUser[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  
+  // Inline Edit
+  const [editableNames, setEditableNames] = useState<Record<string, string>>({});
 
   const postJson = useMemo(() => ({ 'Content-Type': 'application/json' }), []);
 
-  const isProtectedUser = (userId: string): boolean => {
-    const profile = users.find(entry => entry.id === userId);
-    return isSuperuserEmail(profile?.email);
-  };
+  if (!supabase) return <Box sx={{ p: 3 }}><SupabaseConfigNotice /></Box>;
 
-  const guardSuperuser = (userId: string): boolean => {
-    if (isProtectedUser(userId)) {
-      setMessage('❌ Der Superuser kann nicht bearbeitet werden.');
-      setTimeout(() => setMessage(''), 4000);
-      return true;
-    }
-
-    return false;
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
-
+  // --- DATA LOADING ---
   const loadData = async () => {
     try {
       setLoading(true);
-
       const [usersResult, departmentsResult, boardsResult] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('*')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('departments')
-          .select('*')
-          .order('name'),
-        supabase
-          .from('kanban_boards')
-          .select('id, name, description, settings, board_admin_id')
-          .order('name'),
+        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('departments').select('*').order('name'),
+        supabase.from('kanban_boards').select('id, name, description, settings, board_admin_id').order('name'),
       ]);
 
-      const { data: usersData, error: usersError } = usersResult;
-      if (usersError) {
-        console.error('❌ Users Error:', usersError);
-        setMessage(`❌ User-Fehler: ${usersError.message}`);
-        setUsers([]);
-      } else {
-        const normalizedUsers = ((usersData as any[]) ?? []).map(normalizeUserProfile);
-        setUsers(normalizedUsers);
-        const mappedNames: Record<string, string> = {};
-        normalizedUsers.forEach(profile => {
-          mappedNames[profile.id] = profile.full_name || '';
-        });
-        setEditableNames(mappedNames);
+      if (usersResult.data) {
+        const normalized = usersResult.data.map(normalizeUserProfile);
+        setUsers(normalized);
+        const mapped: Record<string, string> = {};
+        normalized.forEach(p => mapped[p.id] = p.full_name || '');
+        setEditableNames(mapped);
       }
-
-      const { data: departmentsData, error: departmentsError } = departmentsResult;
-      if (departmentsError) {
-        console.error('❌ Departments Error:', departmentsError);
-        if (departmentsError.code === '42P01') {
-          setMessage('❌ Tabelle "departments" nicht gefunden. Bitte in Supabase anlegen.');
-        } else {
-          setMessage(`❌ Abteilungs-Fehler: ${departmentsError.message}`);
-        }
-        setDepartments([]);
-      } else {
-        setDepartments(departmentsData || []);
-      }
-
-      const { data: boardsData, error: boardsError } = boardsResult;
-      if (boardsError) {
-        console.error('❌ Boards Error:', boardsError);
-        setMessage((prev) => prev || `❌ Board-Fehler: ${boardsError.message}`);
-        setBoards([]);
-        setBoardAdminSelections({});
-      } else {
-        const normalizedBoards = ((boardsData as any[]) ?? []).map((board) => {
-          const rawSettings =
-            board && typeof board.settings === 'object' && board.settings !== null
-              ? (board.settings as Record<string, unknown>)
-              : {};
-          const typeRaw = typeof rawSettings.boardType === 'string' ? rawSettings.boardType : '';
-          const boardType = typeRaw.toLowerCase() === 'team' ? 'team' : 'standard';
-
-          return {
-            id: board.id as string,
-            name: board.name ?? 'Board',
-            description: board.description ?? null,
-            settings: rawSettings,
-            board_admin_id: board.board_admin_id ?? null,
-            boardType,
-          } as BoardSummary;
-        });
-
+      if (departmentsResult.data) setDepartments(departmentsResult.data);
+      if (boardsResult.data) {
+        const normalizedBoards = boardsResult.data.map((board: any) => ({
+            id: board.id,
+            name: board.name,
+            description: board.description,
+            settings: board.settings || {},
+            board_admin_id: board.board_admin_id,
+            boardType: (board.settings?.boardType === 'team' ? 'team' : 'standard')
+        })) as BoardSummary[];
         setBoards(normalizedBoards);
-        const adminSelections: Record<string, string> = {};
-        normalizedBoards.forEach((board) => {
-          adminSelections[board.id] = board.board_admin_id ?? '';
-        });
-        setBoardAdminSelections(adminSelections);
+        const admins: Record<string, string> = {};
+        normalizedBoards.forEach(b => admins[b.id] = b.board_admin_id || '');
+        setBoardAdminSelections(admins);
       }
-    } catch (error) {
-      console.error('💥 Unerwarteter Fehler:', error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      setMessage(`❌ Unerwarteter Fehler: ${errorMessage}`);
+    } catch (error: any) {
+      setMessage(`❌ Fehler beim Laden: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const mutateUser = async (
-    userId: string,
-    payload: Partial<Pick<UserProfile, 'full_name' | 'role' | 'company' | 'is_active'>>,
-    successMessage: string,
-  ) => {
+  useEffect(() => { loadData(); }, []);
+
+  // --- ACTIONS ---
+  const handleTabChange = (event: SyntheticEvent, newValue: number) => {
+    setCurrentTab(newValue);
+  };
+
+  const isProtectedUser = (userId: string) => isSuperuserEmail(users.find(entry => entry.id === userId)?.email);
+  
+  const mutateUser = async (userId: string, payload: any, successMsg: string) => {
     try {
-      const response = await fetch(`/api/admin/users/${userId}`, {
-        method: 'PATCH',
-        headers: postJson,
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const { error: errorMessage } = await response.json();
-        throw new Error(errorMessage ?? 'Unbekannter Fehler');
-      }
-
-      const { data } = await response.json();
-
-      setUsers(prev =>
-        prev.map(profile => {
-          if (profile.id !== userId) {
-            return profile;
-          }
-
-          if (data) {
-            return normalizeUserProfile({ ...profile, ...data });
-          }
-
-          return normalizeUserProfile({ ...profile, ...payload });
-        }),
-      );
-
-      if ('full_name' in payload) {
-        const updatedName =
-          typeof payload.full_name === 'string'
-            ? payload.full_name
-            : (data?.full_name as string | null) ?? '';
-        setEditableNames(prev => ({ ...prev, [userId]: updatedName ?? '' }));
-      }
-
-      setMessage(`✅ ${successMessage}`);
+      const res = await fetch(`/api/admin/users/${userId}`, { method: 'PATCH', headers: postJson, body: JSON.stringify(payload) });
+      if (!res.ok) throw new Error((await res.json()).error);
+      const { data } = await res.json();
+      setUsers(prev => prev.map(u => u.id === userId ? normalizeUserProfile({ ...u, ...data }) : u));
+      setMessage(`✅ ${successMsg}`);
       setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      console.error('Benutzeraktualisierung fehlgeschlagen:', error);
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'Fehler beim Aktualisieren der Benutzerdaten';
-      setMessage(`❌ ${message}`);
-      setTimeout(() => setMessage(''), 4000);
-    }
+    } catch (e: any) { setMessage(`❌ ${e.message}`); }
   };
 
-  const updateUserRole = async (userId: string, newRole: string) => {
-    if (guardSuperuser(userId)) {
-      return;
-    }
-
-    await mutateUser(userId, { role: newRole }, 'Benutzerrolle erfolgreich aktualisiert!');
-  };
-
-  const updateUserDepartment = async (userId: string, departmentName: string) => {
-    if (guardSuperuser(userId)) {
-      return;
-    }
-
-    await mutateUser(
-      userId,
-      { company: departmentName || null },
-      'Abteilung erfolgreich aktualisiert!',
-    );
-  };
-
-  const updateBoardAdmin = async (boardId: string, nextAdminId: string) => {
-    if (!supabase) {
-      setMessage('❌ Supabase-Konfiguration fehlt.');
-      setTimeout(() => setMessage(''), 3000);
-      return;
-    }
-
-    const desiredId = nextAdminId.trim() ? nextAdminId.trim() : '';
-    const previousSelection = boardAdminSelections[boardId] ?? '';
-    const currentBoard = boards.find((entry) => entry.id === boardId);
-    if (currentBoard && (currentBoard.board_admin_id ?? '') === desiredId) {
-      setBoardAdminSelections((prev) => ({ ...prev, [boardId]: desiredId }));
-      return;
-    }
-
-    setBoardAdminSelections((prev) => ({ ...prev, [boardId]: desiredId }));
-
-    try {
-      const { error } = await supabase
-        .from('kanban_boards')
-        .update({ board_admin_id: desiredId || null })
-        .eq('id', boardId);
-
-      if (error) {
-        throw error;
-      }
-
-      setBoards((prev) =>
-        prev.map((board) =>
-          board.id === boardId
-            ? { ...board, board_admin_id: desiredId || null }
-            : board,
-        ),
-      );
-      setBoardAdminSelections((prev) => ({ ...prev, [boardId]: desiredId }));
-      setMessage('✅ Board-Admin erfolgreich aktualisiert!');
-      setTimeout(() => setMessage(''), 3000);
-    } catch (cause) {
-      console.error('❌ Fehler beim Aktualisieren des Board-Admins', cause);
-      const errorMessage =
-        cause instanceof Error ? cause.message : 'Board-Admin konnte nicht aktualisiert werden.';
-      setMessage(`❌ ${errorMessage}`);
-      setTimeout(() => setMessage(''), 4000);
-      setBoardAdminSelections((prev) => ({ ...prev, [boardId]: previousSelection }));
-    }
-  };
-
-  const updateUserName = async (userId: string, fullName: string) => {
-    if (guardSuperuser(userId)) {
-      return;
-    }
-
-    const trimmed = fullName.trim();
-    if (!trimmed) {
-      const fallbackName = users.find(profile => profile.id === userId)?.full_name || '';
-      setEditableNames(prev => ({ ...prev, [userId]: fallbackName }));
-      setMessage('❌ Name darf nicht leer sein.');
-      setTimeout(() => setMessage(''), 3000);
-      return;
-    }
-
-    await mutateUser(userId, { full_name: trimmed }, 'Benutzername erfolgreich aktualisiert!');
-  };
-
-  const handleInlineNameChange = (userId: string, value: string) => {
-    setEditableNames(prev => ({ ...prev, [userId]: value }));
-  };
-
-  const toggleUserActive = async (userId: string, currentState: boolean | null | undefined) => {
-    if (guardSuperuser(userId)) {
-      return;
-    }
-
-    await mutateUser(
-      userId,
-      { is_active: !(currentState ?? true) },
-      `Benutzer ${(currentState ?? true) ? 'deaktiviert' : 'reaktiviert'}!`,
-    );
-  };
-
-  const deleteUser = async (userId: string) => {
-    if (guardSuperuser(userId)) {
-      return;
-    }
-
-    if (!window.confirm('Benutzer wirklich löschen? Dies kann nicht rückgängig gemacht werden.')) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/admin/users/${userId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const { error } = await response.json();
-        throw new Error(error ?? 'Fehler beim Löschen des Benutzers');
-      }
-
-      setUsers(prev => prev.filter(user => user.id !== userId));
-      setEditableNames(prev => {
-        const next = { ...prev };
-        delete next[userId];
-        return next;
-      });
-
-      setMessage('✅ Benutzer erfolgreich gelöscht!');
-      setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      console.error('Benutzerlöschen fehlgeschlagen:', error);
-      const message = error instanceof Error ? error.message : 'Fehler beim Löschen des Benutzers';
-      setMessage(`❌ ${message}`);
-      setTimeout(() => setMessage(''), 4000);
-    }
-  };
-
-  const addDepartment = async () => {
-    if (!newDepartmentName.trim()) return;
-
-    try {
-      const response = await fetch('/api/admin/departments', {
-        method: 'POST',
-        headers: postJson,
-        body: JSON.stringify({ name: newDepartmentName.trim() }),
-      });
-
-      if (!response.ok) {
-        const { error } = await response.json();
-        throw new Error(error ?? 'Fehler beim Anlegen der Abteilung');
-      }
-
-      const { data } = await response.json();
-
-      if (data) {
-        setDepartments(prev => [...prev, data]);
-      }
-
-      setNewDepartmentName('');
-      setDepartmentDialogOpen(false);
-      setMessage('✅ Abteilung erfolgreich angelegt!');
-      setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      console.error('Fehler beim Anlegen der Abteilung:', error);
-      const message = error instanceof Error ? error.message : 'Fehler beim Anlegen der Abteilung';
-      setMessage(`❌ ${message}`);
-      setTimeout(() => setMessage(''), 4000);
-    }
-  };
-
-  const deleteDepartment = async (departmentId: string) => {
-    if (!window.confirm('Abteilung wirklich löschen?')) return;
-
-    try {
-      const response = await fetch(`/api/admin/departments/${departmentId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        const { error } = await response.json();
-        throw new Error(error ?? 'Fehler beim Löschen der Abteilung');
-      }
-
-      setDepartments(prev => prev.filter(department => department.id !== departmentId));
-      setMessage('✅ Abteilung erfolgreich gelöscht!');
-      setTimeout(() => setMessage(''), 3000);
-    } catch (error) {
-      console.error('Fehler beim Löschen der Abteilung:', error);
-      const message = error instanceof Error ? error.message : 'Fehler beim Löschen der Abteilung';
-      setMessage(`❌ ${message}`);
-      setTimeout(() => setMessage(''), 4000);
-    }
+  const updateUserRole = (id: string, role: string) => !isProtectedUser(id) && mutateUser(id, { role }, 'Rolle aktualisiert');
+  const updateUserDepartment = (id: string, company: string) => !isProtectedUser(id) && mutateUser(id, { company: company || null }, 'Abteilung aktualisiert');
+  const toggleUserActive = (id: string, current: boolean) => !isProtectedUser(id) && mutateUser(id, { is_active: !current }, 'Status geändert');
+  const updateUserName = (id: string, name: string) => !isProtectedUser(id) && name.trim() && mutateUser(id, { full_name: name.trim() }, 'Name aktualisiert');
+  
+  const deleteUser = async (id: string) => {
+      if (isProtectedUser(id) || !confirm('Benutzer löschen?')) return;
+      try {
+          const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error((await res.json()).error);
+          setUsers(prev => prev.filter(u => u.id !== id));
+          setMessage('✅ Benutzer gelöscht');
+      } catch (e: any) { setMessage(`❌ ${e.message}`); }
   };
 
   const createUser = async () => {
-    if (!newUserEmail.trim() || !newUserPassword.trim()) return;
-
-    try {
-      const trimmedEmail = newUserEmail.trim();
-      const trimmedPassword = newUserPassword.trim();
-      const trimmedName = newUserName.trim();
-      const trimmedDepartment = newUserDepartment.trim();
-
-      const { data, error } = await supabase.auth.signUp({
-        email: trimmedEmail,
-        password: trimmedPassword,
-        options: {
-          data: {
-            full_name: trimmedName || null,
-            company: trimmedDepartment || null,
-            role: 'user'
+      if (!newUserEmail.trim() || !newUserPassword.trim()) return;
+      try {
+          const { data, error } = await supabase.auth.signUp({
+              email: newUserEmail.trim(),
+              password: newUserPassword.trim(),
+              options: { data: { full_name: newUserName.trim(), company: newUserDepartment || null, role: 'user' } }
+          });
+          if (error) throw error;
+          if (data.user) {
+              setCreateUserDialogOpen(false);
+              setNewUserEmail(''); setNewUserPassword(''); setNewUserName('');
+              setMessage('✅ Benutzer erstellt');
+              loadData();
           }
-        }
-      });
-
-      if (error) throw error;
-
-      if (!data.user?.id) {
-        throw new Error('Benutzerkonto konnte nicht erstellt werden.');
-      }
-
-      setCreateUserDialogOpen(false);
-      setNewUserEmail('');
-      setNewUserPassword('');
-      setNewUserName('');
-      setNewUserDepartment('');
-      setMessage('✅ Benutzer erfolgreich erstellt!');
-      await loadData();
-      setTimeout(() => setMessage(''), 3000);
-    } catch (err: any) {
-      console.error('Fehler beim Benutzer anlegen:', err);
-      setMessage(`❌ Fehler beim Erstellen: ${err.message ?? err}`);
-      setTimeout(() => setMessage(''), 4000);
-    }
+      } catch (e: any) { setMessage(`❌ ${e.message}`); }
   };
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
-        <Typography variant="h6">🔄 Wird geladen...</Typography>
-      </Box>
-    );
-  }
+  const addDepartment = async () => {
+      if (!newDepartmentName.trim()) return;
+      try {
+          const res = await fetch('/api/admin/departments', { method: 'POST', headers: postJson, body: JSON.stringify({ name: newDepartmentName.trim() }) });
+          if (!res.ok) throw new Error('Fehler');
+          const { data } = await res.json();
+          setDepartments(prev => [...prev, data]);
+          setDepartmentDialogOpen(false);
+          setNewDepartmentName('');
+          setMessage('✅ Abteilung erstellt');
+      } catch { setMessage('❌ Fehler'); }
+  };
+
+  const deleteDepartment = async (id: string) => {
+      if (!confirm('Löschen?')) return;
+      try {
+          const res = await fetch(`/api/admin/departments/${id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error('Fehler');
+          setDepartments(prev => prev.filter(d => d.id !== id));
+      } catch { setMessage('❌ Fehler'); }
+  };
+
+  const updateBoardAdmin = async (boardId: string, adminId: string) => {
+      setBoardAdminSelections(prev => ({ ...prev, [boardId]: adminId }));
+      try {
+          const { error } = await supabase.from('kanban_boards').update({ board_admin_id: adminId || null }).eq('id', boardId);
+          if (error) throw error;
+          setBoards(prev => prev.map(b => b.id === boardId ? { ...b, board_admin_id: adminId || null } : b));
+          setMessage('✅ Admin aktualisiert');
+      } catch (e: any) { setMessage(`❌ ${e.message}`); }
+  };
+
+  // --- IMPORT ---
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const rows = parseCSV(e.target?.result as string);
+      if (rows.length === 0) return;
+
+      const headers = rows[0].map(h => h.toLowerCase());
+      const emailIdx = headers.findIndex(h => h.includes('e-mail') || h.includes('email'));
+      const firstIdx = headers.findIndex(h => h.includes('first name') || h.includes('vorname'));
+      const lastIdx = headers.findIndex(h => h.includes('last name') || h.includes('nachname'));
+      const nameIdx = headers.findIndex(h => h === 'name' || h === 'full name');
+      
+      if (emailIdx === -1) { alert('Keine E-Mail Spalte gefunden.'); return; }
+
+      const parsedUsers: CsvUser[] = [];
+      const fixedPassword = 'Board2025!';
+
+      for (let i = 1; i < rows.length; i++) {
+          const cols = rows[i];
+          if (cols.length <= emailIdx) continue;
+          const email = cols[emailIdx];
+          if (!email || !email.includes('@')) continue; 
+
+          let full_name = '';
+          if (firstIdx !== -1 && lastIdx !== -1) full_name = `${cols[firstIdx] || ''} ${cols[lastIdx] || ''}`.trim();
+          else if (nameIdx !== -1) full_name = cols[nameIdx] || '';
+          if (!full_name) full_name = email.split('@')[0];
+          
+          parsedUsers.push({ email, password: fixedPassword, generatedPassword: fixedPassword, full_name, company: '', role: 'user' });
+      }
+      setImportData(parsedUsers);
+      if (parsedUsers.length > 0) { setImportDialogOpen(true); setImportProgress(0); }
+      else { alert('Keine gültigen Daten gefunden.'); }
+      event.target.value = ''; 
+    };
+    reader.readAsText(file);
+  };
+
+  const executeImport = async () => {
+      setImporting(true);
+      setImportProgress(0);
+      const CHUNK_SIZE = 5; 
+      const total = importData.length;
+      let processed = 0;
+      let successCount = 0;
+      let allErrors: string[] = [];
+
+      try {
+          for (let i = 0; i < total; i += CHUNK_SIZE) {
+              const chunk = importData.slice(i, i + CHUNK_SIZE);
+              try {
+                  const response = await fetch('/api/admin/users/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ users: chunk }) });
+                  const textResponse = await response.text();
+                  let result;
+                  try { result = JSON.parse(textResponse); } catch (e) { throw new Error(`Server-Fehler (Kein JSON)`); }
+                  if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+                  successCount += result.imported || 0;
+                  if (result.errors) allErrors = [...allErrors, ...result.errors];
+              } catch (err: any) { allErrors.push(`Batch Fehler: ${err.message}`); }
+              processed += chunk.length;
+              setImportProgress(Math.min(100, Math.round((processed / total) * 100)));
+          }
+          setImportDialogOpen(false);
+          setImportData([]);
+          if (allErrors.length > 0) {
+              alert(`Import beendet.\n✅ ${successCount} erfolgreich\n❌ ${allErrors.length} Fehler`);
+              setMessage(`⚠️ Import mit Fehlern (${successCount} OK).`);
+          } else {
+              setMessage(`✅ ${successCount} Benutzer erfolgreich importiert.`);
+          }
+          await loadData(); 
+      } catch (err: any) { setMessage(`❌ Fehler: ${err.message}`); } 
+      finally { setImporting(false); setImportProgress(0); }
+  };
+
+  if (loading) return <Box sx={{ py: 10, textAlign: 'center' }}><Typography variant="h6">🔄 Laden...</Typography></Box>;
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Box
-        sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 2,
-          mb: 4
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Button variant="text" onClick={() => (window.location.href = '/')}>← Zurück</Button>
-          <Typography variant="h4" component="h1">
-            👥 User & Abteilungsverwaltung
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-          <Button variant="outlined" onClick={() => setDepartmentDialogOpen(true)}>
-            🏢 Neue Abteilung
-          </Button>
-          <Button variant="outlined" onClick={() => setCreateUserDialogOpen(true)}>
-            👤 Neuer Benutzer
-          </Button>
-        </Box>
+      
+      {/* HEADER & STATS */}
+      <Box sx={{ mb: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Button variant="text" onClick={() => (window.location.href = '/')}>← Zurück</Button>
+                <Typography variant="h4" component="h1">Verwaltung</Typography>
+             </Box>
+          </Box>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{textAlign:'center'}}><Typography variant="h4" color="primary">{users.length}</Typography><Typography variant="caption">Benutzer</Typography></CardContent></Card></Grid>
+            <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{textAlign:'center'}}><Typography variant="h4" color="success.main">{users.filter(u => u.is_active).length}</Typography><Typography variant="caption">Aktiv</Typography></CardContent></Card></Grid>
+            <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{textAlign:'center'}}><Typography variant="h4" color="info.main">{departments.length}</Typography><Typography variant="caption">Abteilungen</Typography></CardContent></Card></Grid>
+            <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{textAlign:'center'}}><Typography variant="h4" color="warning.main">{users.filter(u => u.role === 'admin').length}</Typography><Typography variant="caption">Admins</Typography></CardContent></Card></Grid>
+          </Grid>
       </Box>
 
-      {message && (
-        <Alert severity={message.startsWith('✅') ? 'success' : 'error'} sx={{ mb: 3 }}>
-          {message}
-        </Alert>
-      )}
+      {message && <Alert severity={message.startsWith('✅') ? 'success' : (message.startsWith('⚠️') ? 'warning' : 'error')} sx={{ mb: 3 }}>{message}</Alert>}
 
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h3" color="primary">
-                {users.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Benutzer gesamt
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h3" color="success.main">
-                {users.filter(u => u.is_active).length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Aktive Benutzer
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h3" color="info.main">
-                {departments.length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Abteilungen
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ textAlign: 'center' }}>
-              <Typography variant="h3" color="warning.main">
-                {users.filter(u => u.role === 'admin').length}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Administratoren
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      {/* TABS NAVIGATION */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs value={currentTab} onChange={handleTabChange}>
+          <Tab icon={<PeopleIcon />} label="Benutzer" iconPosition="start" />
+          <Tab icon={<BusinessIcon />} label="Abteilungen" iconPosition="start" />
+          <Tab icon={<DashboardIcon />} label="Boards & Rechte" iconPosition="start" />
+        </Tabs>
+      </Box>
 
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            🏢 Abteilungen
-          </Typography>
-          {departments.length > 0 ? (
-            <Grid container spacing={2}>
-              {departments.map(department => (
-                <Grid item xs={12} sm={6} md={4} key={department.id}>
-                  <Card variant="outlined">
-                    <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 2 }}>
-                      <Box>
-                        <Typography variant="subtitle1" fontWeight={600}>
-                          {department.name}
-                        </Typography>
-                        {department.created_at && (
-                          <Typography variant="caption" color="text.secondary">
-                            Angelegt: {new Date(department.created_at).toLocaleDateString('de-DE')}
-                          </Typography>
-                        )}
-                      </Box>
-                      <Button
-                        variant="outlined"
-                        color="error"
-                        size="small"
-                        onClick={() => deleteDepartment(department.id)}
-                      >
-                        Löschen
-                      </Button>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          ) : (
-            <Typography variant="body2" color="text.secondary">
-              Noch keine Abteilungen angelegt.
-            </Typography>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            📋 Board-Administratoren
-          </Typography>
-          {boards.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              Keine Boards gefunden.
-            </Typography>
-          ) : (
-            <TableContainer component={Paper}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Board</TableCell>
-                    <TableCell>Board-Admin</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {boards.map((board) => {
-                    const selection = boardAdminSelections[board.id] ?? '';
-                    return (
-                      <TableRow key={board.id}>
-                        <TableCell>
-                          <Stack spacing={0.5}>
-                            <Typography variant="subtitle2" fontWeight={600}>
-                              {board.name}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {board.boardType === 'team' ? 'Teamboard' : 'Projektboard'}
-                            </Typography>
-                            {board.description && (
-                              <Typography variant="caption" color="text.secondary">
-                                {board.description}
-                              </Typography>
-                            )}
-                          </Stack>
-                        </TableCell>
-                        <TableCell sx={{ minWidth: { xs: 220, md: 320 } }}>
-                          <FormControl size="small" fullWidth>
-                            <InputLabel>Board-Admin</InputLabel>
-                            <Select
-                              label="Board-Admin"
-                              value={selection}
-                              onChange={(event) => updateBoardAdmin(board.id, String(event.target.value))}
-                            >
-                              <MenuItem value="">
-                                <em>Kein Admin</em>
-                              </MenuItem>
-                              {users.map((userProfile) => (
-                                <MenuItem key={userProfile.id} value={userProfile.id}>
-                                  {userProfile.full_name || userProfile.email}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card sx={{ mb: 4 }}>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            👤 Alle Benutzer
-          </Typography>
-          <TableContainer component={Paper}>
-            <Table>
+      {/* --- TAB 0: BENUTZER --- */}
+      <CustomTabPanel value={currentTab} index={0}>
+         <Stack direction="row" spacing={2} sx={{ mb: 2 }} justifyContent="flex-end">
+             <Button variant="contained" startIcon={<PersonAddIcon />} onClick={() => setCreateUserDialogOpen(true)}>Neuer Benutzer</Button>
+             <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
+                 CSV Import <input type="file" hidden accept=".csv,.txt" onChange={handleFileChange} />
+             </Button>
+         </Stack>
+         <TableContainer component={Paper} variant="outlined">
+            <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Benutzer</TableCell>
-                  <TableCell>E-Mail</TableCell>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Email</TableCell>
                   <TableCell>Abteilung</TableCell>
                   <TableCell>Rolle</TableCell>
                   <TableCell>Status</TableCell>
-                  <TableCell>Registriert</TableCell>
-                  <TableCell align="right">Aktionen</TableCell>
+                  <TableCell align="right">Aktion</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {users.map((userProfile) => {
-                  const protectedUser = isProtectedUser(userProfile.id);
+                {users.map(u => {
+                  const protectedUser = isProtectedUser(u.id);
                   return (
-                    <TableRow key={userProfile.id}>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                        <Avatar src={userProfile.avatar_url} sx={{ width: 32, height: 32 }}>
-                          {userProfile.full_name?.[0] || userProfile.email[0].toUpperCase()}
-                        </Avatar>
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                          <TextField
-                            value={editableNames[userProfile.id] ?? userProfile.full_name ?? ''}
-                            onChange={(e) => handleInlineNameChange(userProfile.id, e.target.value)}
-                            onBlur={(e) => updateUserName(userProfile.id, e.target.value)}
-                            size="small"
-                            placeholder="Name eingeben"
-                            disabled={protectedUser}
-                          />
-                          {userProfile.company && (
-                            <Typography variant="caption" color="text.secondary">
-                              {userProfile.company}
-                            </Typography>
-                          )}
-                          {protectedUser && (
-                            <Chip label="Superuser" size="small" color="secondary" />
-                          )}
+                    <TableRow key={u.id}>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Avatar src={u.avatar_url} sx={{ width: 28, height: 28 }}>{(u.full_name || u.email)[0].toUpperCase()}</Avatar>
+                            <TextField size="small" variant="standard" value={editableNames[u.id] ?? u.full_name} onChange={(e) => setEditableNames(prev => ({...prev, [u.id]: e.target.value}))} onBlur={(e) => updateUserName(u.id, e.target.value)} disabled={protectedUser} InputProps={{ disableUnderline: true }} />
                         </Box>
-                      </Box>
-                    </TableCell>
-                    <TableCell>{userProfile.email}</TableCell>
-                    <TableCell>
-                      <FormControl size="small" sx={{ minWidth: 160 }}>
-                        <Select
-                          displayEmpty
-                          value={userProfile.company || ''}
-                          onChange={(e) => updateUserDepartment(userProfile.id, e.target.value)}
-                          disabled={protectedUser}
-                        >
-                          <MenuItem value="">
-                            <em>Keine</em>
-                          </MenuItem>
-                          {departments.map((department) => (
-                            <MenuItem key={department.id} value={department.name}>
-                              {department.name}
-                            </MenuItem>
-                          ))}
+                      </TableCell>
+                      <TableCell>{u.email}</TableCell>
+                      <TableCell>
+                        <Select size="small" variant="standard" disableUnderline value={u.company || ''} onChange={(e) => updateUserDepartment(u.id, e.target.value)} disabled={protectedUser} displayEmpty sx={{ minWidth: 120 }}>
+                            <MenuItem value=""><em>Keine</em></MenuItem>
+                            {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
                         </Select>
-                      </FormControl>
-                    </TableCell>
-                    <TableCell>
-                      <FormControl size="small" sx={{ minWidth: 120 }}>
-                        <Select
-                          value={userProfile.role}
-                          onChange={(e) => updateUserRole(userProfile.id, e.target.value)}
-                          disabled={protectedUser}
-                        >
-                          <MenuItem value="user">User</MenuItem>
-                          <MenuItem value="admin">Admin</MenuItem>
-                          <MenuItem value="guest">Guest</MenuItem>
+                      </TableCell>
+                      <TableCell>
+                        <Select size="small" variant="standard" disableUnderline value={u.role} onChange={(e) => updateUserRole(u.id, e.target.value)} disabled={protectedUser}>
+                            <MenuItem value="user">User</MenuItem><MenuItem value="admin">Admin</MenuItem>
                         </Select>
-                      </FormControl>
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Switch
-                          checked={userProfile.is_active}
-                          onChange={() => toggleUserActive(userProfile.id, userProfile.is_active)}
-                          inputProps={{ 'aria-label': 'Benutzerstatus umschalten' }}
-                          size="small"
-                          disabled={protectedUser}
-                        />
-                        <Chip
-                          label={userProfile.is_active ? 'Aktiv' : 'Inaktiv'}
-                          color={userProfile.is_active ? 'success' : 'default'}
-                          size="small"
-                        />
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(userProfile.created_at).toLocaleDateString('de-DE')}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="Benutzer löschen">
-                        <span>
-                          <IconButton
-                            color="error"
-                            onClick={() => deleteUser(userProfile.id)}
-                            size="small"
-                            disabled={protectedUser}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    </TableCell>
+                      </TableCell>
+                      <TableCell><Switch size="small" checked={u.is_active} onChange={() => toggleUserActive(u.id, u.is_active)} disabled={protectedUser} /></TableCell>
+                      <TableCell align="right">
+                          <IconButton size="small" color="error" onClick={() => deleteUser(u.id)} disabled={protectedUser}><DeleteIcon fontSize="small" /></IconButton>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
               </TableBody>
             </Table>
           </TableContainer>
-        </CardContent>
-      </Card>
+      </CustomTabPanel>
 
+      {/* --- TAB 1: ABTEILUNGEN --- */}
+      <CustomTabPanel value={currentTab} index={1}>
+         <Stack direction="row" justifyContent="flex-end" sx={{ mb: 2 }}>
+             <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDepartmentDialogOpen(true)}>Neue Abteilung</Button>
+         </Stack>
+         <Grid container spacing={2}>
+             {departments.map(d => (
+                <Grid item xs={12} sm={6} md={4} key={d.id}>
+                    <Card variant="outlined"><CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography fontWeight={600}>{d.name}</Typography>
+                        <IconButton color="error" size="small" onClick={() => deleteDepartment(d.id)}><DeleteIcon /></IconButton>
+                    </CardContent></Card>
+                </Grid>
+             ))}
+         </Grid>
+      </CustomTabPanel>
+
+      {/* --- TAB 2: BOARDS --- */}
+      <CustomTabPanel value={currentTab} index={2}>
+         <TableContainer component={Paper} variant="outlined">
+            <Table>
+                <TableHead><TableRow><TableCell>Board Name</TableCell><TableCell>Typ</TableCell><TableCell>Administrator</TableCell></TableRow></TableHead>
+                <TableBody>
+                  {boards.map(b => (
+                    <TableRow key={b.id}>
+                      <TableCell sx={{ fontWeight: 500 }}>{b.name}</TableCell>
+                      <TableCell><Chip label={b.boardType === 'team' ? 'Teamboard' : 'Projekt'} size="small" /></TableCell>
+                      <TableCell>
+                        <FormControl fullWidth size="small">
+                            <Select value={boardAdminSelections[b.id] ?? ''} onChange={(e) => updateBoardAdmin(b.id, e.target.value)} displayEmpty>
+                               <MenuItem value=""><em>Kein Admin zugewiesen</em></MenuItem>
+                               {users.map(u => <MenuItem key={u.id} value={u.id}>{u.full_name || u.email}</MenuItem>)}
+                            </Select>
+                        </FormControl>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+            </Table>
+          </TableContainer>
+      </CustomTabPanel>
+
+      {/* --- DIALOGE --- */}
+      
+      {/* Create User */}
       <Dialog open={createUserDialogOpen} onClose={() => setCreateUserDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>👤 Neuen Benutzer anlegen</DialogTitle>
+        <DialogTitle>Neuer Benutzer</DialogTitle>
         <DialogContent>
-          <TextField
-            label="Name"
-            value={newUserName}
-            onChange={(e) => setNewUserName(e.target.value)}
-            fullWidth
-            margin="normal"
-          />
-          <TextField
-            label="E-Mail"
-            type="email"
-            value={newUserEmail}
-            onChange={(e) => setNewUserEmail(e.target.value)}
-            fullWidth
-            margin="normal"
-            required
-          />
-          <TextField
-            label="Passwort"
-            type="password"
-            value={newUserPassword}
-            onChange={(e) => setNewUserPassword(e.target.value)}
-            fullWidth
-            margin="normal"
-            required
-          />
-          <FormControl fullWidth margin="normal" size="small">
-            <InputLabel>Abteilung</InputLabel>
-            <Select
-              label="Abteilung"
-              value={newUserDepartment}
-              onChange={(e) => setNewUserDepartment(e.target.value)}
-            >
-              <MenuItem value="">
-                <em>Keine</em>
-              </MenuItem>
-              {departments.map((department) => (
-                <MenuItem key={department.id} value={department.name}>
-                  {department.name}
-                </MenuItem>
-              ))}
-            </Select>
+          <TextField label="Name" fullWidth margin="normal" value={newUserName} onChange={e => setNewUserName(e.target.value)} />
+          <TextField label="Email" fullWidth margin="normal" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} />
+          <TextField label="Passwort" type="password" fullWidth margin="normal" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} />
+          <FormControl fullWidth margin="normal">
+              <InputLabel>Abteilung</InputLabel>
+              <Select value={newUserDepartment} label="Abteilung" onChange={e => setNewUserDepartment(e.target.value)}>
+                  <MenuItem value=""><em>Keine</em></MenuItem>
+                  {departments.map(d => <MenuItem key={d.id} value={d.name}>{d.name}</MenuItem>)}
+              </Select>
           </FormControl>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateUserDialogOpen(false)}>Abbrechen</Button>
-          <Button variant="contained" onClick={createUser}>Erstellen</Button>
+            <Button onClick={() => setCreateUserDialogOpen(false)}>Abbrechen</Button>
+            <Button variant="contained" onClick={createUser}>Erstellen</Button>
         </DialogActions>
       </Dialog>
 
+      {/* Create Dept */}
       <Dialog open={departmentDialogOpen} onClose={() => setDepartmentDialogOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>🏢 Neue Abteilung anlegen</DialogTitle>
-        <DialogContent>
-          <TextField
-            autoFocus
-            label="Abteilungsname"
-            value={newDepartmentName}
-            onChange={(e) => setNewDepartmentName(e.target.value)}
-            fullWidth
-            margin="normal"
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDepartmentDialogOpen(false)}>Abbrechen</Button>
-          <Button
-            variant="contained"
-            onClick={addDepartment}
-            disabled={!newDepartmentName.trim()}
-          >
-            Speichern
-          </Button>
-        </DialogActions>
+          <DialogTitle>Neue Abteilung</DialogTitle>
+          <DialogContent>
+              <TextField autoFocus label="Name" fullWidth margin="normal" value={newDepartmentName} onChange={e => setNewDepartmentName(e.target.value)} />
+          </DialogContent>
+          <DialogActions>
+              <Button onClick={() => setDepartmentDialogOpen(false)}>Abbrechen</Button>
+              <Button variant="contained" onClick={addDepartment}>Speichern</Button>
+          </DialogActions>
       </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onClose={() => !importing && setImportDialogOpen(false)} maxWidth="lg" fullWidth>
+          <DialogTitle>📥 Import Vorschau ({importData.length})</DialogTitle>
+          <DialogContent dividers>
+              <Alert severity="info" sx={{ mb: 2 }}>PW für alle: <strong>Board2025!</strong></Alert>
+              {importing && <LinearProgress sx={{ mb: 2 }} variant="determinate" value={importProgress} />}
+              <TableContainer component={Paper} sx={{ maxHeight: 300 }} variant="outlined">
+                  <Table stickyHeader size="small">
+                      <TableHead><TableRow><TableCell>Email</TableCell><TableCell>Name</TableCell><TableCell>PW</TableCell></TableRow></TableHead>
+                      <TableBody>
+                          {importData.map((u, i) => (
+                              <TableRow key={i} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                  <TableCell>{u.email}</TableCell>
+                                  <TableCell>{u.full_name}</TableCell>
+                                  <TableCell sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>{u.generatedPassword}</TableCell>
+                              </TableRow>
+                          ))}
+                      </TableBody>
+                  </Table>
+              </TableContainer>
+          </DialogContent>
+          <DialogActions>
+              <Button onClick={() => setImportDialogOpen(false)} disabled={importing}>Abbrechen</Button>
+              <Button onClick={executeImport} variant="contained" disabled={importing} startIcon={<UploadFileIcon />}>{importing ? 'Importiere...' : 'Starten'}</Button>
+          </DialogActions>
+      </Dialog>
+
     </Container>
   );
 }
