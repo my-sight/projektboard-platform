@@ -13,16 +13,31 @@ import {
   DialogContent,
   DialogTitle,
   FormControlLabel,
-  Grid,
   IconButton,
   Stack,
   TextField,
   Tooltip,
   Typography,
-  Badge
+  Avatar,
+  Collapse,
+  LinearProgress
 } from '@mui/material';
-import { Add as AddIcon, Delete as DeleteIcon, FilterList, Warning, PriorityHigh, ArrowBack, Star, Delete } from '@mui/icons-material';
-import { alpha } from '@mui/material/styles';
+import { 
+  Add as AddIcon, 
+  Delete as DeleteIcon, 
+  FilterList, 
+  Warning, 
+  PriorityHigh, 
+  ArrowBack, 
+  Star, 
+  KeyboardArrowDown,
+  KeyboardArrowUp,
+  CheckCircleOutline,
+  AddCircleOutline,
+  Delete,
+  AccessTime,
+  PriorityHigh as PriorityHighIcon
+} from '@mui/icons-material';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
 import { useSnackbar } from 'notistack';
 import { keyframes } from '@mui/system';
@@ -33,35 +48,50 @@ import { isSuperuserEmail } from '@/constants/superuser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders';
 
-// Animation wie im Projektboard (5x)
+// --- Styles & Konstanten ---
 const blinkAnimation = keyframes`
   0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); border-color: #ffc107; }
   50% { box-shadow: 0 0 0 10px rgba(25, 118, 210, 0); border-color: #ffc107; background-color: rgba(255, 249, 196, 0.5); }
   100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
 `;
 
+const COL_WIDTHS = {
+    member: '220px',
+    flow1: '1fr',
+    flow: '1fr',
+    done: '1fr'
+};
+
+const MIN_CARD_HEIGHT = 80;
+const BACKLOG_WIDTH = 320;
+
+// --- Interfaces ---
 interface BoardMember { id: string; profile_id: string; }
 interface MemberWithProfile extends BoardMember { profile: ClientProfile | null; }
 export type TeamBoardStatus = 'backlog' | 'flow1' | 'flow' | 'done';
-interface TeamBoardCard { rowId: string; cardId: string; description: string; dueDate: string | null; important: boolean; assigneeId: string | null; status: TeamBoardStatus; position: number; createdBy?: string; }
-interface TeamKanbanBoardProps { boardId: string; onExit?: () => void; highlightCardId?: string | null; }
-interface TaskDraft { description: string; dueDate: string; important: boolean; assigneeId: string | null; status: TeamBoardStatus; }
-interface DroppableInfo { assigneeId: string | null; status: TeamBoardStatus; }
 
-// Interface für Top Themen
-interface TopTopic {
-  id: string;
-  title: string;
-  calendar_week?: string;
-  due_date?: string;
-  position: number;
+interface TeamBoardCard { 
+    rowId: string; 
+    cardId: string; 
+    description: string; 
+    dueDate: string | null; 
+    important: boolean; 
+    watch: boolean; 
+    assigneeId: string | null; 
+    status: TeamBoardStatus; 
+    position: number; 
+    createdBy?: string; 
 }
 
-const statusLabels: Record<TeamBoardStatus, string> = { backlog: 'Aufgabenspeicher', flow1: 'Flow-1', flow: 'Flow', done: 'Fertig' };
-const CARD_WIDTH = 260;
-const MIN_CARD_HEIGHT = 92;
-const defaultDraft: TaskDraft = { description: '', dueDate: '', important: false, assigneeId: null, status: 'backlog' };
+interface TeamKanbanBoardProps { boardId: string; onExit?: () => void; highlightCardId?: string | null; }
+interface TaskDraft { description: string; dueDate: string; important: boolean; watch: boolean; assigneeId: string | null; status: TeamBoardStatus; }
+interface DroppableInfo { assigneeId: string | null; status: TeamBoardStatus; }
+interface TopTopic { id: string; title: string; calendar_week?: string; due_date?: string; position: number; }
 
+const statusLabels: Record<TeamBoardStatus, string> = { backlog: 'Aufgabenspeicher', flow1: 'Flow-1', flow: 'Flow', done: 'Fertig' };
+const defaultDraft: TaskDraft = { description: '', dueDate: '', important: false, watch: false, assigneeId: null, status: 'backlog' };
+
+// --- Helpers ---
 const getInitials = (name: string) => name.split(' ').filter(Boolean).map((part) => part[0]).join('').toUpperCase().slice(0, 2);
 const droppableKey = (assigneeId: string | null, status: TeamBoardStatus) => `team|${assigneeId ?? 'unassigned'}|${status}`;
 const parseDroppableKey = (value: string): DroppableInfo => {
@@ -72,33 +102,57 @@ const parseDroppableKey = (value: string): DroppableInfo => {
   return { assigneeId, status };
 };
 
-const buildCardData = (card: TeamBoardCard) => ({ type: 'teamTask', description: card.description, dueDate: card.dueDate, important: card.important, assigneeId: card.assigneeId, status: card.status, createdBy: card.createdBy });
+// Data Helpers
+const buildCardData = (card: TeamBoardCard) => ({ 
+    type: 'teamTask', 
+    description: card.description, 
+    dueDate: card.dueDate, 
+    important: card.important, 
+    watch: card.watch, 
+    assigneeId: card.assigneeId, 
+    status: card.status, 
+    createdBy: card.createdBy 
+});
+
 const createColumnsMapFromCards = (cards: TeamBoardCard[]) => { const map = new Map<string, TeamBoardCard[]>(); cards.forEach((card) => { const key = droppableKey(card.assigneeId, card.status); const entries = map.get(key) ?? []; entries.push({ ...card }); map.set(key, entries); }); return map; };
 const flattenColumnsMap = (map: Map<string, TeamBoardCard[]>) => { const flattened: TeamBoardCard[] = []; Array.from(map.keys()).sort().forEach((key) => { const entries = map.get(key) ?? []; entries.map((entry) => ({ ...entry })).forEach((entry, index) => { flattened.push({ ...entry, position: index }); }); }); return flattened; };
 const buildPersistPayload = (boardId: string, cards: TeamBoardCard[]) => cards.map((card) => ({ board_id: boardId, card_id: card.cardId, card_data: buildCardData(card), stage: droppableKey(card.assigneeId, card.status), position: card.position ?? 0, project_number: null, project_name: null }));
+
 const normalizeCard = (row: any): TeamBoardCard | null => {
   const stageInfo = typeof row.stage === 'string' ? parseDroppableKey(row.stage) : { assigneeId: null, status: 'backlog' as TeamBoardStatus };
   const payload = (row.card_data ?? {}) as Record<string, unknown>;
   if (payload && payload.type && payload.type !== 'teamTask' && !String(row.stage || '').startsWith('team|')) return null;
+  
   const description = typeof payload.description === 'string' ? payload.description : '';
   const dueDate = typeof payload.dueDate === 'string' && payload.dueDate ? payload.dueDate : null;
   const important = Boolean(payload.important);
+  const watch = Boolean(payload.watch);
   const createdBy = typeof payload.createdBy === 'string' ? payload.createdBy : undefined;
+  
   let status: TeamBoardStatus = stageInfo.status;
   if (typeof payload.status === 'string' && ['backlog', 'flow1', 'flow', 'done'].includes(payload.status)) status = payload.status as TeamBoardStatus;
   let assigneeId: string | null = stageInfo.assigneeId;
   if (typeof payload.assigneeId === 'string') assigneeId = payload.assigneeId; else if (payload.assigneeId === null) assigneeId = null;
-  return { rowId: String(row.id), cardId: String(row.card_id ?? row.id ?? crypto.randomUUID()), description, dueDate, important, assigneeId, status, position: typeof row.position === 'number' ? row.position : 0, createdBy };
+  
+  return { 
+      rowId: String(row.id), 
+      cardId: String(row.card_id ?? row.id ?? crypto.randomUUID()), 
+      description, dueDate, important, watch, assigneeId, status, 
+      position: typeof row.position === 'number' ? row.position : 0, 
+      createdBy 
+  };
 };
 
 export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: TeamKanbanBoardProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const { enqueueSnackbar } = useSnackbar();
+  
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
   const [cards, setCards] = useState<TeamBoardCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [canModify, setCanModify] = useState(false);
+  
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(defaultDraft);
   const [editingCard, setEditingCard] = useState<TeamBoardCard | null>(null);
@@ -109,18 +163,18 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   const [completedCount, setCompletedCount] = useState(0);
   const [users, setUsers] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
-
-  // Top Themen State
   const [topTopics, setTopTopics] = useState<TopTopic[]>([]);
   const [topTopicsOpen, setTopTopicsOpen] = useState(false);
+  const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
 
-  // Filter State
   const [filters, setFilters] = useState({
     mine: false,
     overdue: false,
-    important: false
+    important: false,
+    watch: false
   });
 
+  // --- Data Loading ---
   const persistAllCards = useCallback(async (entries: TeamBoardCard[]) => {
       const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
       const response = await fetch(`/api/boards/${boardId}/cards`, { method: 'POST', headers, body: JSON.stringify({ cards: buildPersistPayload(boardId, entries) }), credentials: 'include' });
@@ -133,9 +187,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     if (response.status === 404) { setBoardSettings({}); setCompletedCount(0); return; }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
-    const settings = payload.settings ?? {};
-    setBoardSettings(settings);
-    setCompletedCount(Number(settings?.teamBoard?.completedCount || 0));
+    setBoardSettings(payload.settings ?? {});
+    setCompletedCount(Number(payload.settings?.teamBoard?.completedCount || 0));
   }, [boardId, supabase]);
 
   const persistCompletedCount = useCallback(async (nextCount: number) => {
@@ -146,9 +199,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       setBoardSettings(nextSettings); setCompletedCount(nextCount);
     }, [boardId, boardSettings, supabase]);
 
-  const loadAllUsers = useCallback(async () => {
-    try { const profiles = await fetchClientProfiles(); setUsers(profiles); return profiles; } catch (err) { return []; }
-  }, []);
+  const loadAllUsers = useCallback(async () => { try { const profiles = await fetchClientProfiles(); setUsers(profiles); return profiles; } catch (err) { return []; } }, []);
 
   const loadMembers = useCallback(async (availableProfiles: ClientProfile[]) => {
       if (!supabase) return [];
@@ -181,9 +232,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       if (!supabase) { setCanModify(false); return; }
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setCanModify(false); return; }
-      
       setCurrentUser(user);
-
       const profile = profiles.find(p => p.id === user.id);
       const role = String(profile?.role || '').toLowerCase();
       const elevated = role === 'admin' || role === 'owner' || role === 'manager' || role === 'superuser' || isSuperuserEmail(user.email || '');
@@ -205,18 +254,48 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         const mems = await loadMembers(profiles);
         await loadCards();
         await evaluatePermissions(profiles, mems);
-        await loadTopTopics(); // ✅ Top Themen laden
+        await loadTopTopics();
       } catch (e) { if (active) setError('Fehler beim Laden.'); } finally { if (active) setLoading(false); }
     };
     loadAll();
     return () => { active = false; };
   }, [boardId]);
 
-  // ACTIONS
+  // --- Actions ---
   const openCreateDialog = () => { if (!canModify) return; setEditingCard(null); setDraft(defaultDraft); setDueDateError(false); setDialogOpen(true); };
-  const openEditDialog = (card: TeamBoardCard) => { if (!canModify) return; setEditingCard(card); setDraft({ description: card.description, dueDate: card.dueDate ?? '', important: card.important, assigneeId: card.assigneeId, status: card.status }); setDueDateError(false); setDialogOpen(true); };
+  
+  const openQuickAdd = (assigneeId: string, status: TeamBoardStatus) => {
+      if (!canModify) return;
+      setEditingCard(null);
+      setDraft({ ...defaultDraft, assigneeId, status });
+      setDueDateError(false);
+      setDialogOpen(true);
+  };
+
+  const openEditDialog = (card: TeamBoardCard) => { if (!canModify) return; setEditingCard(card); setDraft({ description: card.description, dueDate: card.dueDate ?? '', important: card.important, watch: card.watch, assigneeId: card.assigneeId, status: card.status }); setDueDateError(false); setDialogOpen(true); };
   const closeDialog = () => { if (!saving) { setDialogOpen(false); setEditingCard(null); setDraft(defaultDraft); setDueDateError(false); }};
   const handleDraftChange = (k: keyof TaskDraft, v: any) => { setDraft(p => ({...p, [k]: v})); if(k==='dueDate') setDueDateError(!v); };
+
+  const toggleLaneCollapse = (memberId: string) => {
+      setCollapsedLanes(prev => ({...prev, [memberId]: !prev[memberId]}));
+  };
+
+  // Toggle Funktion
+  const toggleCardProperty = async (card: TeamBoardCard, property: 'important' | 'watch', e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!canModify) return;
+
+      const newValue = !card[property];
+      const newCards = cards.map(c => c.cardId === card.cardId ? { ...c, [property]: newValue } : c);
+      setCards(newCards);
+
+      try {
+          await persistAllCards(newCards);
+      } catch (err) {
+          setCards(cards);
+          enqueueSnackbar('Fehler beim Speichern', { variant: 'error' });
+      }
+  };
 
   const handleDragEnd = async (result: DropResult) => {
     if (!canModify || !result.destination) return;
@@ -304,11 +383,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     } catch { enqueueSnackbar('Fehler beim Abschließen', { variant: 'error' }); loadCards(); } finally { setFlowSaving(false); }
   };
 
-  // --- Top Themen Dialog ---
   const TopTopicsDialog = ({ open, onClose }: any) => {
       const [localTopics, setLocalTopics] = useState<TopTopic[]>(topTopics);
       useEffect(() => { setLocalTopics(topTopics); }, [topTopics]);
-      
       const handleSaveTopic = async (index: number, field: string, value: any) => {
           const newTopics = [...localTopics];
           newTopics[index] = { ...newTopics[index], [field]: value };
@@ -325,34 +402,16 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
           await supabase.from('board_top_topics').delete().eq('id', id);
           setLocalTopics(prev => prev.filter(t => t.id !== id));
       };
-
       return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-           <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-               <Star color="warning" /> Top Themen der Woche
-           </DialogTitle>
+           <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Star color="warning" /> Top Themen der Woche</DialogTitle>
            <DialogContent>
                <Stack spacing={2} sx={{ mt: 1 }}>
                    {localTopics.length === 0 && <Typography variant="body2" color="text.secondary">Keine Top-Themen.</Typography>}
                    {localTopics.map((topic, index) => (
                        <Box key={topic.id} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                           <TextField 
-                               fullWidth 
-                               size="small" 
-                               placeholder="Thema..." 
-                               value={topic.title} 
-                               onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} 
-                           />
-                           {/* ✅ Hier ist der Fix: type="date" statt "week" und Speichern in due_date */}
-                           <TextField 
-                               type="date" 
-                               size="small" 
-                               label="Fällig" 
-                               InputLabelProps={{ shrink: true }} 
-                               value={topic.due_date || ''} 
-                               onChange={(e) => handleSaveTopic(index, 'due_date', e.target.value)} 
-                               sx={{ width: 150 }} 
-                           />
+                           <TextField fullWidth size="small" placeholder="Thema..." value={topic.title} onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} />
+                           <TextField type="date" size="small" label="Fällig" InputLabelProps={{ shrink: true }} value={topic.due_date || ''} onChange={(e) => handleSaveTopic(index, 'due_date', e.target.value)} sx={{ width: 150 }} />
                            <IconButton color="error" onClick={() => handleDelete(topic.id)}><Delete /></IconButton>
                        </Box>
                    ))}
@@ -364,69 +423,118 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       );
   };
 
-  // --- Filterung ---
+  // Filter Logic
   const filteredCards = useMemo(() => {
       let result = cards;
-      if (filters.mine && currentUser) {
-         result = result.filter(c => c.assigneeId === currentUser.id);
-      }
-      if (filters.overdue) {
-          const today = new Date().toISOString().split('T')[0];
-          result = result.filter(c => c.dueDate && c.dueDate < today);
-      }
-      if (filters.important) {
-          result = result.filter(c => c.important);
-      }
+      if (filters.mine && currentUser) { result = result.filter(c => c.assigneeId === currentUser.id); }
+      if (filters.overdue) { const today = new Date().toISOString().split('T')[0]; result = result.filter(c => c.dueDate && c.dueDate < today); }
+      if (filters.important) { result = result.filter(c => c.important); }
+      if (filters.watch) { result = result.filter(c => c.watch); }
       return result;
   }, [cards, filters, currentUser]);
 
-  // RENDER
   const backlogCards = useMemo(() => filteredCards.filter(c => c.status === 'backlog').sort((a, b) => a.position - b.position), [filteredCards]);
   const memberColumns = useMemo(() => members.map(m => {
     const mine = filteredCards.filter(c => c.assigneeId === m.profile_id);
-    return { member: m, flow1: mine.filter(c => c.status === 'flow1').sort((a,b)=>a.position-b.position), flow: mine.filter(c => c.status === 'flow').sort((a,b)=>a.position-b.position), done: mine.filter(c => c.status === 'done').sort((a,b)=>a.position-b.position) };
+    const flow1 = mine.filter(c => c.status === 'flow1').sort((a,b)=>a.position-b.position);
+    const flow = mine.filter(c => c.status === 'flow').sort((a,b)=>a.position-b.position);
+    const done = mine.filter(c => c.status === 'done').sort((a,b)=>a.position-b.position);
+    return { member: m, flow1, flow, done };
   }), [filteredCards, members]);
+  
   const doneCardsCount = useMemo(() => filteredCards.filter(c => c.status === 'done').length, [filteredCards]);
 
+  // --- Card Renderer ---
   const renderCard = (card: TeamBoardCard, index: number) => {
     const due = card.dueDate ? new Date(card.dueDate).toLocaleDateString('de-DE') : null;
     const overdue = card.dueDate ? new Date(card.dueDate) < new Date(new Date().toDateString()) : false;
     const creator = card.createdBy ? users.find(u => u.id === card.createdBy) : null;
     const initials = creator ? getInitials(creator.full_name || creator.name || '') : null;
     const isHighlighted = highlightCardId === card.cardId;
+    const isImportant = card.important;
+    const isWatch = card.watch;
+
+    // Rahmenfarbe Logik: Gelb (Highlight) > Rot (Wichtig) > Blau (Watch) > Standard
+    const borderColor = isHighlighted ? '#ffc107' : (isImportant ? '#d32f2f' : (isWatch ? '#1976d2' : 'rgba(0,0,0,0.12)'));
 
     return (
       <Draggable key={card.cardId} draggableId={card.cardId} index={index} isDragDisabled={!canModify}>
         {(prov, snap) => (
           <Card 
-            ref={(el) => {
-                prov.innerRef(el);
-                if (isHighlighted && el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-                }
-            }}
+            ref={(el) => { prov.innerRef(el); if (isHighlighted && el) el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }); }}
+            style={prov.draggableProps.style}
             {...prov.draggableProps} 
             {...prov.dragHandleProps} 
             sx={{ 
-                width: '100%', maxWidth: CARD_WIDTH, mb: 1.5, borderRadius: 2.5, 
-                boxShadow: snap.isDragging ? '0 18px 30px rgba(15,23,42,0.22)' : '0 4px 14px rgba(15,23,42,0.08)', 
-                position: 'relative', border: '1px solid', 
-                borderColor: isHighlighted ? '#ffc107' : (card.important ? 'error.light' : 'rgba(148,163,184,0.35)'), 
+                width: '100%', 
+                mb: 1, 
+                borderRadius: '12px', 
+                boxShadow: snap.isDragging ? '0 14px 28px rgba(0,0,0,0.30)' : '0 3px 8px rgba(0,0,0,0.06)', 
+                position: 'relative', 
+                border: '1px solid', 
+                borderColor, 
                 animation: isHighlighted ? `${blinkAnimation} 1s 5` : 'none',
-                height: 'auto', minHeight: MIN_CARD_HEIGHT, display: 'flex', flexDirection: 'column', 
-                background: snap.isDragging ? 'background.paper' : 'linear-gradient(165deg, rgba(255,255,255,0.98) 0%, rgba(244,247,255,0.92) 100%)', 
-                '&:hover': { transform: snap.isDragging ? 'scale(1.02)' : 'translateY(-2px)', boxShadow: '0 10px 22px rgba(15,23,42,0.16)' } 
+                minHeight: MIN_CARD_HEIGHT, 
+                display: 'flex', 
+                flexDirection: 'column', 
+                backgroundColor: 'var(--panel)',
+                '&:hover': !snap.isDragging ? { transform: 'translateY(-2px)', boxShadow: '0 6px 14px rgba(0,0,0,0.18)' } : {},
+                transition: 'transform 0.12s ease, box-shadow 0.12s ease'
             }} 
             onClick={() => openEditDialog(card)}
           >
-            {card.important && <Box sx={{ position: 'absolute', top: 8, left: 8, width: 10, height: 10, borderRadius: '50%', backgroundColor: '#d32f2f' }} />}
-            <CardContent sx={{ pr: 3, py: 1.5, display: 'flex', flexDirection: 'column', gap: 0.75, height: '100%' }}>
+            {/* ACTION ICONS */}
+            <Box sx={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 0.5, zIndex: 2 }}>
+                {/* WICHTIG */}
+                <IconButton 
+                    size="small" 
+                    onClick={(e) => toggleCardProperty(card, 'important', e)}
+                    sx={{ 
+                        width: 24, height: 24,
+                        color: isImportant ? '#d32f2f' : 'rgba(0,0,0,0.2)',
+                        border: '1.5px solid',
+                        borderColor: 'currentColor',
+                        bgcolor: 'transparent',
+                        p: 0,
+                        '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.04)', borderColor: '#d32f2f', color: '#d32f2f' }
+                    }}
+                    title="Wichtig"
+                >
+                    <PriorityHighIcon sx={{ fontSize: 16, fontWeight: 'bold' }} />
+                </IconButton>
+                
+                {/* WATCH */}
+                <IconButton 
+                    size="small" 
+                    onClick={(e) => toggleCardProperty(card, 'watch', e)}
+                    sx={{ 
+                        width: 24, height: 24,
+                        color: isWatch ? '#1976d2' : 'rgba(0,0,0,0.2)',
+                        bgcolor: 'transparent',
+                        p: 0,
+                        '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.04)', color: '#1976d2' }
+                    }}
+                    title="Auf Wiedervorlage"
+                >
+                    <AccessTime sx={{ fontSize: 22 }} />
+                </IconButton>
+            </Box>
+
+            <CardContent sx={{ 
+                pl: 1.5, 
+                pr: 7, // Mehr Platz für Icons
+                py: 1.5, 
+                pb: '12px !important', // Override Mui default
+                display: 'flex', flexDirection: 'column', gap: 0.5, height: '100%' 
+            }}>
               <Tooltip title={card.description} placement="top-start" arrow enterDelay={1000}>
-                <Typography variant="body2" sx={{ fontWeight: 400, fontSize: '0.9rem', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', mb: 1.5 }}>{card.description || 'Ohne Beschreibung'}</Typography>
+                <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.85rem', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                  {card.description || 'Ohne Beschreibung'}
+                </Typography>
               </Tooltip>
-              <Box sx={{ mt: 'auto', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                {due && <Typography variant="caption" color={overdue ? 'error.main' : 'text.secondary'} sx={{ fontWeight: overdue ? 600 : 500 }}>Fällig: {due}</Typography>}
-                {initials && <Tooltip title={`Erstellt von: ${creator?.full_name}`}><Typography variant="caption" sx={{ fontSize: '0.65rem', color: 'text.disabled', fontWeight: 600, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: '4px', px: 0.5, py: 0.25, ml: 'auto' }}>{initials}</Typography></Tooltip>}
+              <Box sx={{ mt: 'auto', pt: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                {due && <Typography variant="caption" color={overdue ? 'error.main' : 'text.secondary'} sx={{ fontSize: '0.7rem', fontWeight: overdue ? 700 : 400, bgcolor: overdue ? '#ffebee' : 'transparent', px: overdue ? 0.5 : 0, borderRadius: 0.5 }}>{due}</Typography>}
+                {initials && <Typography variant="caption" sx={{ fontSize: '0.6rem', color: 'text.disabled', fontWeight: 600, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: '4px', px: 0.5 }}>{initials}</Typography>}
               </Box>
             </CardContent>
           </Card>
@@ -439,93 +547,164 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   if (loading) return <Box sx={{ p: 4 }}><Typography>🔄 Teamboard wird geladen...</Typography></Box>;
 
   return (
-    <Box sx={{ p: { xs: 2, md: 3 }, background: 'linear-gradient(180deg, rgba(240, 244, 255, 0.8) 0%, rgba(255, 255, 255, 0.95) 45%)', height: '100%', display: 'flex', flexDirection: 'column', gap: 3, overflow: 'hidden' }}>
-      {/* Header mit Zurück und Filter */}
-      <Box sx={{ p: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'space-between' }}>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+    <Box sx={{ p: 2, backgroundColor: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
+      
+      {/* HEADER */}
+      <Box sx={{ p: 1, borderBottom: '1px solid var(--line)', backgroundColor: 'var(--panel)', borderRadius: '12px', display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             {onExit && <Button onClick={onExit} startIcon={<ArrowBack />}>Zurück</Button>}
-            
             <Box sx={{ display: 'flex', gap: 1 }}>
-                 <Chip icon={<FilterList />} label="Meine" clickable color={filters.mine ? "primary" : "default"} onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))} />
-                 <Chip icon={<Warning />} label="Überfällig" clickable color={filters.overdue ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))} />
-                 <Chip icon={<PriorityHigh />} label="Wichtig" clickable color={filters.important ? "warning" : "default"} onClick={() => setFilters(prev => ({ ...prev, important: !prev.important }))} />
+                 <Chip icon={<FilterList />} label="Meine" clickable color={filters.mine ? "primary" : "default"} onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))} variant={filters.mine ? "filled" : "outlined"} />
+                 <Chip icon={<Warning />} label="Überfällig" clickable color={filters.overdue ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))} variant={filters.overdue ? "filled" : "outlined"} />
+                 <Chip icon={<PriorityHigh />} label="Wichtig" clickable color={filters.important ? "warning" : "default"} onClick={() => setFilters(prev => ({ ...prev, important: !prev.important }))} variant={filters.important ? "filled" : "outlined"} />
+                 <Chip icon={<AccessTime />} label="Wiedervorlage" clickable color={filters.watch ? "info" : "default"} onClick={() => setFilters(prev => ({ ...prev, watch: !prev.watch }))} variant={filters.watch ? "filled" : "outlined"} />
             </Box>
         </Box>
-        
-        {/* Top Themen Button */}
         <Tooltip title="Top Themen">
-            <IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}>
-                <Star fontSize="small" color="warning" />
-            </IconButton>
+            <IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}><Star fontSize="small" color="warning" /></IconButton>
         </Tooltip>
       </Box>
 
-      <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'hidden' }}>
+      {/* MAIN SPLIT VIEW */}
+      <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'hidden', display: 'flex', gap: 2 }}>
         <DragDropContext onDragEnd={handleDragEnd}>
-          <Grid container spacing={3} sx={{ height: '100%' }} alignItems="flex-start" wrap="nowrap">
-            <Grid item xs={12} md={3} sx={{ height: '100%' }}>
-              <Card sx={{ height: '100%', borderRadius: 3, border: '1px solid', borderColor: 'rgba(148,163,184,0.28)', display: 'flex', flexDirection: 'column' }}>
-                <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflow: 'hidden', p: 2 }}>
-                  <Stack direction="row" justifyContent="space-between" alignItems="center"><Typography variant="h6">Aufgabenspeicher</Typography>{canModify && <IconButton color="primary" size="small" onClick={openCreateDialog}><AddIcon fontSize="small" /></IconButton>}</Stack>
-                  <Droppable droppableId={droppableKey(null, 'backlog')}>
-                    {(provided) => (
-                      <Box ref={provided.innerRef} {...provided.droppableProps} sx={{ display: 'flex', flexDirection: 'column', gap: 1, flex: 1, overflowY: 'auto', border: '1px solid', borderColor: 'rgba(148,163,184,0.22)', borderRadius: 2, p: 1.5, backgroundColor: alpha('#1976d2', 0.08) }}>
-                        {backlogCards.length === 0 && <Typography variant="body2" color="text.secondary">Keine Aufgaben im Speicher.</Typography>}
+          
+            {/* --- LEFT: BACKLOG --- */}
+            <Box sx={{ width: BACKLOG_WIDTH, minWidth: BACKLOG_WIDTH, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '12px', height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+               <Box sx={{ p: 2, borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'rgba(0,0,0,0.02)' }}>
+                  <Typography variant="h6" sx={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', fontWeight: 700 }}>
+                      {statusLabels.backlog} <Typography component="span" variant="caption" sx={{ml:1, bgcolor:'rgba(0,0,0,0.08)', px:0.8, py:0.2, borderRadius:1}}>{backlogCards.length}</Typography>
+                  </Typography>
+                  {canModify && <IconButton color="primary" size="small" onClick={openCreateDialog}><AddIcon fontSize="small" /></IconButton>}
+               </Box>
+               <Droppable droppableId={droppableKey(null, 'backlog')}>
+                  {(provided, snapshot) => (
+                     <Box ref={provided.innerRef} {...provided.droppableProps} sx={{ flex: 1, overflowY: 'auto', p: 1.5, backgroundColor: snapshot.isDraggingOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent', transition: 'background-color 0.2s' }}>
                         {backlogCards.map((card, index) => renderCard(card, index))}
                         {provided.placeholder}
-                      </Box>
-                    )}
-                  </Droppable>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={9} sx={{ height: '100%' }}>
-              <Card sx={{ height: '100%', borderRadius: 3, border: '1px solid', borderColor: 'rgba(148,163,184,0.28)', display: 'flex', flexDirection: 'column' }}>
-                <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflow: 'hidden', p: 2 }}>
-                  <Typography variant="h6">Team-Flow</Typography>
-                  <Box sx={{ flex: 1, overflowY: 'auto' }}>
-                    <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <Box component="thead" sx={{ position: 'sticky', top: 0, zIndex: 10, backgroundColor: 'background.paper' }}>
-                        <Box component="tr" sx={{ '& th': { borderBottom: '1px solid rgba(148,163,184,0.3)', py: 1, px: 1.5, textTransform: 'uppercase', fontSize: '0.75rem', color: 'text.secondary' } }}>
-                          <Box component="th" align="left">Mitglied</Box>
-                          <Box component="th" align="center" width="25%">{statusLabels.flow1}</Box>
-                          <Box component="th" align="center" width="25%">{statusLabels.flow}</Box>
-                          <Box component="th" align="center" width="25%"><Stack spacing={1} alignItems="center"><span>{statusLabels.done}</span><Stack direction="row" spacing={1}><Chip size="small" color="primary" variant="outlined" label={`${completedCount} gesamt`} />{canModify && <Button size="small" variant="contained" onClick={handleCompleteFlow} disabled={flowSaving || doneCardsCount === 0} sx={{ textTransform: 'none' }}>Abschließen</Button>}</Stack></Stack></Box>
-                        </Box>
-                      </Box>
-                      <Box component="tbody">
-                        {memberColumns.map(({ member, flow1, flow, done }) => (
-                          <Box component="tr" key={member.id} sx={{ '& td': { borderBottom: '1px solid rgba(148,163,184,0.2)', px: 1.5, py: 1.5, verticalAlign: 'top' } }}>
-                            <Box component="td" width="25%"><Stack spacing={0.5}><Typography variant="subtitle2" fontWeight={600}>{member.profile?.full_name || member.profile?.email}</Typography>{member.profile?.company && <Typography variant="caption" color="text.secondary">{member.profile.company}</Typography>}</Stack></Box>
-                            {[flow1, flow, done].map((rows, i) => {
-                                const status = i===0 ? 'flow1' : i===1 ? 'flow' : 'done';
-                                return (
-                                  <Box component="td" key={status} width="25%">
-                                    <Droppable droppableId={droppableKey(member.profile_id, status as TeamBoardStatus)}>
-                                      {(prov) => (
-                                        <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ display: 'flex', flexDirection: 'column', minHeight: 160, gap: 1, border: '1px solid rgba(148,163,184,0.22)', borderRadius: 2, p: 1.5, backgroundColor: alpha('#1976d2', 0.06) }}>
-                                          {rows.map((c, idx) => renderCard(c, idx))}
-                                          {prov.placeholder}
-                                        </Box>
-                                      )}
-                                    </Droppable>
-                                  </Box>
-                                );
-                            })}
-                          </Box>
-                        ))}
-                      </Box>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
+                     </Box>
+                  )}
+               </Droppable>
+            </Box>
+
+            {/* --- RIGHT: TEAM FLOW --- */}
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '12px', height: '100%', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+               
+               {/* TABLE HEADER (Sticky) */}
+               <Box sx={{ display: 'flex', borderBottom: '1px solid var(--line)', bgcolor: 'rgba(0,0,0,0.02)', zIndex: 10 }}>
+                   <Box sx={{ width: COL_WIDTHS.member, p: 1.5, fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary' }}>Mitglied</Box>
+                   <Box sx={{ flex: 1, p: 1.5, borderLeft: '1px solid var(--line)', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary' }}>{statusLabels.flow1}</Box>
+                   <Box sx={{ flex: 1, p: 1.5, borderLeft: '1px solid var(--line)', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary' }}>{statusLabels.flow}</Box>
+                   <Box sx={{ flex: 1, p: 1.5, borderLeft: '1px solid var(--line)', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                       {statusLabels.done}
+                       <Stack direction="row" spacing={1} alignItems="center">
+                           <Chip size="small" label={`${completedCount} gesamt`} variant="outlined" sx={{ height: 20, fontSize: '0.65rem' }} />
+                           {canModify && <IconButton size="small" onClick={handleCompleteFlow} disabled={flowSaving || doneCardsCount === 0} title="Woche abschließen"><CheckCircleOutline fontSize="small" color="primary" /></IconButton>}
+                       </Stack>
+                   </Box>
+               </Box>
+               
+               {/* SWIMLANES (Scrollable) */}
+               <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                   {memberColumns.map(({ member, flow1, flow, done }) => {
+                       const isCollapsed = collapsedLanes[member.id];
+                       
+                       return (
+                           <Card key={member.id} sx={{ overflow: 'visible', borderRadius: '12px', border: '1px solid var(--line)', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
+                               {/* SWIMLANE CONTENT (FLEX ROW) */}
+                               <Box sx={{ display: 'flex', minHeight: isCollapsed ? 'auto' : 160 }}>
+                                   
+                                   {/* 1. MEMBER INFO COLUMN */}
+                                   <Box sx={{ width: COL_WIDTHS.member, minWidth: COL_WIDTHS.member, p: 2, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: 'var(--panel)', borderRight: '1px solid var(--line)' }}>
+                                       <Stack direction="row" alignItems="center" justifyContent="space-between">
+                                           <Avatar sx={{ width: 32, height: 32, fontSize: '0.8rem', bgcolor: 'primary.main' }}>{getInitials(member.profile?.full_name || member.profile?.email || '?')}</Avatar>
+                                           <IconButton size="small" onClick={() => toggleLaneCollapse(member.id)}>{isCollapsed ? <KeyboardArrowDown fontSize="small"/> : <KeyboardArrowUp fontSize="small"/>}</IconButton>
+                                       </Stack>
+                                       <Box>
+                                           <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>{member.profile?.full_name || member.profile?.email}</Typography>
+                                           {member.profile?.company && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{member.profile.company}</Typography>}
+                                       </Box>
+                                   </Box>
+
+                                   {/* 2-4. TASK COLUMNS */}
+                                   {!isCollapsed && (
+                                       <>
+                                           {[flow1, flow, done].map((rows, i) => {
+                                               const status = i===0 ? 'flow1' : i===1 ? 'flow' : 'done';
+                                               const allowQuickAdd = (status === 'flow1' || status === 'flow') && canModify;
+                                               
+                                               return (
+                                                   <Box key={status} sx={{ flex: 1, borderRight: i<2 ? '1px solid var(--line)' : 'none', display: 'flex', flexDirection: 'column' }}>
+                                                       
+                                                       {/* Column Header with Count */}
+                                                       <Box sx={{ px: 2, py: 1, borderBottom: '1px dashed var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                           <Typography variant="caption" color="text.disabled" fontWeight={600} sx={{ textTransform: 'uppercase' }}>{rows.length} Aufgaben</Typography>
+                                                           
+                                                           {/* BUTTON OR PLACEHOLDER */}
+                                                           {allowQuickAdd ? (
+                                                               <Tooltip title="Schnell hinzufügen">
+                                                                   <IconButton size="small" onClick={() => openQuickAdd(member.profile_id, status as TeamBoardStatus)} sx={{ p: 0.5, color: 'primary.main', '&:hover': { bgcolor: 'primary.light', color: 'white' } }}>
+                                                                       <AddCircleOutline fontSize="small" />
+                                                                   </IconButton>
+                                                               </Tooltip>
+                                                           ) : (
+                                                               <Box sx={{ width: 26, height: 26 }} />
+                                                           )}
+                                                       </Box>
+
+                                                       <Droppable droppableId={droppableKey(member.profile_id, status as TeamBoardStatus)}>
+                                                           {(prov, snap) => (
+                                                               <Box 
+                                                                   ref={prov.innerRef} 
+                                                                   {...prov.droppableProps} 
+                                                                   sx={{ 
+                                                                       flex: 1, 
+                                                                       p: 1.5, 
+                                                                       bgcolor: snap.isDraggingOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent', 
+                                                                       transition: 'background-color 0.2s',
+                                                                       display: 'flex', 
+                                                                       flexDirection: 'column', 
+                                                                       gap: 1 
+                                                                   }}
+                                                               >
+                                                                   {rows.map((c, idx) => renderCard(c, idx))}
+                                                                   {prov.placeholder}
+                                                               </Box>
+                                                           )}
+                                                       </Droppable>
+                                                   </Box>
+                                               );
+                                           })}
+                                       </>
+                                   )}
+                                   
+                                   {isCollapsed && (
+                                       <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', px: 3, color: 'text.disabled', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                                           Aufgaben eingeklappt
+                                       </Box>
+                                   )}
+                               </Box>
+                           </Card>
+                       );
+                   })}
+               </Box>
+            </Box>
+
         </DragDropContext>
       </Box>
+
+      {/* Dialoge */}
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{editingCard ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}</DialogTitle>
-        <DialogContent dividers><Stack spacing={2}><TextField label="Aufgabenbeschreibung" value={draft.description} onChange={(e) => handleDraftChange('description', e.target.value)} fullWidth multiline minRows={2} /><TextField label="Zieltermin" type="date" InputLabelProps={{ shrink: true }} value={draft.dueDate} onChange={(e) => handleDraftChange('dueDate', e.target.value)} required error={dueDateError && !draft.dueDate} /><FormControlLabel control={<Checkbox checked={draft.important} onChange={(e) => handleDraftChange('important', e.target.checked)} />} label="Wichtige Aufgabe markieren" /></Stack></DialogContent>
+        <DialogContent dividers>
+            <Stack spacing={2}>
+                <TextField label="Aufgabenbeschreibung" value={draft.description} onChange={(e) => handleDraftChange('description', e.target.value)} fullWidth multiline minRows={2} />
+                <TextField label="Zieltermin" type="date" InputLabelProps={{ shrink: true }} value={draft.dueDate} onChange={(e) => handleDraftChange('dueDate', e.target.value)} required error={dueDateError && !draft.dueDate} />
+                
+                <FormControlLabel control={<Checkbox checked={draft.important} onChange={(e) => handleDraftChange('important', e.target.checked)} />} label="Wichtige Aufgabe markieren" />
+                <FormControlLabel control={<Checkbox checked={draft.watch} onChange={(e) => handleDraftChange('watch', e.target.checked)} />} label="Auf Wiedervorlage setzen" />
+            </Stack>
+        </DialogContent>
         <DialogActions>{editingCard && <Button color="error" onClick={deleteTask} disabled={saving} startIcon={<DeleteIcon />}>Löschen</Button>}<Box sx={{ flexGrow: 1 }} /><Button onClick={closeDialog} disabled={saving}>Abbrechen</Button><Button onClick={saveTask} disabled={saving} variant="contained">Speichern</Button></DialogActions>
       </Dialog>
       

@@ -1,13 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// Fixed version of BoardManagementPanel.tsx.
-// This file replaces the original BoardManagementPanel.tsx and resolves syntax errors
-// caused by duplicated state variables, duplicate topic-editing code, and incomplete
-// try/catch structures in loadBaseData and persistTopic functions.
-
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Alert,
   Box,
@@ -938,9 +933,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const departmentName = (departmentId: string | null) =>
     departments.find(entry => entry.id === departmentId)?.name ?? '';
 
-  const departmentIdByName = (name: string) =>
-    departments.find(entry => entry.name === name)?.id ?? null;
-
   const responsibleOptions = (departmentId: string | null) => {
     const name = departmentName(departmentId);
     return profiles.filter(profile => {
@@ -988,6 +980,23 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const updateEscalationDraft = (changes: Partial<EscalationDraft>) => {
     setEscalationDraft(prev => (prev ? { ...prev, ...changes } : prev));
+  };
+
+  const handleClearEscalationFields = () => {
+    if (!canEditEscalations) return;
+
+    if (window.confirm("Möchten Sie wirklich alle Felder dieser Eskalation leeren?")) {
+      if (window.confirm("Sind Sie ganz sicher? Alle Eingaben (Grund, Maßnahme, Termine) werden entfernt.")) {
+        updateEscalationDraft({
+          reason: '',
+          measure: '',
+          department_id: null,
+          responsible_id: null,
+          target_date: null,
+          completion_steps: 0
+        });
+      }
+    }
   };
 
   const saveEscalation = async () => {
@@ -1561,8 +1570,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                                 <Typography variant="caption" color="text.secondary">
                                   Historie
                                 </Typography>
+                                {/* --- ÄNDERUNG: Nur noch den neuesten Eintrag anzeigen --- */}
                                 <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-                                  {historyEntries.slice(0, 5).map(history => {
+                                  {historyEntries.slice(0, 1).map(history => {
                                     const author = profileLookup.get(history.changed_by ?? '') ?? null;
                                     const authorLabel = author
                                       ? author.full_name || author.email || 'Unbekannt'
@@ -1574,9 +1584,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                                       </Typography>
                                     );
                                   })}
-                                  {historyEntries.length > 5 && (
-                                    <Typography variant="caption" color="text.secondary">
-                                      Weitere Einträge im Popup sichtbar.
+                                  {historyEntries.length > 1 && (
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                      ... und {historyEntries.length - 1} ältere Einträge (siehe Popup)
                                     </Typography>
                                   )}
                                 </Stack>
@@ -1725,11 +1735,24 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             <Typography variant="body2">Keine Eskalation ausgewählt.</Typography>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={closeEscalationEditor}>Abbrechen</Button>
-          <Button onClick={saveEscalation} variant="contained" disabled={!canEditEscalations}>
-            Speichern
+        
+        {/* Button zum Leeren der Felder */}
+        <DialogActions sx={{ justifyContent: 'space-between' }}>
+          <Button 
+            variant="outlined" 
+            color="warning" 
+            onClick={handleClearEscalationFields} 
+            disabled={!canEditEscalations}
+          >
+            🧹 Felder leeren
           </Button>
+          
+          <Box>
+            <Button onClick={closeEscalationEditor} sx={{ mr: 1 }}>Abbrechen</Button>
+            <Button onClick={saveEscalation} variant="contained" disabled={!canEditEscalations}>
+              Speichern
+            </Button>
+          </Box>
         </DialogActions>
       </Dialog>
     </Stack>

@@ -261,19 +261,7 @@ export function EditCardDialog({
                 slotProps={{ textField: { size: 'small', fullWidth: true } }}
               />
 
-              <Typography>Swimlane</Typography>
-              <Select
-                size="small"
-                disabled={!canEdit}
-                value={selectedCard.Swimlane || ''}
-                onChange={(e) => handlePatch('Swimlane', e.target.value)}
-              >
-                {lanes.map((lane) => (
-                  <MenuItem key={lane} value={lane}>
-                    {lane}
-                  </MenuItem>
-                ))}
-              </Select>
+
 
               <Typography>Bild</Typography>
               <TextField
@@ -681,7 +669,7 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
     'Priorität': false,
     SOP_Datum: '',
     Ampel: 'grün',
-    Swimlane: lanes[0] || 'Allgemein',
+
     UID: `uid_${Date.now()}`,
     TR_Datum: '',
     TR_Neu: '',
@@ -712,7 +700,7 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
       'Priorität': false,
       SOP_Datum: '',
       Ampel: 'grün',
-      Swimlane: lanes[0] || 'Allgemein',
+
       UID: `uid_${Date.now()}`,
       TR_Datum: '',
       TR_Neu: '',
@@ -766,22 +754,7 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
             </Select>
           </FormControl>
           
-          {lanes.length > 0 && (
-              <FormControl fullWidth>
-                 <InputLabel>Swimlane</InputLabel>
-                 <Select
-                    value={newCard.Swimlane || ''}
-                    label="Swimlane"
-                    onChange={(e) => setNewCard({...newCard, Swimlane: e.target.value as string})}
-                 >
-                    {lanes.map((lane) => (
-                      <MenuItem key={lane} value={lane}>
-                        {lane}
-                      </MenuItem>
-                    ))}
-                 </Select>
-              </FormControl>
-          )}
+          
           
           <DatePicker 
              label="Fälligkeitsdatum"
