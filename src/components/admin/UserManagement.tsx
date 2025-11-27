@@ -34,8 +34,7 @@ import {
   IconButton,
   LinearProgress,
   Tabs,
-  Tab,
-  Divider
+  Tab
 } from '@mui/material';
 import { 
     Delete as DeleteIcon, 
@@ -44,7 +43,8 @@ import {
     Business as BusinessIcon,
     People as PeopleIcon,
     Dashboard as DashboardIcon,
-    Add as AddIcon
+    Add as AddIcon,
+    DeleteForever as DeleteForeverIcon
 } from '@mui/icons-material';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
@@ -170,6 +170,7 @@ export default function UserManagement() {
   const [boardAdminSelections, setBoardAdminSelections] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null); // Für "Außer mir löschen"
   
   // Tabs
   const [currentTab, setCurrentTab] = useState(0);
@@ -202,6 +203,11 @@ export default function UserManagement() {
   const loadData = async () => {
     try {
       setLoading(true);
+      
+      // Eigene ID holen
+      const { data: authData } = await supabase.auth.getUser();
+      setCurrentUserId(authData.user?.id ?? null);
+
       const [usersResult, departmentsResult, boardsResult] = await Promise.all([
         supabase.from('profiles').select('*').order('created_at', { ascending: false }),
         supabase.from('departments').select('*').order('name'),
@@ -270,6 +276,38 @@ export default function UserManagement() {
           setUsers(prev => prev.filter(u => u.id !== id));
           setMessage('✅ Benutzer gelöscht');
       } catch (e: any) { setMessage(`❌ ${e.message}`); }
+  };
+
+  // --- NEUE FUNKTION: ALLES AUSSER MIR LÖSCHEN ---
+  const bulkDeleteOthers = async () => {
+    if (!currentUserId) return;
+
+    // Liste aller löschbaren User (Nicht Ich, Nicht Superuser)
+    const targets = users.filter(u => u.id !== currentUserId && !isProtectedUser(u.id));
+    
+    if (targets.length === 0) {
+        alert("Keine anderen Benutzer zum Löschen gefunden.");
+        return;
+    }
+
+    if (!confirm(`⚠️ ACHTUNG: Möchten Sie wirklich ALLE ${targets.length} anderen Benutzer löschen?`)) return;
+    if (!confirm("Wirklich sicher? Alle Daten dieser Nutzer gehen verloren!")) return;
+
+    setLoading(true);
+    let deletedCount = 0;
+    
+    for (const user of targets) {
+        try {
+            const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
+            if (res.ok) deletedCount++;
+        } catch (e) {
+            console.error(`Fehler bei ${user.email}`);
+        }
+    }
+
+    await loadData();
+    setLoading(false);
+    setMessage(`✅ Aufräumen beendet: ${deletedCount} Benutzer gelöscht.`);
   };
 
   const createUser = async () => {
@@ -436,6 +474,11 @@ export default function UserManagement() {
       {/* --- TAB 0: BENUTZER --- */}
       <CustomTabPanel value={currentTab} index={0}>
          <Stack direction="row" spacing={2} sx={{ mb: 2 }} justifyContent="flex-end">
+             {/* NEW BULK DELETE BUTTON */}
+             <Button variant="outlined" color="error" startIcon={<DeleteForeverIcon />} onClick={bulkDeleteOthers}>
+                 Alle anderen löschen
+             </Button>
+             
              <Button variant="contained" startIcon={<PersonAddIcon />} onClick={() => setCreateUserDialogOpen(true)}>Neuer Benutzer</Button>
              <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
                  CSV Import <input type="file" hidden accept=".csv,.txt" onChange={handleFileChange} />
@@ -456,8 +499,9 @@ export default function UserManagement() {
               <TableBody>
                 {users.map(u => {
                   const protectedUser = isProtectedUser(u.id);
+                  const isMe = u.id === currentUserId;
                   return (
-                    <TableRow key={u.id}>
+                    <TableRow key={u.id} selected={isMe}>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                             <Avatar src={u.avatar_url} sx={{ width: 28, height: 28 }}>{(u.full_name || u.email)[0].toUpperCase()}</Avatar>
@@ -478,7 +522,7 @@ export default function UserManagement() {
                       </TableCell>
                       <TableCell><Switch size="small" checked={u.is_active} onChange={() => toggleUserActive(u.id, u.is_active)} disabled={protectedUser} /></TableCell>
                       <TableCell align="right">
-                          <IconButton size="small" color="error" onClick={() => deleteUser(u.id)} disabled={protectedUser}><DeleteIcon fontSize="small" /></IconButton>
+                          <IconButton size="small" color="error" onClick={() => deleteUser(u.id)} disabled={protectedUser || isMe}><DeleteIcon fontSize="small" /></IconButton>
                       </TableCell>
                     </TableRow>
                   );
