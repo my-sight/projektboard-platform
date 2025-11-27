@@ -29,10 +29,11 @@ import {
   TextField,
   Typography,
   Stack,
-  InputAdornment
+  InputAdornment,
+  Tooltip
 } from '@mui/material';
 import { ProjectBoardCard } from '@/types';
-import { Delete, Add } from '@mui/icons-material';
+import { Delete, Add, DeleteOutline } from '@mui/icons-material'; // ✅ DeleteOutline importiert
 
 // DatePicker Imports
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -132,6 +133,18 @@ export function EditCardDialog({
           const dateStr = newValue ? newValue.format('YYYY-MM-DD') : null;
           patchCard(selectedCard, { [key]: dateStr });
       }
+  };
+
+  // Helper: Status Eintrag löschen
+  const handleDeleteStatusEntry = (index: number) => {
+    if (!selectedCard.StatusHistory) return;
+    if (!window.confirm('Diesen Statuseintrag wirklich löschen?')) return;
+    
+    const newHistory = [...selectedCard.StatusHistory];
+    newHistory.splice(index, 1);
+    
+    handlePatch('StatusHistory', newHistory);
+    updateStatusSummary({ ...selectedCard, StatusHistory: newHistory });
   };
 
   // Schließen & Speichern
@@ -296,13 +309,27 @@ export function EditCardDialog({
                 </Button>
               </Box>
               
-              <Box sx={{ maxHeight: '300px', overflow: 'auto', mb: 3 }}>
+              <Box sx={{ maxHeight: '400px', overflow: 'auto', mb: 3 }}>
                 {(selectedCard.StatusHistory || []).map((entry: any, idx: number) => (
-                  <Box key={idx} sx={{ mb: 3, border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                  <Box key={idx} sx={{ mb: 3, border: 1, borderColor: 'divider', borderRadius: 1, p: 2, position: 'relative' }}>
+                    {/* DELETE BUTTON FOR STATUS ENTRY */}
+                    {canEdit && (
+                      <Tooltip title="Eintrag löschen">
+                        <IconButton 
+                            size="small" 
+                            color="error" 
+                            onClick={() => handleDeleteStatusEntry(idx)}
+                            sx={{ position: 'absolute', top: 4, right: 4, zIndex: 1 }}
+                        >
+                            <DeleteOutline fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+
                     <Table size="small">
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ fontWeight: 600 }}>{entry.date || 'Datum'}</TableCell>
+                          <TableCell sx={{ fontWeight: 600, verticalAlign: 'top', pt: 1.5 }}>{entry.date || 'Datum'}</TableCell>
                           <TableCell colSpan={2}>
                             <TextField
                               size="small"
@@ -587,7 +614,62 @@ export function EditCardDialog({
   );
 }
 
+// --- ARCHIVE DIALOG ---
+export interface ArchiveDialogProps {
+  archiveOpen: boolean;
+  setArchiveOpen: (open: boolean) => void;
+  archivedCards: ProjectBoardCard[];
+  restoreCard: (card: ProjectBoardCard) => void;
+  deleteCardPermanently: (card: ProjectBoardCard) => void;
+}
 
+export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, restoreCard, deleteCardPermanently }: ArchiveDialogProps) {
+  return (
+    <Dialog open={archiveOpen} onClose={() => setArchiveOpen(false)} maxWidth="md" fullWidth>
+      <DialogTitle>📦 Archivierte Karten</DialogTitle>
+      <DialogContent>
+        {archivedCards.length === 0 ? (
+          <Typography color="text.secondary">Keine archivierten Karten vorhanden.</Typography>
+        ) : (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Nummer</TableCell>
+                <TableCell>Teil</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Verantwortlich</TableCell>
+                <TableCell>Archiviert am</TableCell>
+                <TableCell align="right">Aktionen</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {archivedCards.map((card, index) => (
+                <TableRow key={index}>
+                  <TableCell>{card.Nummer}</TableCell>
+                  <TableCell>{card.Teil}</TableCell>
+                  <TableCell>{card['Status Kurz']}</TableCell>
+                  <TableCell>{card.Verantwortlich}</TableCell>
+                  <TableCell>{card.ArchivedDate || 'Unbekannt'}</TableCell>
+                  <TableCell align="right">
+                    <Button size="small" variant="outlined" onClick={() => restoreCard(card)} sx={{ mr: 1 }}>
+                      ↩️ Wiederherstellen
+                    </Button>
+                    <Button size="small" variant="outlined" color="error" onClick={() => deleteCardPermanently(card)}>
+                      🗑️ Endgültig löschen
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setArchiveOpen(false)}>Schließen</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
 
 // --- NEW CARD DIALOG ---
 
