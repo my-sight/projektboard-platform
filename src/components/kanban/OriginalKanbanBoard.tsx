@@ -145,7 +145,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   const [cols, setCols] = useState(DEFAULT_COLS);
   const [lanes, setLanes] = useState<string[]>(['Projekt A', 'Projekt B', 'Projekt C']);
   const [users, setUsers] = useState<any[]>([]);
-  const [boardMemberIds, setBoardMemberIds] = useState<string[]>([]);
   const [canModifyBoard, setCanModifyBoard] = useState(false);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   
@@ -242,11 +241,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     setArchivedCards(cards);
     onArchiveCountChange?.(cards.length);
   }, [onArchiveCountChange]);
-
-  const selectableUsers = useMemo(() => {
-     if (boardMemberIds.length === 0) return users;
-     return users.filter(u => boardMemberIds.includes(u.id));
-  }, [users, boardMemberIds]);
 
   // ✅ KPI BERECHNUNG (Korrigiert)
   const calculateKPIs = useCallback(() => {
@@ -761,25 +755,12 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     }
   }, []);
 
-  const loadBoardMembers = useCallback(async () => {
-      try {
-          const { data, error } = await supabase.from('board_members').select('profile_id').eq('board_id', boardId);
-          if(error) throw error;
-          if (data) {
-              setBoardMemberIds(data.map(m => m.profile_id));
-          }
-      } catch (e) {
-          console.error('Fehler beim Laden der Board-Mitglieder:', e);
-      }
-  }, [boardId, supabase]);
-
   useEffect(() => {
     let isMounted = true;
     const initializeBoard = async () => {
       if (!isMounted) return;
       await loadBoardMeta();
       const loadedUsers = await loadUsers();
-      await loadBoardMembers(); // ✅ Load members
       await resolvePermissions(loadedUsers);
       await loadSettings(); 
       await loadCards();
@@ -1031,7 +1012,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         setEditTabValue={setEditTabValue}
         inferStage={inferStage}
         idFor={idFor}
-        users={users} // Alle User für Anzeige/Lookup
+        users={users}
         canModify={permissions.canEditContent}
         highlighted={highlightCardId === idFor(card) || highlightCardId === card.card_id || highlightCardId === card.id}
         checklistTemplates={checklistTemplates}
@@ -1378,36 +1359,8 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       </Box>
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <EditCardDialog 
-        selectedCard={selectedCard} 
-        editModalOpen={editModalOpen} 
-        setEditModalOpen={setEditModalOpen} 
-        editTabValue={editTabValue} 
-        setEditTabValue={setEditTabValue} 
-        rows={rows} 
-        setRows={setRows} 
-        users={selectableUsers} // ✅ Use filtered users for selection
-        lanes={lanes} 
-        checklistTemplates={checklistTemplates} 
-        inferStage={inferStage} 
-        addStatusEntry={addStatusEntry} 
-        updateStatusSummary={updateStatusSummary} 
-        handleTRNeuChange={handleTRNeuChange} 
-        saveCards={saveCards} 
-        patchCard={patchCard} 
-        idFor={idFor} 
-        setSelectedCard={setSelectedCard} 
-        canEdit={permissions.canEditContent} 
-      />
-      <NewCardDialog 
-        newCardOpen={newCardOpen} 
-        setNewCardOpen={setNewCardOpen} 
-        cols={cols} 
-        lanes={lanes} 
-        rows={rows} 
-        setRows={setRows} 
-        users={selectableUsers} // ✅ Use filtered users for selection
-      />
+      <EditCardDialog selectedCard={selectedCard} editModalOpen={editModalOpen} setEditModalOpen={setEditModalOpen} editTabValue={editTabValue} setEditTabValue={setEditTabValue} rows={rows} setRows={setRows} users={users} lanes={lanes} checklistTemplates={checklistTemplates} inferStage={inferStage} addStatusEntry={addStatusEntry} updateStatusSummary={updateStatusSummary} handleTRNeuChange={handleTRNeuChange} saveCards={saveCards} patchCard={patchCard} idFor={idFor} setSelectedCard={setSelectedCard} canEdit={permissions.canEditContent} />
+      <NewCardDialog newCardOpen={newCardOpen} setNewCardOpen={setNewCardOpen} cols={cols} lanes={lanes} rows={rows} setRows={setRows} users={users} />
       <TRKPIPopup open={kpiPopupOpen} onClose={() => setKpiPopupOpen(false)} />
       <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
     </Box>
