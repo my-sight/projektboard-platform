@@ -587,62 +587,7 @@ export function EditCardDialog({
   );
 }
 
-// --- ARCHIVE DIALOG ---
-export interface ArchiveDialogProps {
-  archiveOpen: boolean;
-  setArchiveOpen: (open: boolean) => void;
-  archivedCards: ProjectBoardCard[];
-  restoreCard: (card: ProjectBoardCard) => void;
-  deleteCardPermanently: (card: ProjectBoardCard) => void;
-}
 
-export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, restoreCard, deleteCardPermanently }: ArchiveDialogProps) {
-  return (
-    <Dialog open={archiveOpen} onClose={() => setArchiveOpen(false)} maxWidth="md" fullWidth>
-      <DialogTitle>📦 Archivierte Karten</DialogTitle>
-      <DialogContent>
-        {archivedCards.length === 0 ? (
-          <Typography color="text.secondary">Keine archivierten Karten vorhanden.</Typography>
-        ) : (
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Nummer</TableCell>
-                <TableCell>Teil</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Verantwortlich</TableCell>
-                <TableCell>Archiviert am</TableCell>
-                <TableCell align="right">Aktionen</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {archivedCards.map((card, index) => (
-                <TableRow key={index}>
-                  <TableCell>{card.Nummer}</TableCell>
-                  <TableCell>{card.Teil}</TableCell>
-                  <TableCell>{card['Status Kurz']}</TableCell>
-                  <TableCell>{card.Verantwortlich}</TableCell>
-                  <TableCell>{card.ArchivedDate || 'Unbekannt'}</TableCell>
-                  <TableCell align="right">
-                    <Button size="small" variant="outlined" onClick={() => restoreCard(card)} sx={{ mr: 1 }}>
-                      ↩️ Wiederherstellen
-                    </Button>
-                    <Button size="small" variant="outlined" color="error" onClick={() => deleteCardPermanently(card)}>
-                      🗑️ Endgültig löschen
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={() => setArchiveOpen(false)}>Schließen</Button>
-      </DialogActions>
-    </Dialog>
-  );
-}
 
 // --- NEW CARD DIALOG ---
 
