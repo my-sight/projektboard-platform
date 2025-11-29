@@ -9,6 +9,7 @@ import { PlayArrow, Build, CheckCircle, Warning, Search, BugReport } from '@mui/
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { useSnackbar } from 'notistack';
+import SupabaseConfigNotice from '@/components/SupabaseConfigNotice'; // Falls Client fehlt
 
 export default function MigrationTool() {
   const [scanning, setScanning] = useState(false);
@@ -19,16 +20,20 @@ export default function MigrationTool() {
   const [stats, setStats] = useState({ total: 0, ok: 0, fixable: 0, unknown: 0 });
 
   const supabase = getSupabaseBrowserClient();
-  const { enqueueSnackbar } = useSnackbar(); 
+  const { enqueueSnackbar } = useSnackbar();
+
+  // Sicherstellen, dass supabase da ist
+  if (!supabase) {
+      return <SupabaseConfigNotice />;
+  }
 
   const addLog = (msg: string) => setLogs(prev => [msg, ...prev].slice(0, 50));
 
-  // Hilfsfunktion: Tokenizer (zerlegt Text in Wörter)
   const tokenize = (text: any) => {
     if (!text) return [];
     return String(text).toLowerCase()
-      .split(/[\s,._-]+/) // Trennung bei Leerzeichen, Punkt, Komma, Bindestrich
-      .filter(t => t.length >= 2); // Min. 2 Buchstaben
+      .split(/[\s,._-]+/)
+      .filter(t => t.length >= 2);
   };
 
   const runScan = async () => {
@@ -41,26 +46,29 @@ export default function MigrationTool() {
       addLog('Lade User-Profile...');
       const profiles = await fetchClientProfiles();
       
-      // Index aufbauen
       const userIndex = profiles.map(u => {
         const tokens = new Set<string>();
         if (u.email) tokenize(u.email).forEach(t => tokens.add(t));
         if (u.full_name) tokenize(u.full_name).forEach(t => tokens.add(t));
-        // u.name entfernt, da es im Typ nicht existiert
+        if (u.name) tokenize(u.name).forEach(t => tokens.add(t));
         
         return {
           id: u.id,
           email: u.email,
-          // Fallback nur auf full_name oder email
-          name: u.full_name || u.email,
-          tokens: Array.from(tokens), 
+          name: u.full_name || u.name || u.email,
+          tokens: Array.from(tokens),
           rawIds: [u.id, u.email?.toLowerCase()].filter(Boolean)
         };
       });
 
       addLog(`${userIndex.length} User geladen. Lade Karten...`);
+      
+      // Hier ist der Fix: supabase ist sicher nicht null durch den Check oben
       const { data: cards, error } = await supabase.from('kanban_cards').select('*');
+      
       if (error) throw error;
+      if (!cards) throw new Error("Keine Karten gefunden");
+
       addLog(`${cards.length} Karten geladen.`);
 
       const newCandidates: any[] = [];
@@ -73,30 +81,20 @@ export default function MigrationTool() {
         if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = {}; } }
         d = d || {};
 
-        // 1. Schon perfekt?
         if (d.userId || d.assigneeId) { s_ok++; return; }
 
-        // 2. Hat Text?
         const respText = d.Verantwortlich || d.responsible || d.assigneeName;
         if (!respText) { s_ok++; return; }
 
         const rawText = String(respText).toLowerCase().trim();
         const cardTokens = tokenize(rawText);
 
-        // --- STRIKTE MATCHING LOGIK ---
-        
-        // A) Exakter Match (Email oder ID)
         let match = userIndex.find(u => u.rawIds.includes(rawText));
 
-        // B) Teilmengen-Match (Strict Subset)
         if (!match && cardTokens.length > 0) {
             match = userIndex.find(u => {
-                // Schnittmenge bilden: Welche Wörter tauchen in BEIDEN Namen auf?
                 const matches = cardTokens.filter(token => u.tokens.includes(token));
-                
                 if (matches.length === 0) return false;
-
-                // REGEL: Einer muss vollständig im Anderen enthalten sein.
                 const cardIsSubset = matches.length === cardTokens.length;
                 const userIsSubset = matches.length === u.tokens.length;
                 return cardIsSubset || userIsSubset;
@@ -160,7 +158,6 @@ export default function MigrationTool() {
       }
 
       addLog(`Fertig! ${fixed} Karten repariert.`);
-      // FEEDBACK HIER:
       enqueueSnackbar(`${fixed} Karten repariert und gespeichert`, { variant: 'success' });
 
       setCandidates([]);
@@ -176,7 +173,7 @@ export default function MigrationTool() {
             <Build color="primary" /> Datenbank-Migration (Strikter Modus)
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Scannt Karten und weist User-IDs zu. Nutzt strikte Logik: &quot;Max Test&quot; wird NICHT mehr &quot;Peter Test&quot; zugeordnet.
+            Scannt Karten und weist User-IDs zu. Nutzt strikte Logik.
         </Typography>
 
         <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
