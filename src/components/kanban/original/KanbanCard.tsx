@@ -3,11 +3,14 @@
 import { ReactNode, useEffect, useMemo, useRef } from 'react';
 import { Box, Chip, IconButton, Typography, Tooltip } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
-import { CheckCircle } from '@mui/icons-material'; // ✅ NEU: Icon für Checkliste
+import { CheckCircle } from '@mui/icons-material'; 
 import { keyframes } from '@mui/system';
 
 import { nullableDate, toBoolean } from '@/utils/booleans';
 import { ProjectBoardCard, LayoutDensity } from '@/types';
+
+// ✅ WICHTIG: Exportiere diesen Typ, damit KanbanViews.tsx nicht abstürzt
+export type KanbanDensity = LayoutDensity;
 
 const blinkAnimation = keyframes`
   0% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.7); border-color: #ffc107; }
@@ -204,13 +207,11 @@ export function KanbanCard({
                     <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
                        {renderTRChip('TR', card.TR_Datum, '#2e7d32', '1px solid #c8e6c9', '#e8f5e8')}
                        
-                       {/* ✅ KORREKTUR: TR Neu + Haken + Diff */}
                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           {renderTRChip('TR neu', card.TR_Neu, '#1976d2', '1px solid #bbdefb', '#e3f2fd')}
                           {trCompleted && (
                               <CheckCircle sx={{ fontSize: '16px', color: '#2e7d32' }} />
                           )}
-                          {/* Differenz immer anzeigen, wenn beide Daten da sind */}
                           {trDiff !== null && (
                               <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 600, color: trDiff > 0 ? '#d32f2f' : '#2e7d32' }}>
                                   {trDiff > 0 ? `+${trDiff}` : trDiff}

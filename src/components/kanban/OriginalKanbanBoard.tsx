@@ -2,57 +2,14 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { 
-  Box, 
-  Button, 
-  Dialog, 
-  DialogActions, 
-  DialogContent, 
-  DialogTitle, 
-  Typography, 
-  TextField, 
-  IconButton, 
-  Chip, 
-  Tabs, 
-  Tab, 
-  Grid, 
-  Card, 
-  CardContent, 
-  Badge, 
-  List, 
-  ListItem, 
-  ListItemText, 
-  InputAdornment, 
-  Tooltip, 
-  Divider, 
-  Stack 
+  Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, 
+  Typography, TextField, IconButton, Chip, Tabs, Tab, Grid, Card, 
+  CardContent, Badge, List, ListItem, InputAdornment, Tooltip, Stack 
 } from '@mui/material';
 import { DropResult } from '@hello-pangea/dnd';
 import { 
-  Assessment, 
-  Close, 
-  Delete, 
-  Add, 
-  Done, 
-  Settings, 
-  Assignment, 
-  People, 
-  ArrowUpward, 
-  ArrowDownward, 
-  Edit,
-  ViewWeek,
-  Person,
-  Category,
-  ViewHeadline,
-  ViewList,
-  ViewModule,
-  AddCircle,
-  ArrowBack,
-  FilterList,
-  Warning,
-  PriorityHigh,
-  ErrorOutline,
-  Star,
-  DeleteOutline
+  Assessment, Close, Delete, Add, Settings, ViewHeadline, ViewModule, 
+  AddCircle, FilterList, Warning, PriorityHigh, ErrorOutline, Star, DeleteOutline 
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 
@@ -71,7 +28,7 @@ import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { KanbanCard } from './original/KanbanCard';
 import { KanbanColumnsView, KanbanLaneView, KanbanSwimlaneView } from './original/KanbanViews';
-import { EditCardDialog, NewCardDialog } from './original/KanbanDialogs';
+import { EditCardDialog, NewCardDialog, ArchiveDialog } from './original/KanbanDialogs';
 import { nullableDate, toBoolean } from '@/utils/booleans';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
@@ -97,6 +54,7 @@ const formatSupabaseActionError = (action: string, message?: string | null): str
 export interface OriginalKanbanBoardHandle {
   openSettings: () => void;
   openKpis: () => void;
+  openArchive: () => void;
 }
 
 interface OriginalKanbanBoardProps {
@@ -242,7 +200,17 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     onArchiveCountChange?.(cards.length);
   }, [onArchiveCountChange]);
 
-  // ✅ KPI BERECHNUNG (Korrigiert)
+  // Handle für Parent-Zugriff
+  useImperativeHandle(ref, () => ({
+    openSettings: () => setSettingsOpen(true),
+    openKpis: () => setKpiPopupOpen(true),
+    openArchive: async () => {
+        await loadArchivedCards();
+        setArchiveOpen(true);
+    }
+  }));
+
+  // KPI BERECHNUNG
   const calculateKPIs = useCallback(() => {
     const activeCards = rows.filter(card => card["Archived"] !== "1");
     const kpis: any = {
@@ -256,7 +224,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       lkEscalations: [],
       skEscalations: [],
       columnDistribution: {},
-      totalTrDeviation: 0 // Summe der Abweichungen
+      totalTrDeviation: 0
     };
 
     const now = new Date();
@@ -268,7 +236,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     endOfWeek.setHours(23, 59, 59, 999);
     
     activeCards.forEach(card => {
-      // Ampel & Eskalation
       const ampel = String(card.Ampel || '').toLowerCase();
       if (ampel === 'grün') kpis.ampelGreen++;
       else if (ampel === 'rot') kpis.ampelRed++;
@@ -278,15 +245,13 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       if (eskalation === 'LK') kpis.lkEscalations.push(card);
       if (eskalation === 'SK') kpis.skEscalations.push(card);
 
-      // TR Logik
       const trDateStr = card['TR_Neu'] || card['TR_Datum'];
       const trCompleted = toBoolean(card.TR_Completed);
 
-      // 1. Überfälligkeit nur prüfen wenn NICHT erledigt
       if (trDateStr && !trCompleted) {
         const trDate = nullableDate(trDateStr);
         if (trDate) {
-          trDate.setHours(0, 0, 0, 0); // Zeit ignorieren für Vergleich
+          trDate.setHours(0, 0, 0, 0);
           
           if (trDate < now) {
             kpis.trOverdue.push(card);
@@ -298,17 +263,14 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         }
       }
 
-      // 2. Gesamtabweichung (TR Neu - TR Original)
       const original = nullableDate(card["TR_Datum"]);
       const current = nullableDate(card["TR_Neu"]);
       if (original && current) {
           const diffTime = current.getTime() - original.getTime();
-          // Runden auf ganze Tage
           const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
           kpis.totalTrDeviation += diffDays;
       }
 
-      // Spaltenverteilung
       const stage = inferStage(card);
       kpis.columnDistribution[stage] = (kpis.columnDistribution[stage] || 0) + 1;
     });
@@ -351,9 +313,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
        const myEmail = (supabase.auth.getUser() as any)?.data?.user?.email;
 
        result = result.filter(r => {
-          // Check auf Email (neu)
           if (r.VerantwortlichEmail === myEmail) return true;
-          // Check auf Name (alt)
           const resp = String(r.Verantwortlich || '').toLowerCase();
           return myNameParts.some(part => resp.includes(part));
        });
@@ -442,6 +402,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         return;
     }
     
+    // Optimistic UI Update
     const updatedRows = rows.map(r => {
       if (idFor(r) === idFor(card)) { return { ...r, ...changes } as ProjectBoardCard; }
       return r;
@@ -454,7 +415,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
 
     try {
       const cardId = idFor(card);
+      // ✅ FIX: Vollständiges Objekt senden, um Datenverlust zu vermeiden
       const fullUpdatedCard = { ...card, ...changes };
+      
       const payload = {
         card_id: cardId,
         updates: {
@@ -638,7 +601,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         let loadedCards = data.map(convertDbToCard);
 
         const activeCards = loadedCards.filter(card => card["Archived"] !== "1");
-        // Archived Cards laden wir nur bei Bedarf (im Dialog)
         
         activeCards.sort((a, b) => {
           const pos = (name: string) => DEFAULT_COLS.findIndex((c) => c.name === name);
@@ -769,19 +731,11 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     return () => { isMounted = false; };
   }, [boardId]); 
 
-  // Auto-Save Settings (Debounced)
   useEffect(() => {
     const timeoutId = setTimeout(() => { saveSettings({ skipMeta: true }); }, 1000);
     return () => clearTimeout(timeoutId);
   }, [cols, lanes, checklistTemplates, viewMode, density, saveSettings]);
   
-  // Deep Link: Karte öffnen (ohne Modal)
-  useEffect(() => {
-    if (highlightCardId && rows.length > 0) {
-      // Highlight logic in Card
-    }
-  }, [highlightCardId, rows]);
-
   // --- Card Actions ---
   
   const loadArchivedCards = useCallback(async () => {
@@ -812,7 +766,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     card["ArchivedDate"] = null;
     const updatedRows = reindexByStage([...rows, card]);
     setRows(updatedRows);
-    // Archivliste muss im Dialog neu geladen werden
     await saveCards();
     enqueueSnackbar('Karte wiederhergestellt', { variant: 'success' });
   };
@@ -837,7 +790,10 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         return;
       }
       
-      // UI Update für Archiv passiert im Dialog
+      // Update local state instantly
+      setRows(prev => prev.filter(r => idFor(r) !== idFor(card)));
+      setArchivedCards(prev => prev.filter(r => idFor(r) !== idFor(card)));
+      
       enqueueSnackbar('Karte endgültig gelöscht', { variant: 'success' });
     } catch (error) {
       enqueueSnackbar(formatSupabaseActionError('Karte löschen', getErrorMessage(error)), { variant: 'error' });
@@ -857,7 +813,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     }).filter(r => r["Archived"] !== "1"); 
     
     setRows(updatedRows);
-    // Wir müssen nicht die archivierten Karten hier laden, das passiert beim Öffnen des Dialogs
     enqueueSnackbar(`Karten archiviert`, { variant: 'info' });
   };
 
@@ -918,7 +873,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     const card = rows.find(r => idFor(r) === draggableId);
     if (!card) return;
 
-    // --- Checklisten Prüfung ---
     const sourceStage = inferStage(card);
     const isChangingStage = !destination.droppableId.startsWith(sourceStage);
 
@@ -995,7 +949,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     saveCards(); 
   };
   
-  // Render Karte
   const renderCard = useCallback(
     (card: any, index: number) => (
       <KanbanCard
@@ -1076,7 +1029,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
             </Grid>
             
             <Grid item xs={12}>
-                  {/* ✅ NEU: Gesamtabweichung */}
                   <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: kpis.totalTrDeviation > 0 ? 'error.light' : 'success.light', borderRadius: 1, bgcolor: kpis.totalTrDeviation > 0 ? 'error.50' : 'success.50' }}>
                     <Typography variant="subtitle2" sx={{ color: kpis.totalTrDeviation > 0 ? 'error.main' : 'success.main', fontWeight: 'bold' }}>
                        Gesamtabweichung TR: {kpis.totalTrDeviation > 0 ? '+' : ''}{kpis.totalTrDeviation} Tage
@@ -1359,10 +1311,32 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       </Box>
 
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
-      <EditCardDialog selectedCard={selectedCard} editModalOpen={editModalOpen} setEditModalOpen={setEditModalOpen} editTabValue={editTabValue} setEditTabValue={setEditTabValue} rows={rows} setRows={setRows} users={users} lanes={lanes} checklistTemplates={checklistTemplates} inferStage={inferStage} addStatusEntry={addStatusEntry} updateStatusSummary={updateStatusSummary} handleTRNeuChange={handleTRNeuChange} saveCards={saveCards} patchCard={patchCard} idFor={idFor} setSelectedCard={setSelectedCard} canEdit={permissions.canEditContent} />
+      <EditCardDialog 
+        selectedCard={selectedCard} 
+        editModalOpen={editModalOpen} 
+        setEditModalOpen={setEditModalOpen} 
+        editTabValue={editTabValue} 
+        setEditTabValue={setEditTabValue} 
+        rows={rows} 
+        setRows={setRows} 
+        users={users} 
+        lanes={lanes} 
+        checklistTemplates={checklistTemplates} 
+        inferStage={inferStage} 
+        addStatusEntry={addStatusEntry} 
+        updateStatusSummary={updateStatusSummary} 
+        handleTRNeuChange={handleTRNeuChange} 
+        saveCards={saveCards} 
+        patchCard={patchCard} 
+        idFor={idFor} 
+        setSelectedCard={setSelectedCard} 
+        canEdit={permissions.canEditContent} 
+        onDelete={deleteCardPermanently} 
+      />
       <NewCardDialog newCardOpen={newCardOpen} setNewCardOpen={setNewCardOpen} cols={cols} lanes={lanes} rows={rows} setRows={setRows} users={users} />
       <TRKPIPopup open={kpiPopupOpen} onClose={() => setKpiPopupOpen(false)} />
       <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
+      <ArchiveDialog archiveOpen={archiveOpen} setArchiveOpen={setArchiveOpen} archivedCards={archivedCards} restoreCard={restoreCard} deleteCardPermanently={deleteCardPermanently} />
     </Box>
   );
 });

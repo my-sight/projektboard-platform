@@ -30,12 +30,12 @@ import {
   Typography,
   Stack,
   InputAdornment,
-  Tooltip
+  Tooltip,
+  CircularProgress
 } from '@mui/material';
 import { ProjectBoardCard } from '@/types';
-import { Delete, Add, DeleteOutline } from '@mui/icons-material'; // ✅ DeleteOutline importiert
+import { Delete, Add, DeleteOutline, CloudUpload } from '@mui/icons-material';
 
-// DatePicker Imports
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -44,7 +44,49 @@ import 'dayjs/locale/de';
 
 dayjs.locale('de');
 
-// --- EDIT CARD DIALOG ---
+// --- HELPER: BILD KOMPRIMIERUNG ---
+// Verhindert, dass riesige Base64-Strings die Datenbank/API crashen
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800; // Ausreichend für Kartenansicht
+        const MAX_HEIGHT = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // Komprimieren auf JPEG mit 70% Qualität
+            resolve(canvas.toDataURL('image/jpeg', 0.7));
+        } else {
+            reject(new Error('Canvas Context failed'));
+        }
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
 
 export interface EditCardDialogProps {
   selectedCard: ProjectBoardCard | null;
@@ -66,6 +108,8 @@ export interface EditCardDialogProps {
   idFor: (card: ProjectBoardCard) => string;
   setSelectedCard: (card: ProjectBoardCard) => void;
   canEdit?: boolean;
+  // ✅ WICHTIG: Delete-Funktion
+  onDelete: (card: ProjectBoardCard) => void; 
 }
 
 export function EditCardDialog({
@@ -87,15 +131,17 @@ export function EditCardDialog({
   patchCard,
   idFor,
   setSelectedCard,
-  canEdit = true, 
+  canEdit = true,
+  onDelete,
 }: EditCardDialogProps) {
+  const [uploading, setUploading] = useState(false);
+
   if (!selectedCard) return null;
 
   const stage = inferStage(selectedCard);
   const tasks = checklistTemplates[stage] || [];
   const stageChecklist = (selectedCard.ChecklistDone && selectedCard.ChecklistDone[stage]) || {};
 
-  // Helper für sofortiges Speichern (Patch)
   const handlePatch = (key: keyof ProjectBoardCard, value: any) => {
      if (selectedCard) {
          const updated = { ...selectedCard, [key]: value };
@@ -104,22 +150,24 @@ export function EditCardDialog({
      }
   };
 
-  // Helper: Bild-Upload
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ✅ NEU: Sicherer Bild-Upload mit Komprimierung
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const result = ev.target?.result;
-          if (typeof result === 'string') {
-              handlePatch('Bild', result);
-          }
-        };
-        reader.readAsDataURL(file);
+      if (!file) return;
+
+      try {
+        setUploading(true);
+        const compressedBase64 = await compressImage(file);
+        // Patcht nur das Bildfeld, lässt den Rest intakt
+        handlePatch('Bild', compressedBase64);
+      } catch (error) {
+        console.error('Fehler beim Bild-Upload:', error);
+        alert('Fehler beim Verarbeiten des Bildes.');
+      } finally {
+        setUploading(false);
       }
   };
 
-  // Helper: Datum lokal (Anzeige)
   const handleDateChangeLocal = (key: keyof ProjectBoardCard, newValue: dayjs.Dayjs | null) => {
       if (selectedCard) {
           const dateStr = newValue && newValue.isValid() ? newValue.format('YYYY-MM-DD') : null;
@@ -127,7 +175,6 @@ export function EditCardDialog({
       }
   };
 
-  // Helper: Datum speichern (Server)
   const handleDateAccept = (key: keyof ProjectBoardCard, newValue: dayjs.Dayjs | null) => {
       if (selectedCard) {
           const dateStr = newValue ? newValue.format('YYYY-MM-DD') : null;
@@ -135,7 +182,6 @@ export function EditCardDialog({
       }
   };
 
-  // Helper: Status Eintrag löschen
   const handleDeleteStatusEntry = (index: number) => {
     if (!selectedCard.StatusHistory) return;
     if (!window.confirm('Diesen Statuseintrag wirklich löschen?')) return;
@@ -147,7 +193,6 @@ export function EditCardDialog({
     updateStatusSummary({ ...selectedCard, StatusHistory: newHistory });
   };
 
-  // Schließen & Speichern
   const handleClose = () => {
       saveCards();
       setEditModalOpen(false);
@@ -274,24 +319,37 @@ export function EditCardDialog({
                 slotProps={{ textField: { size: 'small', fullWidth: true } }}
               />
 
-
-
               <Typography>Bild</Typography>
-              <TextField
-                size="small"
-                type="file"
-                disabled={!canEdit}
-                inputProps={{ accept: 'image/*' }}
-                onChange={handleImageUpload}
-              />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={uploading ? <CircularProgress size={20} /> : <CloudUpload />}
+                    disabled={!canEdit || uploading}
+                    size="small"
+                  >
+                    {uploading ? 'Komprimiere...' : 'Hochladen'}
+                    <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
+                  </Button>
+                  {selectedCard.Bild && (
+                    <Button 
+                        size="small" 
+                        color="error" 
+                        onClick={() => handlePatch('Bild', '')}
+                        disabled={!canEdit}
+                    >
+                        Löschen
+                    </Button>
+                  )}
+              </Box>
             </Box>
 
             {selectedCard.Bild && (
-              <Box sx={{ mb: 2 }}>
+              <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
                 <img
                   src={selectedCard.Bild}
                   alt="Karten-Bild"
-                  style={{ maxWidth: '300px', width: '100%', height: 'auto', borderRadius: '8px' }}
+                  style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                 />
               </Box>
             )}
@@ -312,7 +370,6 @@ export function EditCardDialog({
               <Box sx={{ maxHeight: '400px', overflow: 'auto', mb: 3 }}>
                 {(selectedCard.StatusHistory || []).map((entry: any, idx: number) => (
                   <Box key={idx} sx={{ mb: 3, border: 1, borderColor: 'divider', borderRadius: 1, p: 2, position: 'relative' }}>
-                    {/* DELETE BUTTON FOR STATUS ENTRY */}
                     {canEdit && (
                       <Tooltip title="Eintrag löschen">
                         <IconButton 
@@ -438,7 +495,7 @@ export function EditCardDialog({
                     value={selectedCard.TR_Datum ? dayjs(selectedCard.TR_Datum) : null}
                     onChange={(val) => handleDateChangeLocal('TR_Datum', val)}
                     onAccept={(val) => handleDateAccept('TR_Datum', val)}
-                    disabled={!canEdit}
+                    disabled={!canEdit || !!selectedCard.TR_Datum}
                     slotProps={{ textField: { size: 'small' } }}
                  />
                 
@@ -582,24 +639,14 @@ export function EditCardDialog({
        </LocalizationProvider>
       </DialogContent>
 
-      {/* ✅ DIALOG ACTIONS mit LÖSCHEN-BUTTON LINKS */}
       <DialogActions sx={{ borderTop: 1, borderColor: 'divider', p: 2, justifyContent: 'space-between' }}>
         {canEdit ? (
              <Button 
                color="error" 
+               // ✅ ÄNDERUNG: Nutzt jetzt die übergebene onDelete-Funktion (API-Delete)
                onClick={() => {
-                  if (window.confirm('Karte wirklich löschen?')) {
-                      // Da wir rows nicht haben (bzw. nicht manipulieren sollten), machen wir das via Parent Reload
-                      // Alternativ: Direktes Array-Splicing (wie früher), aber das ist etwas dirty.
-                      // Beste Lösung: Wir nutzen eine delete-Funktion falls vorhanden, oder den alten Weg:
-                      const idx = rows.findIndex(r => idFor(r) === idFor(selectedCard));
-                      if (idx !== -1) {
-                          rows.splice(idx, 1);
-                          setRows([...rows]);
-                          saveCards(); // Autosave triggered
-                          setEditModalOpen(false);
-                      }
-                  }
+                  onDelete(selectedCard);
+                  setEditModalOpen(false);
                }}
              >
                Löschen
@@ -614,16 +661,7 @@ export function EditCardDialog({
   );
 }
 
-// --- ARCHIVE DIALOG ---
-export interface ArchiveDialogProps {
-  archiveOpen: boolean;
-  setArchiveOpen: (open: boolean) => void;
-  archivedCards: ProjectBoardCard[];
-  restoreCard: (card: ProjectBoardCard) => void;
-  deleteCardPermanently: (card: ProjectBoardCard) => void;
-}
-
-export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, restoreCard, deleteCardPermanently }: ArchiveDialogProps) {
+export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, restoreCard, deleteCardPermanently }: any) {
   return (
     <Dialog open={archiveOpen} onClose={() => setArchiveOpen(false)} maxWidth="md" fullWidth>
       <DialogTitle>📦 Archivierte Karten</DialogTitle>
@@ -643,7 +681,7 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
               </TableRow>
             </TableHead>
             <TableBody>
-              {archivedCards.map((card, index) => (
+              {archivedCards.map((card: any, index: number) => (
                 <TableRow key={index}>
                   <TableCell>{card.Nummer}</TableCell>
                   <TableCell>{card.Teil}</TableCell>
@@ -671,21 +709,8 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
   );
 }
 
-// --- NEW CARD DIALOG ---
-
-export interface NewCardDialogProps {
-  newCardOpen: boolean;
-  setNewCardOpen: (open: boolean) => void;
-  cols: { name: string }[];
-  lanes: string[];
-  rows: ProjectBoardCard[];
-  setRows: (rows: ProjectBoardCard[]) => void;
-  users: any[];
-  saveCards?: () => void;
-}
-
-export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users, saveCards }: NewCardDialogProps) {
-  const [newCard, setNewCard] = useState<Partial<ProjectBoardCard & { VerantwortlichEmail?: string }>>(() => ({
+export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users, saveCards }: any) {
+  const [newCard, setNewCard] = useState<any>({
     Nummer: '',
     Teil: '',
     'Board Stage': cols[0]?.name || '',
@@ -700,10 +725,8 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
     UID: `uid_${Date.now()}`,
     TR_Datum: '',
     TR_Neu: '',
-    TR_History: [] as any[],
-  }));
-
-  const availableUsers = useMemo(() => users || [], [users]);
+    TR_History: [],
+  });
 
   const handleSave = () => {
     if (!newCard.Nummer?.trim() || !newCard.Teil?.trim()) {
@@ -711,7 +734,7 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
       return;
     }
     
-    setRows([...rows, newCard as ProjectBoardCard]);
+    setRows([...rows, newCard]);
     setNewCardOpen(false);
     
     if (saveCards) setTimeout(() => saveCards(), 100);
@@ -758,10 +781,10 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
               label="Verantwortlich"
               onChange={(e) => {
                   const selectedName = e.target.value;
-                  const user = users.find(u => (u.full_name || u.name || u.email) === selectedName);
+                  const user = users.find((u: any) => (u.full_name || u.name || u.email) === selectedName);
                   setNewCard({ 
                       ...newCard, 
-                      Verantwortlich: selectedName as string,
+                      Verantwortlich: selectedName,
                       VerantwortlichEmail: user?.email || ''
                   });
               }}
@@ -769,7 +792,7 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
               <MenuItem value="">
                 <em>Keiner</em>
               </MenuItem>
-              {availableUsers.map((user: any) => (
+              {users.map((user: any) => (
                 <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
                   <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
@@ -780,8 +803,6 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
               ))}
             </Select>
           </FormControl>
-          
-          
           
           <DatePicker 
              label="Fälligkeitsdatum"
