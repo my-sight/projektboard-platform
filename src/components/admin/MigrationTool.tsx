@@ -19,7 +19,7 @@ export default function MigrationTool() {
   const [stats, setStats] = useState({ total: 0, ok: 0, fixable: 0, unknown: 0 });
 
   const supabase = getSupabaseBrowserClient();
-  const { enqueueSnackbar } = useSnackbar(); // SNACKBAR IMPORT
+  const { enqueueSnackbar } = useSnackbar(); 
 
   const addLog = (msg: string) => setLogs(prev => [msg, ...prev].slice(0, 50));
 
@@ -46,13 +46,14 @@ export default function MigrationTool() {
         const tokens = new Set<string>();
         if (u.email) tokenize(u.email).forEach(t => tokens.add(t));
         if (u.full_name) tokenize(u.full_name).forEach(t => tokens.add(t));
-        if (u.name) tokenize(u.name).forEach(t => tokens.add(t));
+        // u.name entfernt, da es im Typ nicht existiert
         
         return {
           id: u.id,
           email: u.email,
-          name: u.full_name || u.name || u.email,
-          tokens: Array.from(tokens), // Als Array für einfacheren Vergleich
+          // Fallback nur auf full_name oder email
+          name: u.full_name || u.email,
+          tokens: Array.from(tokens), 
           rawIds: [u.id, u.email?.toLowerCase()].filter(Boolean)
         };
       });
