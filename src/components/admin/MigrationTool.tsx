@@ -9,7 +9,6 @@ import { PlayArrow, Build, CheckCircle, Warning, Search, BugReport } from '@mui/
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { useSnackbar } from 'notistack';
-import SupabaseConfigNotice from '@/components/SupabaseConfigNotice'; // Falls Client fehlt
 
 export default function MigrationTool() {
   const [scanning, setScanning] = useState(false);
@@ -20,23 +19,25 @@ export default function MigrationTool() {
   const [stats, setStats] = useState({ total: 0, ok: 0, fixable: 0, unknown: 0 });
 
   const supabase = getSupabaseBrowserClient();
-  const { enqueueSnackbar } = useSnackbar();
-
-  // Sicherstellen, dass supabase da ist
-  if (!supabase) {
-      return <SupabaseConfigNotice />;
-  }
+  const { enqueueSnackbar } = useSnackbar(); 
 
   const addLog = (msg: string) => setLogs(prev => [msg, ...prev].slice(0, 50));
 
+  // Hilfsfunktion: Tokenizer
   const tokenize = (text: any) => {
     if (!text) return [];
     return String(text).toLowerCase()
-      .split(/[\s,._-]+/)
-      .filter(t => t.length >= 2);
+      .split(/[\s,._-]+/) 
+      .filter(t => t.length >= 2); 
   };
 
   const runScan = async () => {
+    // 1. Supabase-Check (Fix für "supabase possibly null")
+    if (!supabase) {
+        addLog('Fehler: Supabase Client konnte nicht initialisiert werden.');
+        return;
+    }
+
     setScanning(true);
     setCandidates([]);
     setLogs([]);
@@ -46,29 +47,28 @@ export default function MigrationTool() {
       addLog('Lade User-Profile...');
       const profiles = await fetchClientProfiles();
       
+      // Index aufbauen
       const userIndex = profiles.map(u => {
         const tokens = new Set<string>();
         if (u.email) tokenize(u.email).forEach(t => tokens.add(t));
         if (u.full_name) tokenize(u.full_name).forEach(t => tokens.add(t));
-        if (u.name) tokenize(u.name).forEach(t => tokens.add(t));
+        
+        // Fix für "Property 'name' does not exist":
+        // Wir nutzen hier nur full_name oder email als Anzeigename
+        const displayName = u.full_name || u.email || 'Unbekannt';
         
         return {
           id: u.id,
           email: u.email,
-          name: u.full_name || u.name || u.email,
-          tokens: Array.from(tokens),
+          name: displayName,
+          tokens: Array.from(tokens), 
           rawIds: [u.id, u.email?.toLowerCase()].filter(Boolean)
         };
       });
 
       addLog(`${userIndex.length} User geladen. Lade Karten...`);
-      
-      // Hier ist der Fix: supabase ist sicher nicht null durch den Check oben
       const { data: cards, error } = await supabase.from('kanban_cards').select('*');
-      
       if (error) throw error;
-      if (!cards) throw new Error("Keine Karten gefunden");
-
       addLog(`${cards.length} Karten geladen.`);
 
       const newCandidates: any[] = [];
@@ -88,7 +88,7 @@ export default function MigrationTool() {
 
         const rawText = String(respText).toLowerCase().trim();
         const cardTokens = tokenize(rawText);
-
+        
         let match = userIndex.find(u => u.rawIds.includes(rawText));
 
         if (!match && cardTokens.length > 0) {
@@ -128,6 +128,12 @@ export default function MigrationTool() {
   };
 
   const runFix = async () => {
+      // 2. Supabase-Check auch hier
+      if (!supabase) {
+          addLog('Fehler: Kein Supabase Client.');
+          return;
+      }
+
       if (candidates.length === 0) return;
       setFixing(true);
       setProgress(0);
@@ -173,7 +179,7 @@ export default function MigrationTool() {
             <Build color="primary" /> Datenbank-Migration (Strikter Modus)
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Scannt Karten und weist User-IDs zu. Nutzt strikte Logik.
+            Scannt Karten und weist User-IDs zu. Nutzt strikte Logik: &quot;Max Test&quot; wird NICHT mehr &quot;Peter Test&quot; zugeordnet.
         </Typography>
 
         <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
