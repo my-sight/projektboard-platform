@@ -69,7 +69,6 @@ const BACKLOG_WIDTH = 320;
 
 // --- Interfaces ---
 interface BoardMember { id: string; profile_id: string; }
-// ✅ FIX: profile ist jetzt Pflicht (nicht mehr nullable), da wir leere sowieso rausfiltern
 interface MemberWithProfile extends BoardMember { profile: ClientProfile; }
 export type TeamBoardStatus = 'backlog' | 'flow1' | 'flow' | 'done';
 
@@ -212,12 +211,14 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   }, [cards, members, completedCount]);
 
   const persistAllCards = useCallback(async (entries: TeamBoardCard[]) => {
+      if (!supabase) return;
       const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
       const response = await fetch(`/api/boards/${boardId}/cards`, { method: 'POST', headers, body: JSON.stringify({ cards: buildPersistPayload(boardId, entries) }), credentials: 'include' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
     }, [boardId, supabase]);
 
   const loadBoardSettings = useCallback(async () => {
+    if (!supabase) return;
     const headers = await buildSupabaseAuthHeaders(supabase);
     const response = await fetch(`/api/boards/${boardId}/settings`, { method: 'GET', headers, credentials: 'include' });
     if (response.status === 404) { setBoardSettings({}); setCompletedCount(0); return; }
@@ -228,6 +229,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   }, [boardId, supabase]);
 
   const persistCompletedCount = useCallback(async (nextCount: number) => {
+      if (!supabase) return;
       const nextSettings = { ...boardSettings, teamBoard: { ...(boardSettings.teamBoard || {}), completedCount: nextCount } };
       const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
       const response = await fetch(`/api/boards/${boardId}/settings`, { method: 'POST', headers, body: JSON.stringify({ settings: nextSettings }), credentials: 'include' });
@@ -244,9 +246,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       const rows = (data as BoardMember[]) ?? [];
       const mapped = rows.map((entry) => {
           const profile = availableProfiles.find((c) => c.id === entry.profile_id) ?? null;
-          // Prüfen, ob Profile vorhanden und aktiv ist
           if (profile && (profile.is_active ?? true) && !isSuperuserEmail(profile.email)) {
-              return { ...entry, profile }; // profile ist hier ClientProfile (nicht null)
+              return { ...entry, profile };
           }
           return null;
         }).filter((e): e is MemberWithProfile => Boolean(e));
@@ -264,6 +265,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   }, [boardId, supabase]);
 
   const loadTopTopics = useCallback(async () => {
+    // ✅ FIX: Prüfen auf supabase
+    if (!supabase) return;
     const { data } = await supabase.from('board_top_topics').select('*').eq('board_id', boardId).order('position');
     if (data) setTopTopics(data);
   }, [boardId, supabase]);
@@ -378,6 +381,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         nextList.splice(prevKey === nextKey && idx >= 0 ? idx : nextList.length, 0, updated);
         working.set(nextKey, nextList);
       } else {
+        // ✅ FIX: Prüfen auf supabase
+        if (!supabase) return;
         const { data: { user } } = await supabase.auth.getUser();
         const newCard = { rowId: `team-${crypto.randomUUID()}`, cardId: `team-${crypto.randomUUID()}`, ...draft, position: 0, createdBy: user?.id };
         const key = droppableKey(newCard.assigneeId, newCard.status);
@@ -523,6 +528,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       const [localTopics, setLocalTopics] = useState<TopTopic[]>(topTopics);
       useEffect(() => { setLocalTopics(topTopics); }, [topTopics]);
       const handleSaveTopic = async (index: number, field: string, value: any) => {
+          // ✅ FIX: Prüfen auf supabase
+          if (!supabase) return;
           const newTopics = [...localTopics];
           newTopics[index] = { ...newTopics[index], [field]: value };
           setLocalTopics(newTopics);
@@ -531,10 +538,12 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
           }
       };
       const handleAdd = async () => {
+          if (!supabase) return;
           const { data } = await supabase.from('board_top_topics').insert({ board_id: boardId, title: '', position: localTopics.length }).select().single();
           if (data) setLocalTopics([...localTopics, data]);
       };
       const handleDelete = async (id: string) => {
+          if (!supabase) return;
           await supabase.from('board_top_topics').delete().eq('id', id);
           setLocalTopics(prev => prev.filter(t => t.id !== id));
       };
