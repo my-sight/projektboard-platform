@@ -40,7 +40,12 @@ export async function ensureBoardMemberAccess(
   const { client } = await resolveAdminSupabaseClient(tokens);
 
   if (isSuperuserEmail(user.email ?? '')) {
-    return { client, user, board: { id: boardId, owner_id: null } } as const;
+    // ✅ FIX: board_admin_id hinzugefügt (ist im Interface Pflicht)
+    return { 
+        client, 
+        user, 
+        board: { id: boardId, owner_id: null, board_admin_id: null } 
+    } as const;
   }
 
   const { data: board, error: boardError } = await client
