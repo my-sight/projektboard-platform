@@ -138,3 +138,8 @@ export interface ProjectBoardCard {
 
 export type ViewMode = 'columns' | 'swim' | 'lane';
 export type LayoutDensity = 'compact' | 'xcompact' | 'large';
+
+// ✅ FIX: Fehlender Typ für KanbanToolbar
+export interface ExtendedCard extends Card {
+  swimlane?: string;
+}
