@@ -194,7 +194,6 @@ export function EditCardDialog({
       setEditModalOpen(false);
   };
 
-  // Einfaches Schließen ohne explizites Save (Achtung: patchCard speichert bereits live)
   const handleCancel = () => {
       setEditModalOpen(false);
   };
@@ -226,14 +225,13 @@ export function EditCardDialog({
 
       <DialogContent sx={{ p: 0 }}>
        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
-        {/* ✅ NEUE REIHENFOLGE: Status (0), Team (1), Details (2) */}
         <Tabs value={editTabValue} onChange={(e, v) => setEditTabValue(v)}>
           <Tab label="Status & Checkliste" />
           <Tab label="Team" />
           <Tab label="Details" />
         </Tabs>
 
-        {/* TAB 0: STATUS & CHECKLISTE (Jetzt Standard) */}
+        {/* TAB 0: STATUS & CHECKLISTE */}
         {editTabValue === 0 && (
           <Box sx={{ p: 3 }}>
             <Box sx={{ mb: 4 }}>
@@ -389,13 +387,15 @@ export function EditCardDialog({
                  />
               </Box>
 
-              {/* Fix für TR_History Zugriff */}
+              {/* ✅ FIX: Verwende `arr[idx-1]` statt `selectedCard.TR_History[idx-1]` */}
               {selectedCard.TR_History && selectedCard.TR_History.length > 0 && (
                   <Box sx={{ mt: 1.5, pl: 1.5, borderLeft: '3px solid rgba(0,0,0,0.1)' }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>Historie:</Typography>
-                      {selectedCard.TR_History.map((entry: any, idx: number) => {
+                      {/* Explizite Typisierung von arr */}
+                      {(selectedCard.TR_History || []).map((entry: any, idx: number, arr: any[]) => {
                           if (entry.date === selectedCard.TR_Neu) return null;
-                          if (idx > 0 && selectedCard.TR_History[idx-1].date === entry.date) return null;
+                          // Hier lag der Fehler: arr ist sicher das gleiche Array
+                          if (idx > 0 && arr[idx-1].date === entry.date) return null;
                           
                           return (
                               <Typography key={idx} variant="caption" sx={{ display: 'block', textDecoration: 'line-through', color: 'text.disabled' }}>
@@ -520,7 +520,7 @@ export function EditCardDialog({
           </Box>
         )}
 
-        {/* TAB 2: DETAILS (Jetzt am Ende) */}
+        {/* TAB 2: DETAILS */}
         {editTabValue === 2 && (
           <Box sx={{ p: 3 }}>
             <Box
@@ -661,7 +661,6 @@ export function EditCardDialog({
                 Löschen
                 </Button>
             )}
-            {/* ✅ NEUER BUTTON: Abbrechen (Schließt ohne finalen Save, aber Patches bleiben) */}
             <Button onClick={handleCancel}>
                 Abbrechen
             </Button>
