@@ -16,6 +16,15 @@ import {
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 
+// ✅ Interface für Board-Daten definieren
+interface BoardInfo {
+  id: string;
+  name: string;
+  description: string;
+  cardCount: number;
+  lastUpdated: string;
+}
+
 export default function HomePage() {
   const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
   const boardRef = useRef<OriginalKanbanBoardHandle>(null);
@@ -27,8 +36,8 @@ export default function HomePage() {
     setKpiCount(0);
   }, [selectedBoard]);
 
-  // Beispiel-Boards
-  const boards = [
+  // ✅ Explizit typisiertes Array
+  const boards: BoardInfo[] = [
     {
       id: 'werkzeug-board',
       name: 'Werkzeug-Multiprojektboard',
@@ -73,8 +82,9 @@ export default function HomePage() {
             >
               ← Zurück
             </Button>
+            {/* ✅ Typisiertes Find */}
             <Typography variant="h6">
-              {boards.find(b => b.id === selectedBoard)?.name}
+              {boards.find((b: BoardInfo) => b.id === selectedBoard)?.name}
             </Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -143,7 +153,8 @@ export default function HomePage() {
 
       {/* Board Auswahl */}
       <Grid container spacing={3}>
-        {boards.map((board) => (
+        {/* ✅ Typisiertes Map */}
+        {boards.map((board: BoardInfo) => (
           <Grid item xs={12} md={6} lg={4} key={board.id}>
             <Card 
               sx={{ 

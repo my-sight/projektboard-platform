@@ -45,7 +45,6 @@ import 'dayjs/locale/de';
 dayjs.locale('de');
 
 // --- HELPER: BILD KOMPRIMIERUNG ---
-// Verhindert, dass riesige Base64-Strings die Datenbank/API crashen
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -55,7 +54,7 @@ const compressImage = (file: File): Promise<string> => {
       img.src = event.target?.result as string;
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800; // Ausreichend für Kartenansicht
+        const MAX_WIDTH = 800; 
         const MAX_HEIGHT = 800;
         let width = img.width;
         let height = img.height;
@@ -108,7 +107,6 @@ export interface EditCardDialogProps {
   idFor: (card: ProjectBoardCard) => string;
   setSelectedCard: (card: ProjectBoardCard) => void;
   canEdit?: boolean;
-  // ✅ WICHTIG: Delete-Funktion
   onDelete: (card: ProjectBoardCard) => void; 
 }
 
@@ -150,7 +148,6 @@ export function EditCardDialog({
      }
   };
 
-  // ✅ NEU: Sicherer Bild-Upload mit Komprimierung
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
@@ -158,7 +155,6 @@ export function EditCardDialog({
       try {
         setUploading(true);
         const compressedBase64 = await compressImage(file);
-        // Patcht nur das Bildfeld, lässt den Rest intakt
         handlePatch('Bild', compressedBase64);
       } catch (error) {
         console.error('Fehler beim Bild-Upload:', error);
@@ -198,6 +194,11 @@ export function EditCardDialog({
       setEditModalOpen(false);
   };
 
+  // Einfaches Schließen ohne explizites Save (Achtung: patchCard speichert bereits live)
+  const handleCancel = () => {
+      setEditModalOpen(false);
+  };
+
   return (
     <Dialog
       open={editModalOpen}
@@ -225,139 +226,15 @@ export function EditCardDialog({
 
       <DialogContent sx={{ p: 0 }}>
        <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
+        {/* ✅ NEUE REIHENFOLGE: Status (0), Team (1), Details (2) */}
         <Tabs value={editTabValue} onChange={(e, v) => setEditTabValue(v)}>
-          <Tab label="Details" />
           <Tab label="Status & Checkliste" />
           <Tab label="Team" />
+          <Tab label="Details" />
         </Tabs>
 
-        {/* TAB 1: DETAILS */}
+        {/* TAB 0: STATUS & CHECKLISTE (Jetzt Standard) */}
         {editTabValue === 0 && (
-          <Box sx={{ p: 3 }}>
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: 'auto 1fr auto 1fr auto 1fr',
-                gap: 2,
-                alignItems: 'center',
-                mb: 3,
-              }}
-            >
-              <Typography>Nummer</Typography>
-              <TextField
-                size="small"
-                disabled={!canEdit}
-                value={selectedCard.Nummer || ''}
-                onChange={(e) => handlePatch('Nummer', e.target.value)}
-              />
-
-              <Typography>Name</Typography>
-              <TextField
-                size="small"
-                disabled={!canEdit}
-                value={selectedCard.Teil || ''}
-                onChange={(e) => handlePatch('Teil', e.target.value)}
-              />
-
-              <Typography>Verantwortlich</Typography>
-              <Select
-                size="small"
-                disabled={!canEdit}
-                value={selectedCard.Verantwortlich || ''}
-                onChange={(e) => {
-                    const selectedName = e.target.value;
-                    const selectedUser = users.find(u => (u.full_name || u.name || u.email) === selectedName);
-                    
-                    const updates: any = { Verantwortlich: selectedName };
-                    if (selectedUser && selectedUser.email) {
-                        updates['VerantwortlichEmail'] = selectedUser.email;
-                    }
-                    
-                    if (selectedCard) {
-                        const updated = { ...selectedCard, ...updates };
-                        setSelectedCard(updated as ProjectBoardCard);
-                        patchCard(selectedCard, updates);
-                    }
-                }}
-              >
-                <MenuItem value=""><em>Nicht zugewiesen</em></MenuItem>
-                {users.map((user: any) => (
-                  <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
-                        {user.department || user.company ? ` – ${user.department || user.company}` : ''}
-                      </Typography>
-                      {user.email && <Typography variant="caption" color="text.secondary">{user.email}</Typography>}
-                    </Box>
-                  </MenuItem>
-                ))}
-              </Select>
-
-              <Typography>Fällig bis</Typography>
-              <DatePicker 
-                value={selectedCard['Due Date'] ? dayjs(selectedCard['Due Date']) : null}
-                onChange={(val) => handleDateChangeLocal('Due Date', val)}
-                onAccept={(val) => handleDateAccept('Due Date', val)}
-                disabled={!canEdit}
-                slotProps={{ textField: { size: 'small', fullWidth: true } }}
-              />
-
-              <Typography>Priorität</Typography>
-              <Checkbox
-                checked={toBoolean(selectedCard.Priorität)}
-                disabled={!canEdit}
-                onChange={(e) => handlePatch('Priorität', e.target.checked)}
-              />
-
-              <Typography>SOP</Typography>
-              <DatePicker 
-                value={selectedCard.SOP_Datum ? dayjs(selectedCard.SOP_Datum) : null}
-                onChange={(val) => handleDateChangeLocal('SOP_Datum', val)}
-                onAccept={(val) => handleDateAccept('SOP_Datum', val)}
-                disabled={!canEdit}
-                slotProps={{ textField: { size: 'small', fullWidth: true } }}
-              />
-
-              <Typography>Bild</Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <Button
-                    variant="outlined"
-                    component="label"
-                    startIcon={uploading ? <CircularProgress size={20} /> : <CloudUpload />}
-                    disabled={!canEdit || uploading}
-                    size="small"
-                  >
-                    {uploading ? 'Komprimiere...' : 'Hochladen'}
-                    <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
-                  </Button>
-                  {selectedCard.Bild && (
-                    <Button 
-                        size="small" 
-                        color="error" 
-                        onClick={() => handlePatch('Bild', '')}
-                        disabled={!canEdit}
-                    >
-                        Löschen
-                    </Button>
-                  )}
-              </Box>
-            </Box>
-
-            {selectedCard.Bild && (
-              <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
-                <img
-                  src={selectedCard.Bild}
-                  alt="Karten-Bild"
-                  style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                />
-              </Box>
-            )}
-          </Box>
-        )}
-
-        {/* TAB 2: STATUS & CHECKLISTE */}
-        {editTabValue === 1 && (
           <Box sx={{ p: 3 }}>
             <Box sx={{ mb: 4 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -512,6 +389,7 @@ export function EditCardDialog({
                  />
               </Box>
 
+              {/* Fix für TR_History Zugriff */}
               {selectedCard.TR_History && selectedCard.TR_History.length > 0 && (
                   <Box sx={{ mt: 1.5, pl: 1.5, borderLeft: '3px solid rgba(0,0,0,0.1)' }}>
                       <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>Historie:</Typography>
@@ -538,12 +416,18 @@ export function EditCardDialog({
                       onChange={(e) => {
                         const checked = e.target.checked;
                         const ts = checked ? new Date().toISOString() : null;
+                        
                         patchCard(selectedCard, { 
                             TR_Completed: checked, 
-                            TR_Completed_At: ts, 
-                            TR_Completed_Date: ts 
+                            TR_Completed_At: ts || undefined, 
+                            TR_Completed_Date: ts || undefined
                         });
-                        const updated = { ...selectedCard, TR_Completed: checked, TR_Completed_At: ts, TR_Completed_Date: ts };
+                        const updated = { 
+                            ...selectedCard, 
+                            TR_Completed: checked, 
+                            TR_Completed_At: ts || undefined, 
+                            TR_Completed_Date: ts || undefined
+                        };
                         setSelectedCard(updated as ProjectBoardCard);
                       }}
                     />
@@ -556,8 +440,8 @@ export function EditCardDialog({
           </Box>
         )}
 
-        {/* TAB 3: TEAM */}
-        {editTabValue === 2 && (
+        {/* TAB 1: TEAM */}
+        {editTabValue === 1 && (
           <Box sx={{ p: 3 }}>
              <Typography variant="h6" sx={{ mb: 2 }}>Projekt-Team</Typography>
              
@@ -581,8 +465,7 @@ export function EditCardDialog({
                                        userId: user.id,
                                        name: user.full_name || user.name || user.email,
                                        email: user.email,
-                                       department: user.department || user.company,
-                                       userEmail: user.email
+                                       department: user.department || user.company
                                    };
                                 }
                                 handlePatch('Team', newTeam);
@@ -636,25 +519,156 @@ export function EditCardDialog({
              </Button>
           </Box>
         )}
+
+        {/* TAB 2: DETAILS (Jetzt am Ende) */}
+        {editTabValue === 2 && (
+          <Box sx={{ p: 3 }}>
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'auto 1fr auto 1fr auto 1fr',
+                gap: 2,
+                alignItems: 'center',
+                mb: 3,
+              }}
+            >
+              <Typography>Nummer</Typography>
+              <TextField
+                size="small"
+                disabled={!canEdit}
+                value={selectedCard.Nummer || ''}
+                onChange={(e) => handlePatch('Nummer', e.target.value)}
+              />
+
+              <Typography>Name</Typography>
+              <TextField
+                size="small"
+                disabled={!canEdit}
+                value={selectedCard.Teil || ''}
+                onChange={(e) => handlePatch('Teil', e.target.value)}
+              />
+
+              <Typography>Verantwortlich</Typography>
+              <Select
+                size="small"
+                disabled={!canEdit}
+                value={selectedCard.Verantwortlich || ''}
+                onChange={(e) => {
+                    const selectedName = e.target.value;
+                    const selectedUser = users.find(u => (u.full_name || u.name || u.email) === selectedName);
+                    
+                    const updates: any = { Verantwortlich: selectedName };
+                    if (selectedUser && selectedUser.email) {
+                        updates['VerantwortlichEmail'] = selectedUser.email;
+                    }
+                    
+                    if (selectedCard) {
+                        const updated = { ...selectedCard, ...updates };
+                        setSelectedCard(updated as ProjectBoardCard);
+                        patchCard(selectedCard, updates);
+                    }
+                }}
+              >
+                <MenuItem value=""><em>Nicht zugewiesen</em></MenuItem>
+                {users.map((user: any) => (
+                  <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                        {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
+                        {user.department || user.company ? ` – ${user.department || user.company}` : ''}
+                      </Typography>
+                      {user.email && <Typography variant="caption" color="text.secondary">{user.email}</Typography>}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+
+              <Typography>Fällig bis</Typography>
+              <DatePicker 
+                value={selectedCard['Due Date'] ? dayjs(selectedCard['Due Date']) : null}
+                onChange={(val) => handleDateChangeLocal('Due Date', val)}
+                onAccept={(val) => handleDateAccept('Due Date', val)}
+                disabled={!canEdit}
+                slotProps={{ textField: { size: 'small', fullWidth: true } }}
+              />
+
+              <Typography>Priorität</Typography>
+              <Checkbox
+                checked={toBoolean(selectedCard.Priorität)}
+                disabled={!canEdit}
+                onChange={(e) => handlePatch('Priorität', e.target.checked)}
+              />
+
+              <Typography>SOP</Typography>
+              <DatePicker 
+                value={selectedCard.SOP_Datum ? dayjs(selectedCard.SOP_Datum) : null}
+                onChange={(val) => handleDateChangeLocal('SOP_Datum', val)}
+                onAccept={(val) => handleDateAccept('SOP_Datum', val)}
+                disabled={!canEdit}
+                slotProps={{ textField: { size: 'small', fullWidth: true } }}
+              />
+
+              <Typography>Bild</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={uploading ? <CircularProgress size={20} /> : <CloudUpload />}
+                    disabled={!canEdit || uploading}
+                    size="small"
+                  >
+                    {uploading ? 'Komprimiere...' : 'Hochladen'}
+                    <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
+                  </Button>
+                  {selectedCard.Bild && (
+                    <Button 
+                        size="small" 
+                        color="error" 
+                        onClick={() => handlePatch('Bild', '')}
+                        disabled={!canEdit}
+                    >
+                        Löschen
+                    </Button>
+                  )}
+              </Box>
+            </Box>
+
+            {selectedCard.Bild && (
+              <Box sx={{ mb: 2, display: 'flex', justifyContent: 'center' }}>
+                <img
+                  src={selectedCard.Bild}
+                  alt="Karten-Bild"
+                  style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                />
+              </Box>
+            )}
+          </Box>
+        )}
+
        </LocalizationProvider>
       </DialogContent>
 
-      <DialogActions sx={{ borderTop: 1, borderColor: 'divider', p: 2, justifyContent: 'space-between' }}>
-        {canEdit ? (
-             <Button 
-               color="error" 
-               // ✅ ÄNDERUNG: Nutzt jetzt die übergebene onDelete-Funktion (API-Delete)
-               onClick={() => {
-                  onDelete(selectedCard);
-                  setEditModalOpen(false);
-               }}
-             >
-               Löschen
-             </Button>
-        ) : <Box />}
+      <DialogActions sx={{ borderTop: 1, borderColor: 'divider', p: 2, display: 'flex', justifyContent: 'space-between' }}>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+            {canEdit && (
+                <Button 
+                color="error" 
+                onClick={() => {
+                    onDelete(selectedCard);
+                    setEditModalOpen(false);
+                }}
+                >
+                Löschen
+                </Button>
+            )}
+            {/* ✅ NEUER BUTTON: Abbrechen (Schließt ohne finalen Save, aber Patches bleiben) */}
+            <Button onClick={handleCancel}>
+                Abbrechen
+            </Button>
+        </Box>
 
         <Button variant="contained" onClick={handleClose}>
-          Schließen
+          Speichern & Schließen
         </Button>
       </DialogActions>
     </Dialog>

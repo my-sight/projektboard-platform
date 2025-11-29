@@ -9,7 +9,6 @@ import { keyframes } from '@mui/system';
 import { nullableDate, toBoolean } from '@/utils/booleans';
 import { ProjectBoardCard, LayoutDensity } from '@/types';
 
-// ✅ WICHTIG: Exportiere diesen Typ, damit KanbanViews.tsx nicht abstürzt
 export type KanbanDensity = LayoutDensity;
 
 const blinkAnimation = keyframes`
@@ -73,9 +72,10 @@ export function KanbanCard({
     return map;
   }, [users]);
 
-  const escalation = String(card.Eskalation || '').trim().toUpperCase();
-  const hasLKEscalation = escalation === 'LK';
-  const hasSKEscalation = escalation === 'SK';
+  // Logik für Y (Yellow) und R (Red) - kompatibel mit altem LK/SK
+  const rawEscalation = String(card.Eskalation || '').trim().toUpperCase();
+  const isYellow = rawEscalation === 'Y' || rawEscalation === 'LK';
+  const isRed = rawEscalation === 'R' || rawEscalation === 'SK';
 
   let statusKurz = '';
   if (Array.isArray(card.StatusHistory) && card.StatusHistory.length) {
@@ -95,16 +95,12 @@ export function KanbanCard({
   const hasPriority = toBoolean(card.Priorität);
   const sopDate = nullableDate(card.SOP_Datum);
   
-  // TR Berechnungen
   const trOriginalDate = nullableDate(card.TR_Datum);
   const trNeuDate = nullableDate(card.TR_Neu);
-  
-  // Abweichung berechnen (Neu - Original)
   const trDiff = trOriginalDate && trNeuDate
     ? Math.round((trNeuDate.getTime() - trOriginalDate.getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
-  // Checklisten-Logik
   const stage = inferStage(card);
   const templateTasks = checklistTemplates?.[stage] || [];
   const totalChecklist = templateTasks.length;
@@ -116,12 +112,14 @@ export function KanbanCard({
   else if (card.Collapsed === 'compact') currentSize = 'compact';
 
   let backgroundColor = 'white';
-  if (hasLKEscalation) backgroundColor = '#fff3e0';
-  if (hasSKEscalation) backgroundColor = '#ffebee';
-  let borderColor = 'rgba(0,0,0,0.12)'; // Standard Rahmen
-  if (hasLKEscalation) borderColor = '#ef6c00';
-  if (hasSKEscalation) borderColor = '#c62828';
-  const ampelColor = hasLKEscalation || hasSKEscalation ? '#ff5a5a' : '#14c38e';
+  if (isYellow) backgroundColor = '#fff3e0'; 
+  if (isRed) backgroundColor = '#ffebee';    
+  
+  let borderColor = 'rgba(0,0,0,0.12)'; 
+  if (isYellow) borderColor = '#ef6c00'; 
+  if (isRed) borderColor = '#c62828';    
+  
+  const ampelColor = isYellow || isRed ? '#ff5a5a' : '#14c38e';
 
   const handleUpdateCard = (updates: Partial<ProjectBoardCard>) => {
     if (!canModify) return;
@@ -147,9 +145,13 @@ export function KanbanCard({
     <Draggable key={cardId} draggableId={cardId} index={index} isDragDisabled={isDragDisabled}>
       {(provided, snapshot) => (
         <Box
-          ref={(el) => { provided.innerRef(el); cardRef.current = el as any; }}
+          // ✅ FIX: Explizite Typisierung von 'el' und Cast für cardRef
+          ref={(el: HTMLElement | null) => { 
+              provided.innerRef(el); 
+              (cardRef as React.MutableRefObject<HTMLElement | null>).current = el; 
+          }}
           {...provided.draggableProps} {...provided.dragHandleProps}
-          className={`card ${hasLKEscalation ? 'esk-lk' : ''} ${hasSKEscalation ? 'esk-sk' : ''}`}
+          className={`card ${isYellow ? 'esk-lk' : ''} ${isRed ? 'esk-sk' : ''}`}
           onClick={(e) => { if (!canModify) return; if (!(e.target as HTMLElement).closest('.controls')) { setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0); } }}
           sx={{
             backgroundColor, border: `1px solid ${borderColor}`, borderRadius: currentSize === 'xcompact' ? '4px' : '12px', padding: currentSize === 'xcompact' ? '4px' : '10px',
@@ -181,8 +183,43 @@ export function KanbanCard({
                   {hasPriority && <Chip label="!" size="small" color="error" sx={{ fontWeight: 700, height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '12px' } }} />}
                   <Box className="controls" sx={{ display: 'flex', gap: 0.5 }}>
                     <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: currentSize === 'large' ? '#e3f2fd' : 'transparent', color: currentSize === 'large' ? '#1976d2' : 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} title="Groß/Normal umschalten" disabled={!canModify} onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Collapsed: currentSize === 'large' ? '' : 'large' }); }}>↕</IconButton>
-                    <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', backgroundColor: hasLKEscalation ? '#ef6c00' : 'transparent', color: hasLKEscalation ? 'white' : 'var(--muted)', '&:hover': { backgroundColor: hasLKEscalation ? '#e65100' : 'rgba(0,0,0,0.06)' } }} title="Leitungskreis" disabled={!canModify} onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Eskalation: hasLKEscalation ? '' : 'LK', Ampel: hasLKEscalation ? 'grün' : 'rot' }); }}>LK</IconButton>
-                    <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', backgroundColor: hasSKEscalation ? '#c62828' : 'transparent', color: hasSKEscalation ? 'white' : 'var(--muted)', '&:hover': { backgroundColor: hasSKEscalation ? '#b71c1c' : 'rgba(0,0,0,0.06)' } }} title="Strategiekreis" disabled={!canModify} onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Eskalation: hasSKEscalation ? '' : 'SK', Ampel: hasSKEscalation ? 'grün' : 'rot' }); }}>SK</IconButton>
+                    
+                    <IconButton 
+                        size="small" 
+                        sx={{ 
+                            width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', 
+                            backgroundColor: isYellow ? '#ef6c00' : 'transparent', 
+                            color: isYellow ? 'white' : 'var(--muted)', 
+                            '&:hover': { backgroundColor: isYellow ? '#e65100' : 'rgba(0,0,0,0.06)' } 
+                        }} 
+                        title="Yellow Escalation" 
+                        disabled={!canModify} 
+                        onClick={(e) => { 
+                            e.stopPropagation(); 
+                            handleUpdateCard({ Eskalation: isYellow ? '' : 'Y', Ampel: isYellow ? 'grün' : 'rot' }); 
+                        }}
+                    >
+                        Y
+                    </IconButton>
+
+                    <IconButton 
+                        size="small" 
+                        sx={{ 
+                            width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', 
+                            backgroundColor: isRed ? '#c62828' : 'transparent', 
+                            color: isRed ? 'white' : 'var(--muted)', 
+                            '&:hover': { backgroundColor: isRed ? '#b71c1c' : 'rgba(0,0,0,0.06)' } 
+                        }} 
+                        title="Red Escalation" 
+                        disabled={!canModify} 
+                        onClick={(e) => { 
+                            e.stopPropagation(); 
+                            handleUpdateCard({ Eskalation: isRed ? '' : 'R', Ampel: isRed ? 'grün' : 'rot' }); 
+                        }}
+                    >
+                        R
+                    </IconButton>
+
                     <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: 'transparent', color: 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} title="Bearbeiten" disabled={!canModify} onClick={(e) => { e.stopPropagation(); setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0); }}>✎</IconButton>
                   </Box>
                 </Box>

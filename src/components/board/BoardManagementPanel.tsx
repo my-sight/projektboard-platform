@@ -93,11 +93,12 @@ interface KanbanCardRow {
   project_name?: string | null;
 }
 
+// ✅ UPDATE: Kategorien erweitert auf Y und R
 interface EscalationRecord {
   id?: string;
   board_id: string;
   card_id: string;
-  category: 'LK' | 'SK';
+  category: 'LK' | 'SK' | 'Y' | 'R';
   project_code: string | null;
   project_name: string | null;
   reason: string | null;
@@ -377,7 +378,8 @@ function buildEscalationViews(
       const rawCategory = stringOrNull(rawData['Eskalation']);
       const category = rawCategory?.toUpperCase();
 
-      if (category !== 'LK' && category !== 'SK') {
+      // ✅ UPDATE: Akzeptiere LK, SK, Y und R
+      if (category !== 'LK' && category !== 'SK' && category !== 'Y' && category !== 'R') {
         return null;
       }
 
@@ -394,7 +396,7 @@ function buildEscalationViews(
         id: record?.id,
         board_id: record?.board_id ?? boardId,
         card_id: card.card_id,
-        category: category as 'LK' | 'SK',
+        category: category as 'LK' | 'SK' | 'Y' | 'R',
         project_code: record?.project_code ?? projectCode,
         project_name: record?.project_name ?? projectName,
         reason: record?.reason ?? fallbackReason ?? null,
@@ -503,10 +505,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     });
   }, [members, profiles]);
 
+  // ✅ UPDATE: Gruppierung - LK/Y in "Y" und SK/R in "R"
   const filteredEscalations = useMemo(
     () => ({
-      LK: escalations.filter(entry => entry.category === 'LK'),
-      SK: escalations.filter(entry => entry.category === 'SK'),
+      Y: escalations.filter(entry => entry.category === 'LK' || entry.category === 'Y'),
+      R: escalations.filter(entry => entry.category === 'SK' || entry.category === 'R'),
     }),
     [escalations],
   );
@@ -1443,7 +1446,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             🚨 Projekte in Eskalation
           </Typography>
           <Typography variant="body2" color="text.secondary" gutterBottom>
-            Es werden automatisch alle Karten angezeigt, die im Board als LK oder SK markiert sind.
+            Es werden automatisch alle Karten angezeigt, die im Board als LK/Y oder SK/R markiert sind.
           </Typography>
           {!escalationSchemaReady && (
             <Alert severity="warning" sx={{ mt: 2 }}>
@@ -1451,18 +1454,20 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             </Alert>
           )}
           <Divider sx={{ my: 2 }} />
-          {(['LK', 'SK'] as const).map(category => {
+          {/* ✅ UPDATE: Y und R statt LK/SK durchlaufen */}
+          {(['Y', 'R'] as const).map(category => {
             const entries = filteredEscalations[category];
+            const title = category === 'Y' ? 'Y Eskalationen' : 'R Eskalationen';
             return (
-              <Box key={category} sx={{ mb: category === 'LK' ? 3 : 0 }}>
+              <Box key={category} sx={{ mb: category === 'Y' ? 3 : 0 }}>
                 <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                  {category} Eskalationen
+                  {title}
                 </Typography>
                 {entries.length === 0 ? (
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    {category === 'LK'
-                      ? 'Keine LK Eskalationen vorhanden.'
-                      : 'Keine SK Eskalationen vorhanden.'}
+                    {category === 'Y'
+                      ? 'Keine Y Eskalationen vorhanden.'
+                      : 'Keine R Eskalationen vorhanden.'}
                   </Typography>
                 ) : (
                   <Stack spacing={2} sx={{ mb: 2 }}>
@@ -1598,7 +1603,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                     })}
                   </Stack>
                 )}
-                {category === 'LK' && <Divider sx={{ my: 2 }} />}
+                {/* ✅ Trennlinie nach Y (ehemals LK) */}
+                {category === 'Y' && <Divider sx={{ my: 2 }} />}
               </Box>
             );
           })}

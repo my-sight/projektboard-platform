@@ -9,11 +9,11 @@ import {
 import { DropResult } from '@hello-pangea/dnd';
 import { 
   Assessment, Close, Delete, Add, Settings, ViewHeadline, ViewModule, 
-  AddCircle, FilterList, Warning, PriorityHigh, ErrorOutline, Star, DeleteOutline 
+  AddCircle, FilterList, Warning, PriorityHigh, ErrorOutline, Star, DeleteOutline,
+  ArrowUpward, ArrowDownward 
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 
-// DatePicker Imports
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
@@ -34,8 +34,6 @@ import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders';
 import { ProjectBoardCard, LayoutDensity, ViewMode } from '@/types';
-
-// --- Typen & Helper ---
 
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) return error.message;
@@ -84,8 +82,6 @@ const DEFAULT_COLS = [
   {id: "c8", name: "P8", done: true}
 ];
 
-// --- Komponente ---
-
 const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanbanBoardProps>(
 function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, highlightCardId, onExit }: OriginalKanbanBoardProps, ref) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -95,7 +91,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     return <Box sx={{ p: 3 }}><SupabaseConfigNotice /></Box>;
   }
 
-  // --- State ---
   const [viewMode, setViewMode] = useState<ViewMode>('columns');
   const [density, setDensity] = useState<LayoutDensity>('compact');
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,11 +101,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   const [canModifyBoard, setCanModifyBoard] = useState(false);
   const [currentUserName, setCurrentUserName] = useState<string | null>(null);
   
-  // Top Topics
   const [topTopicsOpen, setTopTopicsOpen] = useState(false);
   const [topTopics, setTopTopics] = useState<TopTopic[]>([]);
   
-  // Filter State
   const [filters, setFilters] = useState({
     mine: false,
     overdue: false,
@@ -118,19 +111,16 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     critical: false
   });
   
-  // Permissions
   const [permissions, setPermissions] = useState({
     canEditContent: false,
     canManageSettings: false,
     canManageAttendance: false
   });
 
-  // Archiv & Meta
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archivedCards, setArchivedCards] = useState<ProjectBoardCard[]>([]);
   const [boardMeta, setBoardMeta] = useState<{ name: string; description?: string | null; updated_at?: string | null } | null>(null);
   
-  // Dialogs
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedCard, setSelectedCard] = useState<ProjectBoardCard | null>(null);
   const [editTabValue, setEditTabValue] = useState(0);
@@ -138,11 +128,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [kpiPopupOpen, setKpiPopupOpen] = useState(false);
   
-  // Settings
   const [boardName, setBoardName] = useState('');
   const [boardDescription, setBoardDescription] = useState('');
   
-  // Checklisten Templates
   const [checklistTemplates, setChecklistTemplates] = useState<Record<string, string[]>>(() => {
     const templates: Record<string, string[]> = {};
     DEFAULT_COLS.forEach(col => {
@@ -150,8 +138,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     });
     return templates;
   });
-
-  // --- Helper Functions ---
 
   const inferStage = useCallback((r: ProjectBoardCard) => {
     const s = (r["Board Stage"] || "").trim();
@@ -200,7 +186,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     onArchiveCountChange?.(cards.length);
   }, [onArchiveCountChange]);
 
-  // Handle für Parent-Zugriff
   useImperativeHandle(ref, () => ({
     openSettings: () => setSettingsOpen(true),
     openKpis: () => setKpiPopupOpen(true),
@@ -210,7 +195,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     }
   }));
 
-  // KPI BERECHNUNG
   const calculateKPIs = useCallback(() => {
     const activeCards = rows.filter(card => card["Archived"] !== "1");
     const kpis: any = {
@@ -221,8 +205,8 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       ampelGreen: 0,
       ampelRed: 0,
       ampelYellow: 0,
-      lkEscalations: [],
-      skEscalations: [],
+      yEscalations: [], 
+      rEscalations: [],
       columnDistribution: {},
       totalTrDeviation: 0
     };
@@ -242,8 +226,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       else if (ampel === 'gelb') kpis.ampelYellow++;
 
       const eskalation = String(card.Eskalation || '').toUpperCase();
-      if (eskalation === 'LK') kpis.lkEscalations.push(card);
-      if (eskalation === 'SK') kpis.skEscalations.push(card);
+      
+      if (eskalation === 'LK' || eskalation === 'Y') kpis.yEscalations.push(card);
+      if (eskalation === 'SK' || eskalation === 'R') kpis.rEscalations.push(card);
 
       const trDateStr = card['TR_Neu'] || card['TR_Datum'];
       const trCompleted = toBoolean(card.TR_Completed);
@@ -280,14 +265,13 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
   
   const kpis = calculateKPIs();
   const kpiBadgeCount = useMemo(() => {
-    return kpis.trOverdue.length + kpis.lkEscalations.length + kpis.skEscalations.length;
+    return kpis.trOverdue.length + kpis.yEscalations.length + kpis.rEscalations.length;
   }, [kpis]);
 
   useEffect(() => {
     onKpiCountChange?.(kpiBadgeCount);
   }, [kpiBadgeCount, onKpiCountChange]);
 
-  // Top Topics Load
   const loadTopTopics = useCallback(async () => {
     const { data } = await supabase
       .from('board_top_topics')
@@ -297,7 +281,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     if (data) setTopTopics(data);
   }, [boardId, supabase]);
 
-  // --- FILTER LOGIC ---
   const filteredRows = useMemo(() => {
     let result = rows;
     
@@ -313,7 +296,8 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
        const myEmail = (supabase.auth.getUser() as any)?.data?.user?.email;
 
        result = result.filter(r => {
-          if (r.VerantwortlichEmail === myEmail) return true;
+          // Fix für Fehler 2551: VerantwortlichEmail ist nicht im Typ definiert, daher casten wir
+          if ((r as any).VerantwortlichEmail === myEmail) return true;
           const resp = String(r.Verantwortlich || '').toLowerCase();
           return myNameParts.some(part => resp.includes(part));
        });
@@ -332,16 +316,16 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     }
 
     if (filters.critical) {
-      result = result.filter(r => 
-        String(r.Ampel || '').toLowerCase().includes('rot') || 
-        ['LK', 'SK'].includes(String(r.Eskalation || '').toUpperCase())
-      );
+      result = result.filter(r => {
+        const esc = String(r.Eskalation || '').toUpperCase();
+        return String(r.Ampel || '').toLowerCase().includes('rot') || 
+               ['LK', 'SK', 'Y', 'R'].includes(esc);
+      });
     }
 
     return result;
   }, [rows, searchTerm, filters, currentUserName, supabase]);
 
-  // --- REALTIME SUBSCRIPTION ---
   useEffect(() => {
     if (!supabase || !boardId) return;
 
@@ -394,15 +378,12 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     };
   }, [boardId, supabase, convertDbToCard, reindexByStage, idFor]);
 
-  // --- API / Persistence ---
-
   const patchCard = useCallback(async (card: ProjectBoardCard, changes: Partial<ProjectBoardCard>) => {
     if (!permissions.canEditContent) {
         enqueueSnackbar('Keine Berechtigung.', { variant: 'error' });
         return;
     }
     
-    // Optimistic UI Update
     const updatedRows = rows.map(r => {
       if (idFor(r) === idFor(card)) { return { ...r, ...changes } as ProjectBoardCard; }
       return r;
@@ -415,7 +396,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
 
     try {
       const cardId = idFor(card);
-      // ✅ FIX: Vollständiges Objekt senden, um Datenverlust zu vermeiden
       const fullUpdatedCard = { ...card, ...changes };
       
       const payload = {
@@ -585,13 +565,24 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         .eq('board_id', boardId);
 
       if (error && error.message.includes('column')) {
+        // Fallback Query:
+        // Fix für Fehler 2322: Wir müssen card_data, stage, position usw. aus den vorhandenen Daten rekonstruieren
         const result = await supabase
           .from('kanban_cards')
           .select('card_data, id, card_id')
           .eq('board_id', boardId)
           .order('updated_at', { ascending: false }); 
 
-        data = result.data;
+        // Mapping damit TypeScript zufrieden ist
+        if (result.data) {
+            data = result.data.map((d: any) => ({
+                ...d,
+                stage: d.card_data['Board Stage'] || '',
+                position: d.card_data.position || 0
+            }));
+        } else {
+            data = null;
+        }
         error = result.error;
       }
       
@@ -680,7 +671,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
       setPermissions({
         canEditContent: isOwner || isBoardAdmin || isMember,
         canManageSettings: isOwner || isBoardAdmin || memberRole === 'admin',
-        canManageAttendance: isOwner || isBoardAdmin // Nur Admins
+        canManageAttendance: isOwner || isBoardAdmin 
       });
 
     } catch (error) {
@@ -790,7 +781,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
         return;
       }
       
-      // Update local state instantly
       setRows(prev => prev.filter(r => idFor(r) !== idFor(card)));
       setArchivedCards(prev => prev.filter(r => idFor(r) !== idFor(card)));
       
@@ -862,7 +852,6 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     setRows([...rows]);
   };
 
-  // --- Drag & Drop Logic ---
   const onDragEnd = (result: DropResult) => {
     if (!permissions.canEditContent) return;
     const { destination, source, draggableId } = result;
@@ -983,7 +972,7 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
     
     const percentage = (count: number) => kpis.totalCards > 0 ? Math.round((count / kpis.totalCards) * 100) : 0;
     const isOverdue = kpis.trOverdue.length > 0;
-    const hasEscalations = kpis.lkEscalations.length > 0 || kpis.skEscalations.length > 0;
+    const hasEscalations = kpis.yEscalations.length > 0 || kpis.rEscalations.length > 0;
 
     return (
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -1010,9 +999,9 @@ function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, 
                     <CardContent>
                         <Typography variant="subtitle2" color="text.secondary">Eskalationen</Typography>
                         <Typography variant="h4" color={hasEscalations ? 'warning.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
-                            {kpis.lkEscalations.length + kpis.skEscalations.length}
+                            {kpis.yEscalations.length + kpis.rEscalations.length}
                         </Typography>
-                         <Typography variant="caption" color="text.secondary">LK: {kpis.lkEscalations.length} / SK: {kpis.skEscalations.length}</Typography>
+                         <Typography variant="caption" color="text.secondary">Y: {kpis.yEscalations.length} / R: {kpis.rEscalations.length}</Typography>
                     </CardContent>
                 </Card>
             </Grid>
