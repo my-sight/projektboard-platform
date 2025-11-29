@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Box, Typography, Tabs, Tab, Container, Paper, Button } from '@mui/material';
 import { SupervisorAccount, Build } from '@mui/icons-material';
 import UserManagement from '@/components/admin/UserManagement';
-import MigrationTool from '@/components/admin/MigrationTool'; // Das importieren wir jetzt
+import MigrationTool from '@/components/admin/MigrationTool';
 import { useRouter } from 'next/navigation';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { isSuperuserEmail } from '@/constants/superuser';
@@ -17,6 +17,12 @@ export default function AdminPage() {
 
   useEffect(() => {
     const checkAuth = async () => {
+      // ✅ FIX: Prüfen, ob der Client existiert, bevor wir ihn nutzen
+      if (!supabase) {
+        router.push('/');
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !isSuperuserEmail(user.email || '')) {
         router.push('/');
