@@ -80,7 +80,7 @@ interface TeamBoardCard {
     position: number; 
     createdBy?: string;
     originalStage?: string;
-    originalData: any; // WICHTIG: Speichert die rohen JSON-Daten, damit beim Update nichts verloren geht
+    originalData: any;
 }
 
 interface TeamKanbanBoardProps { boardId: string; onExit?: () => void; highlightCardId?: string | null; }
@@ -145,13 +145,14 @@ const convertDbToCard = (item: any, boardMap: Map<string, string>, currentBoardI
         position: item.position || 0,
         createdBy: d.createdBy,
         originalStage: item.stage || d['Board Stage'],
-        originalData: d // Speichere Raw-Data für Updates
+        originalData: d
     };
 };
 
 export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: TeamKanbanBoardProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const { enqueueSnackbar } = useSnackbar();
+  const theme = useTheme();
   
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
   const [cards, setCards] = useState<TeamBoardCard[]>([]);
@@ -168,6 +169,10 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   const [dueDateError, setDueDateError] = useState(false);
   const [boardSettings, setBoardSettings] = useState<Record<string, any>>({});
   const [completedCount, setCompletedCount] = useState(0);
+  
+  // ✅ HIER WAR DER FEHLER: flowSaving hat gefehlt
+  const [flowSaving, setFlowSaving] = useState(false);
+  
   const [users, setUsers] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [topTopics, setTopTopics] = useState<TopTopic[]>([]);
@@ -280,11 +285,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       
       const profile = profiles.find(p => p.id === user.id);
       const isSuper = isSuperuserEmail(user.email) || profile?.role === 'admin';
+      const isMember = currentMembers.some(m => m.profile_id === user.id);
       
       const { data: boardRow } = await supabase.from('kanban_boards').select('owner_id, board_admin_id').eq('id', boardId).maybeSingle();
       const isOwner = boardRow?.owner_id === user.id;
       const isBoardAdmin = boardRow?.board_admin_id === user.id;
-      const isMember = currentMembers.some(m => m.profile_id === user.id);
       
       setCanModify(isSuper || isOwner || isBoardAdmin || isMember);
       setCanConfigure(isSuper || isOwner || isBoardAdmin);
@@ -331,7 +336,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   }, [cards, members, completedCount]);
 
   // --- Actions ---
-  
   const openCreateDialog = () => { 
       if (!canModify) return; 
       setEditingCard(null); 
@@ -339,7 +343,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       setDueDateError(false); 
       setDialogOpen(true); 
   };
-  
   const openQuickAdd = (assigneeId: string, status: TeamBoardStatus) => {
       if (!canModify) return;
       setEditingCard(null);
@@ -347,31 +350,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       setDueDateError(false);
       setDialogOpen(true);
   };
-
-  const openEditDialog = (card: TeamBoardCard) => { 
-      if (!canModify) return; 
-      setEditingCard(card); 
-      setDraft({ 
-          description: card.description, 
-          dueDate: card.dueDate ?? '', 
-          important: card.important, 
-          watch: card.watch, 
-          assigneeId: card.assigneeId, 
-          status: card.status 
-      }); 
-      setDueDateError(false); 
-      setDialogOpen(true); 
-  };
-
-  const closeDialog = () => { 
-      if (!saving) { 
-          setDialogOpen(false); 
-          setEditingCard(null); 
-          setDraft(defaultDraft); 
-          setDueDateError(false); 
-      }
-  };
-
   const handleDraftChange = (k: keyof TaskDraft, v: any) => { setDraft(p => ({...p, [k]: v})); if(k==='dueDate') setDueDateError(!v); };
   const toggleLaneCollapse = (memberId: string) => { setCollapsedLanes(prev => ({...prev, [memberId]: !prev[memberId]})); };
 
@@ -381,15 +359,13 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       const newValue = !card[property];
       setCards(prev => prev.map(c => c.cardId === card.cardId ? { ...c, [property]: newValue } : c));
       try {
-          // Wir nutzen originalData, um sicherzustellen, dass wir nicht Daten überschreiben
-          const newData = { ...card.originalData, [property]: newValue };
-          await supabase.from('kanban_cards').update({ card_data: newData }).eq('id', card.rowId);
+          await supabase.from('kanban_cards').update({ card_data: { ...card.originalData, [property]: newValue } }).eq('id', card.rowId);
       } catch (err) { setCards(cards); }
   };
 
   const handleDragEnd = async (result: DropResult) => {
     if (!canModify || !result.destination || !supabase) return;
-    const { destination, draggableId } = result;
+    const { source, destination, draggableId } = result;
 
     const newCards = [...cards];
     const idx = newCards.findIndex(c => c.cardId === draggableId);
@@ -424,29 +400,21 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     if (!supabase) return;
     setSaving(true);
     try {
-        // Fallunterscheidung: UPDATE vs INSERT
         if (editingCard) {
-             const newStage = draft.status; // Wir behalten den Status aus dem Dialog
-             // Wenn der Nutzer den Status ändert, müssen wir das mappen, aber hier im Dialog ändert man meist Text/Datum
-             // Die Status-Logik bei Änderung ist komplex, einfacher: wir lassen Status hier unberührt oder nehmen ihn mit
-             
-             // Update
-             const mergedData = {
-                 ...editingCard.originalData,
-                 description: draft.description,
-                 "Due Date": draft.dueDate,
-                 important: draft.important,
-                 watch: draft.watch,
-                 assigneeId: draft.assigneeId
-             };
-
-             await supabase.from('kanban_cards').update({
-                 card_data: mergedData
-             }).eq('id', editingCard.rowId);
-             enqueueSnackbar('Aufgabe aktualisiert', { variant: 'success' });
-
+            // Update existing card
+            await supabase.from('kanban_cards').update({
+                 card_data: {
+                     ...editingCard.originalData,
+                     description: draft.description,
+                     "Due Date": draft.dueDate,
+                     important: draft.important,
+                     watch: draft.watch,
+                     assigneeId: draft.assigneeId
+                 }
+            }).eq('id', editingCard.rowId);
+            enqueueSnackbar('Aufgabe aktualisiert', { variant: 'success' });
         } else {
-            // Insert (Neu)
+            // Create new card
             await supabase.from('kanban_cards').insert([{
                 board_id: boardId,
                 card_id: crypto.randomUUID(),
@@ -462,8 +430,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             }]);
             enqueueSnackbar('Aufgabe erstellt', { variant: 'success' });
         }
-        
-        closeDialog();
+        setDialogOpen(false);
         const mems = await loadMembers(await fetchClientProfiles());
         loadCards(mems);
     } catch (e) { console.error(e); } finally { setSaving(false); }
@@ -493,7 +460,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     } catch (e) { console.error(e); } finally { setFlowSaving(false); }
   };
 
-  // --- Components ---
   const TeamKPIDialog = ({ open, onClose }: any) => (
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
           <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Assessment color="primary" /> KPIs</DialogTitle>
@@ -576,7 +542,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   const backlogCards = useMemo(() => filteredCards.filter(c => c.status === 'backlog'), [filteredCards]);
 
   const renderCard = (card: TeamBoardCard, index: number) => {
-    // Design: Kantig (borderRadius: 1), dünner Rahmen
     const borderColor = highlightCardId === card.cardId ? '#ffc107' : (card.important ? '#d32f2f' : (card.watch ? '#1976d2' : 'rgba(0,0,0,0.12)'));
     const isExternal = card.boardId !== boardId; 
     
@@ -608,7 +573,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                  </Box>
                  <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>{card.description}</Typography>
                  
-                 {/* Fälligkeitsdatum unten rechts */}
                  {dateStr && (
                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
                          <Chip 
@@ -647,8 +611,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
           <Box sx={{ display: 'flex', gap: 1 }}>
               <Tooltip title="Top Themen"><IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}><Star color="warning" /></IconButton></Tooltip>
               <Tooltip title="KPIs"><IconButton onClick={() => setKpiOpen(true)}><Assessment color="primary" /></IconButton></Tooltip>
-              
-              {/* Settings Button NUR für Admins/Superuser */}
               {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title="Board Einstellungen"><Settings /></IconButton>}
           </Box>
       </Box>
@@ -671,7 +633,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 </Droppable>
             </Box>
 
-            {/* SWIMLANES (Tabellen-Layout) */}
+            {/* SWIMLANES */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', borderRadius: 1, border: '1px solid var(--line)', overflow: 'hidden' }}>
                 <Box sx={{ display: 'grid', gridTemplateColumns: `${COL_WIDTHS.member} 1fr 1fr 1fr`, borderBottom: '1px solid var(--line)', bgcolor: 'rgba(0,0,0,0.02)' }}>
                     <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary' }}>MITARBEITER</Box>
@@ -681,61 +643,53 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 </Box>
 
                 <Box sx={{ flex: 1, overflowY: 'auto' }}>
-                    {memberColumns.map(({ member, flow1, flow, done }) => {
-                        const isCollapsed = collapsedLanes[member.id];
-                        return (
-                            <Box key={member.id} sx={{ display: 'grid', gridTemplateColumns: `${COL_WIDTHS.member} 1fr 1fr 1fr`, borderBottom: '1px solid var(--line)', minHeight: isCollapsed ? 50 : 140 }}>
-                                
-                                <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1, justifyContent: isCollapsed ? 'center' : 'flex-start' }}>
-                                    <Stack direction="row" alignItems="center" spacing={1.5}>
-                                        <Avatar sx={{ width: 32, height: 32, fontSize: '0.85rem', bgcolor: 'primary.main' }}>{getInitials(member.profile?.full_name || '?')}</Avatar>
-                                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{member.profile?.full_name || 'Unbekannt'}</Typography>
-                                    </Stack>
-                                    {!isCollapsed && member.profile?.company && <Typography variant="caption" color="text.secondary" sx={{ ml: 5 }}>{member.profile.company}</Typography>}
-                                </Box>
-
-                                {!isCollapsed && (
-                                    <>
-                                        <Box sx={{ borderLeft: '1px solid var(--line)', p: 1, bgcolor: 'rgba(0,0,0,0.01)' }}>
-                                            <Droppable droppableId={droppableKey(member.profile_id, 'flow1')}>
-                                                {(prov, snap) => (
-                                                    <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
-                                                        {flow1.map((c, i) => renderCard(c, i))}
-                                                        {prov.placeholder}
-                                                        {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={() => openQuickAdd(member.profile_id, 'flow1')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
-                                                    </Box>
-                                                )}
-                                            </Droppable>
-                                        </Box>
-
-                                        <Box sx={{ borderLeft: '1px solid var(--line)', p: 1 }}>
-                                            <Droppable droppableId={droppableKey(member.profile_id, 'flow')}>
-                                                {(prov, snap) => (
-                                                    <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
-                                                        {flow.map((c, i) => renderCard(c, i))}
-                                                        {prov.placeholder}
-                                                        {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={() => openQuickAdd(member.profile_id, 'flow')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
-                                                    </Box>
-                                                )}
-                                            </Droppable>
-                                        </Box>
-
-                                        <Box sx={{ borderLeft: '1px solid var(--line)', p: 1, bgcolor: 'rgba(0,0,0,0.01)' }}>
-                                            <Droppable droppableId={droppableKey(member.profile_id, 'done')}>
-                                                {(prov, snap) => (
-                                                    <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
-                                                        {done.map((c, i) => renderCard(c, i))}
-                                                        {prov.placeholder}
-                                                    </Box>
-                                                )}
-                                            </Droppable>
-                                        </Box>
-                                    </>
-                                )}
-                                {isCollapsed && <Box sx={{ gridColumn: '2 / span 3', display: 'flex', alignItems: 'center', px: 2, color: 'text.disabled', fontStyle: 'italic' }}>Eingeklappt ({flow1.length + flow.length + done.length} Aufgaben)</Box>}
+                    {memberColumns.map(({ member, flow1, flow, done }) => (
+                        <Box key={member.id} sx={{ display: 'grid', gridTemplateColumns: `${COL_WIDTHS.member} 1fr 1fr 1fr`, borderBottom: '1px solid var(--line)', minHeight: 140 }}>
+                            <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                <Stack direction="row" alignItems="center" spacing={1.5}>
+                                    <Avatar sx={{ width: 32, height: 32, fontSize: '0.85rem', bgcolor: 'primary.main' }}>{getInitials(member.profile?.full_name || '?')}</Avatar>
+                                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{member.profile?.full_name || 'Unbekannt'}</Typography>
+                                </Stack>
+                                {member.profile?.company && <Typography variant="caption" color="text.secondary">{member.profile.company}</Typography>}
                             </Box>
-                        );
-                    })}
+
+                            {/* Spalten */}
+                            <Box sx={{ borderLeft: '1px solid var(--line)', p: 1, bgcolor: 'rgba(0,0,0,0.01)' }}>
+                                <Droppable droppableId={droppableKey(member.profile_id, 'flow1')}>
+                                    {(prov, snap) => (
+                                        <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
+                                            {flow1.map((c, i) => renderCard(c, i))}
+                                            {prov.placeholder}
+                                            {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={() => openQuickAdd(member.profile_id, 'flow1')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
+                                        </Box>
+                                    )}
+                                </Droppable>
+                            </Box>
+
+                            <Box sx={{ borderLeft: '1px solid var(--line)', p: 1 }}>
+                                <Droppable droppableId={droppableKey(member.profile_id, 'flow')}>
+                                    {(prov, snap) => (
+                                        <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
+                                            {flow.map((c, i) => renderCard(c, i))}
+                                            {prov.placeholder}
+                                            {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={() => openQuickAdd(member.profile_id, 'flow')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
+                                        </Box>
+                                    )}
+                                </Droppable>
+                            </Box>
+
+                            <Box sx={{ borderLeft: '1px solid var(--line)', p: 1, bgcolor: 'rgba(0,0,0,0.01)' }}>
+                                <Droppable droppableId={droppableKey(member.profile_id, 'done')}>
+                                    {(prov, snap) => (
+                                        <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
+                                            {done.map((c, i) => renderCard(c, i))}
+                                            {prov.placeholder}
+                                        </Box>
+                                    )}
+                                </Droppable>
+                            </Box>
+                        </Box>
+                    ))}
                 </Box>
             </Box>
         </DragDropContext>
@@ -744,11 +698,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{editingCard ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}</DialogTitle>
         <DialogContent dividers>
-            <Stack spacing={2}>
-                <TextField label="Aufgabenbeschreibung" value={draft.description} onChange={(e) => handleDraftChange('description', e.target.value)} fullWidth multiline minRows={2} />
-                <TextField label="Zieltermin" type="date" InputLabelProps={{ shrink: true }} value={draft.dueDate} onChange={(e) => handleDraftChange('dueDate', e.target.value)} required error={dueDateError && !draft.dueDate} />
-                <FormControlLabel control={<Checkbox checked={draft.important} onChange={(e) => handleDraftChange('important', e.target.checked)} />} label="Wichtige Aufgabe markieren" />
-                <FormControlLabel control={<Checkbox checked={draft.watch} onChange={(e) => handleDraftChange('watch', e.target.checked)} />} label="Auf Wiedervorlage setzen" />
+            <Stack spacing={2} sx={{mt:1}}>
+                <TextField fullWidth label="Beschreibung" value={draft.description} onChange={e => setDraft({...draft, description: e.target.value})} />
+                <TextField fullWidth type="date" label="Fällig" value={draft.dueDate} onChange={e => setDraft({...draft, dueDate: e.target.value})} InputLabelProps={{shrink:true}} />
+                <FormControlLabel control={<Checkbox checked={draft.important} onChange={e => setDraft({...draft, important: e.target.checked})} />} label="Wichtige Aufgabe markieren" />
+                <FormControlLabel control={<Checkbox checked={draft.watch} onChange={e => setDraft({...draft, watch: e.target.checked})} />} label="Auf Wiedervorlage setzen" />
             </Stack>
         </DialogContent>
         <DialogActions>
@@ -762,7 +716,13 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
           <DialogTitle>Board Einstellungen</DialogTitle>
           <DialogContent>
               <FormControlLabel 
-                control={<Switch checked={isHomeBoard} onChange={(e) => setIsHomeBoard(e.target.checked)} />} 
+                control={<Switch checked={isHomeBoard} onChange={(e) => {
+                    // Optimistisches Update
+                    const newVal = e.target.checked;
+                    setIsHomeBoard(newVal);
+                    // Lokales Settings-Objekt auch updaten für späteres Save
+                    setBoardSettings(prev => ({...prev, isHomeBoard: newVal}));
+                }} />} 
                 label={<Box><Typography variant="body1" fontWeight="bold">Als Heimatboard nutzen</Typography><Typography variant="caption" color="text.secondary">Zeigt automatisch alle Aufgaben der Mitglieder aus anderen Projekten an.</Typography></Box>} 
                 sx={{ mt: 2 }}
               />
