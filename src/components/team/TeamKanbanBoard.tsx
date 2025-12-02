@@ -22,7 +22,8 @@ import {
   LinearProgress,
   Grid,
   Switch,
-  Tooltip
+  Tooltip,
+  useTheme // ✅ FIX: Jetzt importiert
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -169,8 +170,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   const [dueDateError, setDueDateError] = useState(false);
   const [boardSettings, setBoardSettings] = useState<Record<string, any>>({});
   const [completedCount, setCompletedCount] = useState(0);
-  
-  // ✅ HIER WAR DER FEHLER: flowSaving hat gefehlt
   const [flowSaving, setFlowSaving] = useState(false);
   
   const [users, setUsers] = useState<any[]>([]);
@@ -401,20 +400,19 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     setSaving(true);
     try {
         if (editingCard) {
-            // Update existing card
-            await supabase.from('kanban_cards').update({
-                 card_data: {
-                     ...editingCard.originalData,
-                     description: draft.description,
-                     "Due Date": draft.dueDate,
-                     important: draft.important,
-                     watch: draft.watch,
-                     assigneeId: draft.assigneeId
-                 }
-            }).eq('id', editingCard.rowId);
+            // Update
+            const mergedData = {
+                ...editingCard.originalData,
+                description: draft.description,
+                "Due Date": draft.dueDate,
+                important: draft.important,
+                watch: draft.watch,
+                assigneeId: draft.assigneeId
+            };
+            await supabase.from('kanban_cards').update({ card_data: mergedData }).eq('id', editingCard.rowId);
             enqueueSnackbar('Aufgabe aktualisiert', { variant: 'success' });
         } else {
-            // Create new card
+            // Insert
             await supabase.from('kanban_cards').insert([{
                 board_id: boardId,
                 card_id: crypto.randomUUID(),
@@ -430,6 +428,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             }]);
             enqueueSnackbar('Aufgabe erstellt', { variant: 'success' });
         }
+        
         setDialogOpen(false);
         const mems = await loadMembers(await fetchClientProfiles());
         loadCards(mems);
@@ -544,7 +543,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   const renderCard = (card: TeamBoardCard, index: number) => {
     const borderColor = highlightCardId === card.cardId ? '#ffc107' : (card.important ? '#d32f2f' : (card.watch ? '#1976d2' : 'rgba(0,0,0,0.12)'));
     const isExternal = card.boardId !== boardId; 
-    
     const dateStr = card.dueDate ? new Date(card.dueDate).toLocaleDateString('de-DE') : null;
     const isOverdue = card.dueDate ? new Date(card.dueDate) < new Date() : false;
 
@@ -555,7 +553,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             ref={prov.innerRef} {...prov.draggableProps} {...prov.dragHandleProps}
             sx={{ 
                 mb: 1, 
-                borderRadius: 1, // Kantiges Design
+                borderRadius: 1, // Kantiges Design (4px)
                 border: '1px solid', 
                 borderColor, 
                 boxShadow: snap.isDragging ? 3 : 1, 
@@ -573,6 +571,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                  </Box>
                  <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>{card.description}</Typography>
                  
+                 {/* Fälligkeitsdatum unten rechts */}
                  {dateStr && (
                      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
                          <Chip 
@@ -609,7 +608,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
           </Box>
           
           <Box sx={{ display: 'flex', gap: 1 }}>
-              <Tooltip title="Top Themen"><IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}><Star color="warning" /></IconButton></Tooltip>
+              <Tooltip title="Top Themen"><IconButton onClick={() => { setTopTopicsOpen(true); }}><Star color="warning" /></IconButton></Tooltip>
               <Tooltip title="KPIs"><IconButton onClick={() => setKpiOpen(true)}><Assessment color="primary" /></IconButton></Tooltip>
               {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title="Board Einstellungen"><Settings /></IconButton>}
           </Box>
@@ -619,7 +618,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
       <Box sx={{ flex: 1, display: 'flex', gap: 2, overflow: 'hidden' }}>
         <DragDropContext onDragEnd={handleDragEnd}>
-            {/* BACKLOG */}
             <Box sx={{ width: BACKLOG_WIDTH, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', borderRadius: 1, border: '1px solid var(--line)' }}>
                 <Box sx={{ p: 2, borderBottom: '1px solid var(--line)' }}><Typography variant="subtitle2">SPEICHER ({backlogCards.length})</Typography></Box>
                 <Droppable droppableId={droppableKey(null, 'backlog')}>
@@ -633,7 +631,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 </Droppable>
             </Box>
 
-            {/* SWIMLANES */}
             <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', borderRadius: 1, border: '1px solid var(--line)', overflow: 'hidden' }}>
                 <Box sx={{ display: 'grid', gridTemplateColumns: `${COL_WIDTHS.member} 1fr 1fr 1fr`, borderBottom: '1px solid var(--line)', bgcolor: 'rgba(0,0,0,0.02)' }}>
                     <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary' }}>MITARBEITER</Box>
@@ -643,60 +640,68 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 </Box>
 
                 <Box sx={{ flex: 1, overflowY: 'auto' }}>
-                    {memberColumns.map(({ member, flow1, flow, done }) => (
-                        <Box key={member.id} sx={{ display: 'grid', gridTemplateColumns: `${COL_WIDTHS.member} 1fr 1fr 1fr`, borderBottom: '1px solid var(--line)', minHeight: 140 }}>
-                            <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                <Stack direction="row" alignItems="center" spacing={1.5}>
-                                    <Avatar sx={{ width: 32, height: 32, fontSize: '0.85rem', bgcolor: 'primary.main' }}>{getInitials(member.profile?.full_name || '?')}</Avatar>
-                                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{member.profile?.full_name || 'Unbekannt'}</Typography>
-                                </Stack>
-                                {member.profile?.company && <Typography variant="caption" color="text.secondary">{member.profile.company}</Typography>}
-                            </Box>
+                    {memberColumns.map(({ member, flow1, flow, done }) => {
+                        const isCollapsed = collapsedLanes[member.id];
+                        return (
+                            <Box key={member.id} sx={{ display: 'grid', gridTemplateColumns: `${COL_WIDTHS.member} 1fr 1fr 1fr`, borderBottom: '1px solid var(--line)', minHeight: isCollapsed ? 50 : 140 }}>
+                                
+                                <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1, justifyContent: isCollapsed ? 'center' : 'flex-start' }}>
+                                    <Stack direction="row" alignItems="center" spacing={1.5}>
+                                        <Avatar sx={{ width: 32, height: 32, fontSize: '0.85rem', bgcolor: 'primary.main' }}>{getInitials(member.profile?.full_name || '?')}</Avatar>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{member.profile?.full_name || 'Unbekannt'}</Typography>
+                                    </Stack>
+                                    {!isCollapsed && member.profile?.company && <Typography variant="caption" color="text.secondary" sx={{ ml: 5 }}>{member.profile.company}</Typography>}
+                                </Box>
 
-                            {/* Spalten */}
-                            <Box sx={{ borderLeft: '1px solid var(--line)', p: 1, bgcolor: 'rgba(0,0,0,0.01)' }}>
-                                <Droppable droppableId={droppableKey(member.profile_id, 'flow1')}>
-                                    {(prov, snap) => (
-                                        <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
-                                            {flow1.map((c, i) => renderCard(c, i))}
-                                            {prov.placeholder}
-                                            {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={() => openQuickAdd(member.profile_id, 'flow1')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
+                                {!isCollapsed && (
+                                    <>
+                                        <Box sx={{ borderLeft: '1px solid var(--line)', p: 1, bgcolor: 'rgba(0,0,0,0.01)' }}>
+                                            <Droppable droppableId={droppableKey(member.profile_id, 'flow1')}>
+                                                {(prov, snap) => (
+                                                    <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
+                                                        {flow1.map((c, i) => renderCard(c, i))}
+                                                        {prov.placeholder}
+                                                        {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={() => openQuickAdd(member.profile_id, 'flow1')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
+                                                    </Box>
+                                                )}
+                                            </Droppable>
                                         </Box>
-                                    )}
-                                </Droppable>
-                            </Box>
 
-                            <Box sx={{ borderLeft: '1px solid var(--line)', p: 1 }}>
-                                <Droppable droppableId={droppableKey(member.profile_id, 'flow')}>
-                                    {(prov, snap) => (
-                                        <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
-                                            {flow.map((c, i) => renderCard(c, i))}
-                                            {prov.placeholder}
-                                            {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={() => openQuickAdd(member.profile_id, 'flow')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
+                                        <Box sx={{ borderLeft: '1px solid var(--line)', p: 1 }}>
+                                            <Droppable droppableId={droppableKey(member.profile_id, 'flow')}>
+                                                {(prov, snap) => (
+                                                    <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
+                                                        {flow.map((c, i) => renderCard(c, i))}
+                                                        {prov.placeholder}
+                                                        {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={() => openQuickAdd(member.profile_id, 'flow')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
+                                                    </Box>
+                                                )}
+                                            </Droppable>
                                         </Box>
-                                    )}
-                                </Droppable>
-                            </Box>
 
-                            <Box sx={{ borderLeft: '1px solid var(--line)', p: 1, bgcolor: 'rgba(0,0,0,0.01)' }}>
-                                <Droppable droppableId={droppableKey(member.profile_id, 'done')}>
-                                    {(prov, snap) => (
-                                        <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
-                                            {done.map((c, i) => renderCard(c, i))}
-                                            {prov.placeholder}
+                                        <Box sx={{ borderLeft: '1px solid var(--line)', p: 1, bgcolor: 'rgba(0,0,0,0.01)' }}>
+                                            <Droppable droppableId={droppableKey(member.profile_id, 'done')}>
+                                                {(prov, snap) => (
+                                                    <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
+                                                        {done.map((c, i) => renderCard(c, i))}
+                                                        {prov.placeholder}
+                                                    </Box>
+                                                )}
+                                            </Droppable>
                                         </Box>
-                                    )}
-                                </Droppable>
+                                    </>
+                                )}
+                                {isCollapsed && <Box sx={{ gridColumn: '2 / span 3', display: 'flex', alignItems: 'center', px: 2, color: 'text.disabled', fontStyle: 'italic' }}>Eingeklappt ({flow1.length + flow.length + done.length} Aufgaben)</Box>}
                             </Box>
-                        </Box>
-                    ))}
+                        );
+                    })}
                 </Box>
             </Box>
         </DragDropContext>
       </Box>
 
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>{editingCard ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}</DialogTitle>
+        <DialogTitle>Aufgabe bearbeiten</DialogTitle>
         <DialogContent dividers>
             <Stack spacing={2} sx={{mt:1}}>
                 <TextField fullWidth label="Beschreibung" value={draft.description} onChange={e => setDraft({...draft, description: e.target.value})} />
@@ -716,13 +721,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
           <DialogTitle>Board Einstellungen</DialogTitle>
           <DialogContent>
               <FormControlLabel 
-                control={<Switch checked={isHomeBoard} onChange={(e) => {
-                    // Optimistisches Update
-                    const newVal = e.target.checked;
-                    setIsHomeBoard(newVal);
-                    // Lokales Settings-Objekt auch updaten für späteres Save
-                    setBoardSettings(prev => ({...prev, isHomeBoard: newVal}));
-                }} />} 
+                control={<Switch checked={isHomeBoard} onChange={(e) => setIsHomeBoard(e.target.checked)} />} 
                 label={<Box><Typography variant="body1" fontWeight="bold">Als Heimatboard nutzen</Typography><Typography variant="caption" color="text.secondary">Zeigt automatisch alle Aufgaben der Mitglieder aus anderen Projekten an.</Typography></Box>} 
                 sx={{ mt: 2 }}
               />
