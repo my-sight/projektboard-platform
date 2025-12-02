@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -16,13 +17,12 @@ import {
   IconButton,
   Stack,
   TextField,
-  Tooltip,
   Typography,
   Avatar,
-  Collapse,
   LinearProgress,
   Grid,
-  useTheme
+  Switch,
+  Tooltip
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -30,16 +30,16 @@ import {
   FilterList, 
   Warning, 
   PriorityHigh, 
-  ArrowBack, 
-  Star, 
-  KeyboardArrowDown,
-  KeyboardArrowUp,
-  CheckCircleOutline,
+  CheckCircle,
   AddCircleOutline,
   Delete,
   AccessTime,
   PriorityHigh as PriorityHighIcon,
-  Assessment
+  Assessment,
+  Link as LinkIcon,
+  Settings,
+  Home as HomeIcon,
+  Star
 } from '@mui/icons-material';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
 import { useSnackbar } from 'notistack';
@@ -58,17 +58,10 @@ const blinkAnimation = keyframes`
   100% { box-shadow: 0 0 0 0 rgba(255, 193, 7, 0); }
 `;
 
-const COL_WIDTHS = {
-    member: '220px',
-    flow1: '1fr',
-    flow: '1fr',
-    done: '1fr'
-};
-
+const COL_WIDTHS = { member: '220px', flow1: '1fr', flow: '1fr', done: '1fr' };
 const MIN_CARD_HEIGHT = 80;
 const BACKLOG_WIDTH = 320;
 
-// --- Interfaces ---
 interface BoardMember { id: string; profile_id: string; }
 interface MemberWithProfile extends BoardMember { profile: ClientProfile | null; }
 export type TeamBoardStatus = 'backlog' | 'flow1' | 'flow' | 'done';
@@ -76,6 +69,8 @@ export type TeamBoardStatus = 'backlog' | 'flow1' | 'flow' | 'done';
 interface TeamBoardCard { 
     rowId: string; 
     cardId: string; 
+    boardId: string; 
+    boardName?: string;
     description: string; 
     dueDate: string | null; 
     important: boolean; 
@@ -83,7 +78,9 @@ interface TeamBoardCard {
     assigneeId: string | null; 
     status: TeamBoardStatus; 
     position: number; 
-    createdBy?: string; 
+    createdBy?: string;
+    originalStage?: string;
+    originalData: any; // WICHTIG: Speichert die rohen JSON-Daten, damit beim Update nichts verloren geht
 }
 
 interface TeamKanbanBoardProps { boardId: string; onExit?: () => void; highlightCardId?: string | null; }
@@ -91,10 +88,8 @@ interface TaskDraft { description: string; dueDate: string; important: boolean; 
 interface DroppableInfo { assigneeId: string | null; status: TeamBoardStatus; }
 interface TopTopic { id: string; title: string; calendar_week?: string; due_date?: string; position: number; }
 
-const statusLabels: Record<TeamBoardStatus, string> = { backlog: 'Aufgabenspeicher', flow1: 'Flow-1', flow: 'Flow', done: 'Fertig' };
 const defaultDraft: TaskDraft = { description: '', dueDate: '', important: false, watch: false, assigneeId: null, status: 'backlog' };
 
-// --- Helpers ---
 const getInitials = (name: string) => name.split(' ').filter(Boolean).map((part) => part[0]).join('').toUpperCase().slice(0, 2);
 const droppableKey = (assigneeId: string | null, status: TeamBoardStatus) => `team|${assigneeId ?? 'unassigned'}|${status}`;
 const parseDroppableKey = (value: string): DroppableInfo => {
@@ -105,14 +100,21 @@ const parseDroppableKey = (value: string): DroppableInfo => {
   return { assigneeId, status };
 };
 
-// Hilfsfunktion: Datum in einer Woche berechnen (YYYY-MM-DD)
 const getNextWeekDateString = () => {
   const d = new Date();
-  d.setDate(d.getDate() + 7); // +1 Woche
+  d.setDate(d.getDate() + 7);
   return d.toISOString().split('T')[0];
 };
 
-// Data Helpers
+const mapStageToTeamColumn = (stageName: string = ""): TeamBoardStatus => {
+    const s = stageName.toLowerCase().trim();
+    if (!s) return 'backlog';
+    if (s.includes('fertig') || s.includes('done') || s.includes('versand') || s.includes('archiv')) return 'done';
+    if (s.includes('backlog') || s.includes('speicher') || s.includes('klärung') || s.includes('neu')) return 'backlog';
+    if (s.includes('flow 1') || s.includes('flow1') || s.includes('vorbereitung')) return 'flow1';
+    return 'flow';
+};
+
 const buildCardData = (card: TeamBoardCard) => ({ 
     type: 'teamTask', 
     description: card.description, 
@@ -124,33 +126,27 @@ const buildCardData = (card: TeamBoardCard) => ({
     createdBy: card.createdBy 
 });
 
-const createColumnsMapFromCards = (cards: TeamBoardCard[]) => { const map = new Map<string, TeamBoardCard[]>(); cards.forEach((card) => { const key = droppableKey(card.assigneeId, card.status); const entries = map.get(key) ?? []; entries.push({ ...card }); map.set(key, entries); }); return map; };
-const flattenColumnsMap = (map: Map<string, TeamBoardCard[]>) => { const flattened: TeamBoardCard[] = []; Array.from(map.keys()).sort().forEach((key) => { const entries = map.get(key) ?? []; entries.map((entry) => ({ ...entry })).forEach((entry, index) => { flattened.push({ ...entry, position: index }); }); }); return flattened; };
-const buildPersistPayload = (boardId: string, cards: TeamBoardCard[]) => cards.map((card) => ({ board_id: boardId, card_id: card.cardId, card_data: buildCardData(card), stage: droppableKey(card.assigneeId, card.status), position: card.position ?? 0, project_number: null, project_name: null }));
-
-const normalizeCard = (row: any): TeamBoardCard | null => {
-  const stageInfo = typeof row.stage === 'string' ? parseDroppableKey(row.stage) : { assigneeId: null, status: 'backlog' as TeamBoardStatus };
-  const payload = (row.card_data ?? {}) as Record<string, unknown>;
-  if (payload && payload.type && payload.type !== 'teamTask' && !String(row.stage || '').startsWith('team|')) return null;
-  
-  const description = typeof payload.description === 'string' ? payload.description : '';
-  const dueDate = typeof payload.dueDate === 'string' && payload.dueDate ? payload.dueDate : null;
-  const important = Boolean(payload.important);
-  const watch = Boolean(payload.watch);
-  const createdBy = typeof payload.createdBy === 'string' ? payload.createdBy : undefined;
-  
-  let status: TeamBoardStatus = stageInfo.status;
-  if (typeof payload.status === 'string' && ['backlog', 'flow1', 'flow', 'done'].includes(payload.status)) status = payload.status as TeamBoardStatus;
-  let assigneeId: string | null = stageInfo.assigneeId;
-  if (typeof payload.assigneeId === 'string') assigneeId = payload.assigneeId; else if (payload.assigneeId === null) assigneeId = null;
-  
-  return { 
-      rowId: String(row.id), 
-      cardId: String(row.card_id ?? row.id ?? crypto.randomUUID()), 
-      description, dueDate, important, watch, assigneeId, status, 
-      position: typeof row.position === 'number' ? row.position : 0, 
-      createdBy 
-  };
+const convertDbToCard = (item: any, boardMap: Map<string, string>, currentBoardId: string): TeamBoardCard => {
+    const d = item.card_data || {};
+    const isLocal = item.board_id === currentBoardId;
+    const status = isLocal ? (d.status as TeamBoardStatus || 'backlog') : mapStageToTeamColumn(item.stage || d['Board Stage']);
+    
+    return {
+        rowId: String(item.id),
+        cardId: String(item.card_id),
+        boardId: item.board_id,
+        boardName: boardMap.get(item.board_id) || 'Unbekannt',
+        description: d.description || d.Teil || d.Nummer || 'Aufgabe',
+        dueDate: d['Due Date'] || d.dueDate || null,
+        important: Boolean(d.important || d.Priorität),
+        watch: Boolean(d.watch),
+        assigneeId: d.assigneeId || d.userId || d.VerantwortlichId || null,
+        status: status,
+        position: item.position || 0,
+        createdBy: d.createdBy,
+        originalStage: item.stage || d['Board Stage'],
+        originalData: d // Speichere Raw-Data für Updates
+    };
 };
 
 export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: TeamKanbanBoardProps) {
@@ -160,15 +156,16 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   const [members, setMembers] = useState<MemberWithProfile[]>([]);
   const [cards, setCards] = useState<TeamBoardCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [canModify, setCanModify] = useState(false);
+  const [canConfigure, setCanConfigure] = useState(false);
+  const [isHomeBoard, setIsHomeBoard] = useState(false);
   
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(defaultDraft);
   const [editingCard, setEditingCard] = useState<TeamBoardCard | null>(null);
   const [saving, setSaving] = useState(false);
   const [dueDateError, setDueDateError] = useState(false);
-  const [flowSaving, setFlowSaving] = useState(false);
   const [boardSettings, setBoardSettings] = useState<Record<string, any>>({});
   const [completedCount, setCompletedCount] = useState(0);
   const [users, setUsers] = useState<any[]>([]);
@@ -177,95 +174,97 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   const [topTopicsOpen, setTopTopicsOpen] = useState(false);
   const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
   
-  // KPI Dialog State
   const [kpiOpen, setKpiOpen] = useState(false);
+  const [filters, setFilters] = useState({ mine: false, overdue: false, important: false, watch: false });
 
-  const [filters, setFilters] = useState({
-    mine: false,
-    overdue: false,
-    important: false,
-    watch: false
-  });
-
-  // --- KPI Calculation ---
-  const kpiStats = useMemo(() => {
-      const active = cards.filter(c => c.status === 'flow' || c.status === 'flow1');
-      const backlog = cards.filter(c => c.status === 'backlog');
-      const today = new Date().toISOString().split('T')[0];
-      const overdue = cards.filter(c => c.dueDate && c.dueDate < today);
-      
-      // Workload per Member
-      const memberLoad = members.map(m => {
-          const count = active.filter(c => c.assigneeId === m.profile_id).length;
-          return { 
-              name: m.profile?.full_name || m.profile?.email || '?', 
-              count,
-              avatar: getInitials(m.profile?.full_name || m.profile?.email || '')
-          };
-      }).sort((a, b) => b.count - a.count);
-
-      return {
-          activeCount: active.length,
-          backlogCount: backlog.length,
-          doneCount: completedCount,
-          overdueCount: overdue.length,
-          importantCount: cards.filter(c => c.important).length,
-          watchCount: cards.filter(c => c.watch).length,
-          memberLoad
-      };
-  }, [cards, members, completedCount]);
-
-  // --- Data Loading ---
-  const persistAllCards = useCallback(async (entries: TeamBoardCard[]) => {
-      if (!supabase) return;
-      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
-      const response = await fetch(`/api/boards/${boardId}/cards`, { method: 'POST', headers, body: JSON.stringify({ cards: buildPersistPayload(boardId, entries) }), credentials: 'include' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    }, [boardId, supabase]);
-
+  // --- Loading ---
   const loadBoardSettings = useCallback(async () => {
     if (!supabase) return;
-    const headers = await buildSupabaseAuthHeaders(supabase);
-    const response = await fetch(`/api/boards/${boardId}/settings`, { method: 'GET', headers, credentials: 'include' });
-    if (response.status === 404) { setBoardSettings({}); setCompletedCount(0); return; }
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const response = await fetch(`/api/boards/${boardId}/settings`, { method: 'GET', headers: await buildSupabaseAuthHeaders(supabase) });
+    if (!response.ok) return;
     const payload = await response.json();
-    setBoardSettings(payload.settings ?? {});
-    setCompletedCount(Number(payload.settings?.teamBoard?.completedCount || 0));
+    const s = payload.settings || {};
+    setBoardSettings(s);
+    setIsHomeBoard(!!s.isHomeBoard);
+    setCompletedCount(Number(s.teamBoard?.completedCount || 0));
   }, [boardId, supabase]);
 
   const persistCompletedCount = useCallback(async (nextCount: number) => {
       if (!supabase) return;
       const nextSettings = { ...boardSettings, teamBoard: { ...(boardSettings.teamBoard || {}), completedCount: nextCount } };
-      const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
-      const response = await fetch(`/api/boards/${boardId}/settings`, { method: 'POST', headers, body: JSON.stringify({ settings: nextSettings }), credentials: 'include' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      await fetch(`/api/boards/${boardId}/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) }, body: JSON.stringify({ settings: nextSettings }) });
       setBoardSettings(nextSettings); setCompletedCount(nextCount);
     }, [boardId, boardSettings, supabase]);
+
+  const saveBoardSettings = async () => {
+      if (!supabase) return;
+      const nextSettings = { ...boardSettings, isHomeBoard };
+      await fetch(`/api/boards/${boardId}/settings`, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) }, 
+          body: JSON.stringify({ settings: nextSettings }) 
+      });
+      setSettingsOpen(false);
+      enqueueSnackbar('Einstellungen gespeichert', { variant: 'success' });
+      window.location.reload(); 
+  };
 
   const loadAllUsers = useCallback(async () => { try { const profiles = await fetchClientProfiles(); setUsers(profiles); return profiles; } catch (err) { return []; } }, []);
 
   const loadMembers = useCallback(async (availableProfiles: ClientProfile[]) => {
       if (!supabase) return [];
-      const { data, error } = await supabase.from('board_members').select('id, profile_id').eq('board_id', boardId).order('created_at', { ascending: true });
-      if (error) throw error;
-      const rows = (data as BoardMember[]) ?? [];
-      const mapped = rows.map((entry) => {
-          const profile = availableProfiles.find((c) => c.id === entry.profile_id) ?? null;
-          return (profile && (profile.is_active ?? true) && !isSuperuserEmail(profile.email)) ? { ...entry, profile } : null;
-        }).filter((e) => e !== null) as MemberWithProfile[];
-      setMembers(mapped);
-      return mapped;
-    }, [boardId, supabase]);
-
-  const loadCards = useCallback(async () => {
-    if (!supabase) return;
-    const { data, error } = await supabase.from('kanban_cards').select('id, card_id, card_data, stage, position').eq('board_id', boardId).order('position', { ascending: true });
-    if (error) throw error;
-    const normalized = (data ?? []).map(normalizeCard).filter((c): c is TeamBoardCard => !!c);
-    normalized.sort((a, b) => { const kA = droppableKey(a.assigneeId, a.status), kB = droppableKey(b.assigneeId, b.status); return kA === kB ? a.position - b.position : kA.localeCompare(kB); });
-    setCards(normalized);
+      const { data } = await supabase.from('board_members').select('id, profile_id').eq('board_id', boardId).order('created_at', { ascending: true });
+      if (data) {
+          const mapped = data.map((entry) => {
+              const profile = availableProfiles.find((c) => c.id === entry.profile_id) ?? null;
+              return (profile && (profile.is_active ?? true) && !isSuperuserEmail(profile.email)) ? { ...entry, profile } : null;
+            }).filter((e) => e !== null) as MemberWithProfile[];
+          setMembers(mapped);
+          return mapped;
+      }
+      return [];
   }, [boardId, supabase]);
+
+  const loadCards = useCallback(async (currentMembers: MemberWithProfile[]) => {
+    if (!supabase) return;
+    try {
+        const { data: boards } = await supabase.from('kanban_boards').select('id, name');
+        const boardMap = new Map(boards?.map(b => [b.id, b.name]));
+
+        let query = supabase.from('kanban_cards').select('*');
+        if (!isHomeBoard) {
+            query = query.eq('board_id', boardId);
+        }
+        
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const memberIds = currentMembers.map(m => m.profile_id);
+        const loadedCards: TeamBoardCard[] = [];
+        
+        data.forEach(item => {
+            let d = item.card_data || {};
+            if (d?.Archived === '1' || d?.archived) return;
+
+            const assignee = d.assigneeId || d.userId || d.VerantwortlichId;
+            const isLocal = item.board_id === boardId;
+            
+            if (isLocal || (isHomeBoard && assignee && memberIds.includes(assignee))) {
+                loadedCards.push(convertDbToCard(item, boardMap, boardId));
+            }
+        });
+
+        loadedCards.sort((a, b) => {
+            const assignA = a.assigneeId || '';
+            const assignB = b.assigneeId || '';
+            if (assignA !== assignB) return assignA.localeCompare(assignB);
+            return a.position - b.position;
+        });
+
+        setCards(loadedCards);
+
+    } catch (error) { console.error(error); }
+  }, [boardId, supabase, isHomeBoard]);
 
   const loadTopTopics = useCallback(async () => {
     if (!supabase) return;
@@ -274,37 +273,62 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   }, [boardId, supabase]);
 
   const evaluatePermissions = useCallback(async (profiles: ClientProfile[], currentMembers: MemberWithProfile[]) => {
-      if (!supabase) { setCanModify(false); return; }
+      if (!supabase) return;
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { setCanModify(false); return; }
+      if (!user) return;
       setCurrentUser(user);
+      
       const profile = profiles.find(p => p.id === user.id);
-      const role = String(profile?.role || '').toLowerCase();
-      const elevated = role === 'admin' || role === 'owner' || role === 'manager' || role === 'superuser' || isSuperuserEmail(user.email || '');
-      const member = currentMembers.some(m => m.profile_id === user.id);
-      let owns = false, admin = false;
-      try { const { data } = await supabase.from('kanban_boards').select('owner_id, board_admin_id').eq('id', boardId).maybeSingle(); if(data) { owns = data.owner_id === user.id; admin = data.board_admin_id === user.id; } } catch {}
-      setCanModify(elevated || member || owns || admin);
-    }, [boardId, supabase]);
+      const isSuper = isSuperuserEmail(user.email) || profile?.role === 'admin';
+      
+      const { data: boardRow } = await supabase.from('kanban_boards').select('owner_id, board_admin_id').eq('id', boardId).maybeSingle();
+      const isOwner = boardRow?.owner_id === user.id;
+      const isBoardAdmin = boardRow?.board_admin_id === user.id;
+      const isMember = currentMembers.some(m => m.profile_id === user.id);
+      
+      setCanModify(isSuper || isOwner || isBoardAdmin || isMember);
+      setCanConfigure(isSuper || isOwner || isBoardAdmin);
+  }, [boardId, supabase]);
 
   useEffect(() => {
-    if (!supabase) return;
     let active = true;
-    const loadAll = async () => {
-      setLoading(true); setError(null);
-      try {
-        const profiles = await loadAllUsers();
-        if (!active) return;
+    const init = async () => {
+        if (!supabase) return;
+        setLoading(true);
         await loadBoardSettings();
+        const profiles = await loadAllUsers();
         const mems = await loadMembers(profiles);
-        await loadCards();
-        await evaluatePermissions(profiles, mems);
-        await loadTopTopics();
-      } catch (e) { if (active) setError('Fehler beim Laden.'); } finally { if (active) setLoading(false); }
+        if (active) {
+            await loadCards(mems);
+            await loadTopTopics();
+            await evaluatePermissions(profiles, mems);
+            setLoading(false);
+        }
     };
-    loadAll();
+    init();
     return () => { active = false; };
   }, [boardId]);
+
+  useEffect(() => {
+      if (!loading && members.length > 0) {
+          loadCards(members);
+      }
+  }, [isHomeBoard, loading]); 
+
+  // --- KPI ---
+  const kpiStats = useMemo(() => {
+      const active = cards.filter(c => c.status === 'flow' || c.status === 'flow1');
+      const backlog = cards.filter(c => c.status === 'backlog');
+      const today = new Date().toISOString().split('T')[0];
+      const overdue = cards.filter(c => c.dueDate && c.dueDate < today);
+      
+      const memberLoad = members.map(m => {
+          const count = active.filter(c => c.assigneeId === m.profile_id).length;
+          return { name: m.profile?.full_name || m.profile?.email || '?', count, avatar: getInitials(m.profile?.full_name || m.profile?.email || '') };
+      }).sort((a, b) => b.count - a.count);
+
+      return { activeCount: active.length, backlogCount: backlog.length, doneCount: completedCount, overdueCount: overdue.length, importantCount: cards.filter(c => c.important).length, watchCount: cards.filter(c => c.watch).length, memberLoad };
+  }, [cards, members, completedCount]);
 
   // --- Actions ---
   
@@ -324,224 +348,180 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       setDialogOpen(true);
   };
 
-  const openEditDialog = (card: TeamBoardCard) => { if (!canModify) return; setEditingCard(card); setDraft({ description: card.description, dueDate: card.dueDate ?? '', important: card.important, watch: card.watch, assigneeId: card.assigneeId, status: card.status }); setDueDateError(false); setDialogOpen(true); };
-  const closeDialog = () => { if (!saving) { setDialogOpen(false); setEditingCard(null); setDraft(defaultDraft); setDueDateError(false); }};
-  const handleDraftChange = (k: keyof TaskDraft, v: any) => { setDraft(p => ({...p, [k]: v})); if(k==='dueDate') setDueDateError(!v); };
-
-  const toggleLaneCollapse = (memberId: string) => {
-      setCollapsedLanes(prev => ({...prev, [memberId]: !prev[memberId]}));
+  const openEditDialog = (card: TeamBoardCard) => { 
+      if (!canModify) return; 
+      setEditingCard(card); 
+      setDraft({ 
+          description: card.description, 
+          dueDate: card.dueDate ?? '', 
+          important: card.important, 
+          watch: card.watch, 
+          assigneeId: card.assigneeId, 
+          status: card.status 
+      }); 
+      setDueDateError(false); 
+      setDialogOpen(true); 
   };
 
-  // Toggle Funktion
+  const closeDialog = () => { 
+      if (!saving) { 
+          setDialogOpen(false); 
+          setEditingCard(null); 
+          setDraft(defaultDraft); 
+          setDueDateError(false); 
+      }
+  };
+
+  const handleDraftChange = (k: keyof TaskDraft, v: any) => { setDraft(p => ({...p, [k]: v})); if(k==='dueDate') setDueDateError(!v); };
+  const toggleLaneCollapse = (memberId: string) => { setCollapsedLanes(prev => ({...prev, [memberId]: !prev[memberId]})); };
+
   const toggleCardProperty = async (card: TeamBoardCard, property: 'important' | 'watch', e: React.MouseEvent) => {
       e.stopPropagation();
-      if (!canModify) return;
-
+      if (!canModify || !supabase) return;
       const newValue = !card[property];
-      const newCards = cards.map(c => c.cardId === card.cardId ? { ...c, [property]: newValue } : c);
-      setCards(newCards);
-
+      setCards(prev => prev.map(c => c.cardId === card.cardId ? { ...c, [property]: newValue } : c));
       try {
-          await persistAllCards(newCards);
-      } catch (err) {
-          setCards(cards);
-          enqueueSnackbar('Fehler beim Speichern', { variant: 'error' });
-      }
+          // Wir nutzen originalData, um sicherzustellen, dass wir nicht Daten überschreiben
+          const newData = { ...card.originalData, [property]: newValue };
+          await supabase.from('kanban_cards').update({ card_data: newData }).eq('id', card.rowId);
+      } catch (err) { setCards(cards); }
   };
 
   const handleDragEnd = async (result: DropResult) => {
-    if (!canModify || !result.destination) return;
-    const { source, destination } = result;
-    if (source.droppableId === destination.droppableId && source.index === destination.index) return;
-    const working = createColumnsMapFromCards(cards);
-    const srcList = working.get(source.droppableId) || [];
-    const [moved] = srcList.splice(source.index, 1);
-    working.set(source.droppableId, srcList);
+    if (!canModify || !result.destination || !supabase) return;
+    const { destination, draggableId } = result;
+
+    const newCards = [...cards];
+    const idx = newCards.findIndex(c => c.cardId === draggableId);
+    if (idx === -1) return;
+
+    const moved = { ...newCards[idx] };
     const destInfo = parseDroppableKey(destination.droppableId);
-    const updated = { ...moved, assigneeId: destInfo.assigneeId, status: destInfo.status };
-    const destList = source.droppableId === destination.droppableId ? srcList : (working.get(destination.droppableId) || []);
-    destList.splice(destination.index, 0, updated);
-    working.set(destination.droppableId, destList);
-    const flat = flattenColumnsMap(working);
-    setCards(flat);
-    try { await persistAllCards(flat); enqueueSnackbar('Aufgabe verschoben', { variant: 'success', autoHideDuration: 1500 }); } catch { setError('Speicherfehler'); loadCards(); }
+    
+    moved.status = destInfo.status;
+    moved.assigneeId = destInfo.assigneeId;
+    
+    newCards.splice(idx, 1);
+    newCards.splice(destination.index, 0, moved);
+    setCards(newCards);
+
+    try {
+        let dbStage = moved.originalStage || 'Backlog';
+        if (destInfo.status === 'done') dbStage = 'Fertig';
+        if (destInfo.status === 'backlog') dbStage = 'Backlog';
+        if (destInfo.status === 'flow' || destInfo.status === 'flow1') {
+            if (['Backlog', 'Fertig', 'Archiv'].includes(dbStage)) dbStage = 'In Bearbeitung';
+        }
+
+        await supabase.from('kanban_cards').update({
+            stage: dbStage, 
+            card_data: { ...moved.originalData, "Board Stage": dbStage, assigneeId: destInfo.assigneeId }
+        }).eq('id', moved.rowId);
+    } catch (e) { console.error(e); }
   };
 
   const saveTask = async () => {
-    if (!draft.description.trim()) { enqueueSnackbar('Beschreibung fehlt', { variant: 'warning' }); return; }
-    if (!draft.dueDate) { setDueDateError(true); enqueueSnackbar('Datum fehlt', { variant: 'warning' }); return; }
-    if (draft.status !== 'backlog' && !draft.assigneeId) { enqueueSnackbar('Mitglied fehlt', { variant: 'warning' }); return; }
+    if (!supabase) return;
     setSaving(true);
     try {
-      const working = createColumnsMapFromCards(cards);
-      if (editingCard) {
-        const prevKey = droppableKey(editingCard.assigneeId, editingCard.status);
-        const prevList = working.get(prevKey) || [];
-        const idx = prevList.findIndex(c => c.cardId === editingCard.cardId);
-        if (idx !== -1) prevList.splice(idx, 1);
-        working.set(prevKey, prevList);
-        const updated = { ...editingCard, ...draft };
-        const nextKey = droppableKey(updated.assigneeId, updated.status);
-        const nextList = prevKey === nextKey ? prevList : (working.get(nextKey) || []);
-        nextList.splice(prevKey === nextKey && idx >= 0 ? idx : nextList.length, 0, updated);
-        working.set(nextKey, nextList);
-      } else {
-        const { data: { user } } = await supabase!.auth.getUser();
-        const newCard = { rowId: `team-${crypto.randomUUID()}`, cardId: `team-${crypto.randomUUID()}`, ...draft, position: 0, createdBy: user?.id };
-        const key = droppableKey(newCard.assigneeId, newCard.status);
-        const list = working.get(key) || [];
-        list.push(newCard as TeamBoardCard);
-        working.set(key, list);
-      }
-      const flat = flattenColumnsMap(working);
-      setCards(flat);
-      await persistAllCards(flat);
-      enqueueSnackbar('Aufgabe gespeichert', { variant: 'success' });
-      closeDialog();
-    } catch { enqueueSnackbar('Fehler beim Speichern', { variant: 'error' }); } finally { setSaving(false); }
+        // Fallunterscheidung: UPDATE vs INSERT
+        if (editingCard) {
+             const newStage = draft.status; // Wir behalten den Status aus dem Dialog
+             // Wenn der Nutzer den Status ändert, müssen wir das mappen, aber hier im Dialog ändert man meist Text/Datum
+             // Die Status-Logik bei Änderung ist komplex, einfacher: wir lassen Status hier unberührt oder nehmen ihn mit
+             
+             // Update
+             const mergedData = {
+                 ...editingCard.originalData,
+                 description: draft.description,
+                 "Due Date": draft.dueDate,
+                 important: draft.important,
+                 watch: draft.watch,
+                 assigneeId: draft.assigneeId
+             };
+
+             await supabase.from('kanban_cards').update({
+                 card_data: mergedData
+             }).eq('id', editingCard.rowId);
+             enqueueSnackbar('Aufgabe aktualisiert', { variant: 'success' });
+
+        } else {
+            // Insert (Neu)
+            await supabase.from('kanban_cards').insert([{
+                board_id: boardId,
+                card_id: crypto.randomUUID(),
+                stage: draft.status === 'done' ? 'Fertig' : 'Backlog',
+                card_data: {
+                    description: draft.description,
+                    "Due Date": draft.dueDate,
+                    important: draft.important,
+                    watch: draft.watch,
+                    assigneeId: draft.assigneeId,
+                    "Board Stage": draft.status === 'done' ? 'Fertig' : 'Backlog'
+                }
+            }]);
+            enqueueSnackbar('Aufgabe erstellt', { variant: 'success' });
+        }
+        
+        closeDialog();
+        const mems = await loadMembers(await fetchClientProfiles());
+        loadCards(mems);
+    } catch (e) { console.error(e); } finally { setSaving(false); }
   };
 
   const deleteTask = async () => {
-    if (!editingCard) return;
-    setSaving(true);
-    try {
-      const working = createColumnsMapFromCards(cards);
-      const key = droppableKey(editingCard.assigneeId, editingCard.status);
-      const list = working.get(key) || [];
-      const idx = list.findIndex(c => c.cardId === editingCard.cardId);
-      if (idx !== -1) {
-        list.splice(idx, 1);
-        working.set(key, list);
-        const flat = flattenColumnsMap(working);
-        setCards(flat);
-        await persistAllCards(flat);
-        enqueueSnackbar('Aufgabe gelöscht', { variant: 'success' });
-        closeDialog();
-      }
-    } catch { enqueueSnackbar('Fehler beim Löschen', { variant: 'error' }); } finally { setSaving(false); }
+      if (!editingCard || !supabase) return;
+      if (!confirm("Löschen?")) return;
+      await supabase.from('kanban_cards').delete().eq('id', editingCard.rowId);
+      setCards(prev => prev.filter(c => c.cardId !== editingCard.cardId));
+      setDialogOpen(false);
   };
 
   const handleCompleteFlow = async () => {
-    if (!canModify || flowSaving) return;
-    const done = cards.filter(c => c.status === 'done');
-    if (done.length === 0) return;
+    if (!canModify || flowSaving || !supabase) return;
     setFlowSaving(true);
     try {
-      const remain = cards.filter(c => c.status !== 'done');
-      await persistAllCards(remain);
-      await persistCompletedCount(completedCount + done.length);
-      setCards(remain);
+      const doneCards = cards.filter(c => c.status === 'done');
+      for (const card of doneCards) {
+           await supabase.from('kanban_cards').update({
+               card_data: { ...card.originalData, Archived: "1", ArchivedDate: new Date().toISOString() }
+           }).eq('id', card.rowId);
+      }
+      await persistCompletedCount(completedCount + doneCards.length);
+      setCards(prev => prev.filter(c => c.status !== 'done'));
       enqueueSnackbar('Flow abgeschlossen', { variant: 'success' });
-    } catch { enqueueSnackbar('Fehler beim Abschließen', { variant: 'error' }); loadCards(); } finally { setFlowSaving(false); }
+    } catch (e) { console.error(e); } finally { setFlowSaving(false); }
   };
 
-  // --- KPI DIALOG ---
+  // --- Components ---
   const TeamKPIDialog = ({ open, onClose }: any) => (
       <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Assessment color="primary" /> Team Performance & KPIs
-          </DialogTitle>
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Assessment color="primary" /> KPIs</DialogTitle>
           <DialogContent dividers>
               <Grid container spacing={3}>
-                  {/* Key Metrics */}
-                  <Grid item xs={12} sm={4}>
-                      <Card variant="outlined" sx={{ textAlign: 'center', height: '100%', bgcolor: 'rgba(25, 118, 210, 0.04)' }}>
-                          <CardContent>
-                              <Typography variant="h3" color="primary" fontWeight="bold">{kpiStats.activeCount}</Typography>
-                              <Typography variant="body2" color="text.secondary">Aktive Aufgaben (Flow)</Typography>
-                          </CardContent>
-                      </Card>
+                  <Grid item xs={4}><Card sx={{bgcolor:'rgba(25, 118, 210, 0.04)'}}><CardContent><Typography variant="h4" color="primary">{kpiStats.activeCount}</Typography><Typography variant="caption">Aktive Aufgaben</Typography></CardContent></Card></Grid>
+                  <Grid item xs={4}><Card sx={{bgcolor:'rgba(46, 125, 50, 0.04)'}}><CardContent><Typography variant="h4" color="success.main">{kpiStats.doneCount}</Typography><Typography variant="caption">Erledigt</Typography></CardContent></Card></Grid>
+                  <Grid item xs={4}><Card sx={{bgcolor:kpiStats.overdueCount>0?'rgba(211, 47, 47, 0.04)':'transparent'}}><CardContent><Typography variant="h4" color="error">{kpiStats.overdueCount}</Typography><Typography variant="caption">Überfällig</Typography></CardContent></Card></Grid>
+                  <Grid item xs={12}><Typography variant="subtitle1" gutterBottom>Auslastung</Typography>
+                      {kpiStats.memberLoad.slice(0,5).map((m,i)=>(<Box key={i} sx={{mb:1}}><Box sx={{display:'flex', justifyContent:'space-between'}}><Typography variant="body2">{m.name}</Typography><Typography variant="body2">{m.count}</Typography></Box><LinearProgress variant="determinate" value={Math.min(100, (m.count/5)*100)} /></Box>))}
                   </Grid>
-                  <Grid item xs={12} sm={4}>
-                      <Card variant="outlined" sx={{ textAlign: 'center', height: '100%', bgcolor: 'rgba(46, 125, 50, 0.04)' }}>
-                          <CardContent>
-                              <Typography variant="h3" color="success.main" fontWeight="bold">{kpiStats.doneCount}</Typography>
-                              <Typography variant="body2" color="text.secondary">Erledigt (Gesamt)</Typography>
-                          </CardContent>
-                      </Card>
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                      <Card variant="outlined" sx={{ textAlign: 'center', height: '100%', bgcolor: kpiStats.overdueCount > 0 ? 'rgba(211, 47, 47, 0.04)' : 'transparent' }}>
-                          <CardContent>
-                              <Typography variant="h3" color={kpiStats.overdueCount > 0 ? 'error.main' : 'text.secondary'} fontWeight="bold">{kpiStats.overdueCount}</Typography>
-                              <Typography variant="body2" color="text.secondary">Überfällig</Typography>
-                          </CardContent>
-                      </Card>
-                  </Grid>
-
-                  {/* Member Workload */}
-                  <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ mt: 2 }}>
-                          👥 Auslastung (Aktive Aufgaben)
-                      </Typography>
-                      <Card variant="outlined">
-                          <CardContent>
-                              <Stack spacing={2}>
-                                  {kpiStats.memberLoad.slice(0, 5).map((m, i) => (
-                                      <Box key={i}>
-                                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5, fontSize: '0.85rem' }}>
-                                              <Stack direction="row" spacing={1} alignItems="center">
-                                                  <Avatar sx={{ width: 20, height: 20, fontSize: '0.6rem' }}>{m.avatar}</Avatar>
-                                                  <span>{m.name}</span>
-                                              </Stack>
-                                              <strong>{m.count}</strong>
-                                          </Box>
-                                          <LinearProgress 
-                                              variant="determinate" 
-                                              value={Math.min(100, (m.count / 5) * 100)} 
-                                              color={m.count > 4 ? "error" : "primary"}
-                                              sx={{ height: 8, borderRadius: 4, bgcolor: 'rgba(0,0,0,0.05)' }} 
-                                          />
-                                      </Box>
-                                  ))}
-                              </Stack>
-                          </CardContent>
-                      </Card>
-                  </Grid>
-                  
-                  {/* Task Types */}
-                   <Grid item xs={12} md={6}>
-                      <Typography variant="subtitle1" fontWeight={600} gutterBottom sx={{ mt: 2 }}>
-                          📊 Status & Backlog
-                      </Typography>
-                      <Card variant="outlined" sx={{ height: 'fit-content' }}>
-                          <CardContent>
-                              <Stack spacing={2}>
-                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, border: '1px solid var(--line)', borderRadius: 2 }}>
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Warning color="error" fontSize="small" /> Wichtig</Box>
-                                      <Typography fontWeight="bold">{kpiStats.importantCount}</Typography>
-                                   </Box>
-                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, border: '1px solid var(--line)', borderRadius: 2 }}>
-                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><AccessTime color="primary" fontSize="small" /> Wiedervorlage</Box>
-                                      <Typography fontWeight="bold">{kpiStats.watchCount}</Typography>
-                                   </Box>
-                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 1, border: '1px solid var(--line)', borderRadius: 2, bgcolor: 'rgba(0,0,0,0.02)' }}>
-                                      <Typography color="text.secondary">Im Backlog</Typography>
-                                      <Typography fontWeight="bold">{kpiStats.backlogCount}</Typography>
-                                   </Box>
-                              </Stack>
-                          </CardContent>
-                      </Card>
-                   </Grid>
               </Grid>
           </DialogContent>
-          <DialogActions>
-              <Button onClick={onClose}>Schließen</Button>
-          </DialogActions>
+          <DialogActions><Button onClick={onClose}>Schließen</Button></DialogActions>
       </Dialog>
   );
 
-  // Top Themen Dialog
   const TopTopicsDialog = ({ open, onClose }: any) => {
       const [localTopics, setLocalTopics] = useState<TopTopic[]>(topTopics);
       useEffect(() => { setLocalTopics(topTopics); }, [topTopics]);
-      const handleSaveTopic = async (index: number, field: string, value: any) => {
+      const handleSaveTopic = async (index: number, field: keyof TopTopic, value: any) => {
+          if (!supabase) return;
+          const topic = localTopics[index];
           const newTopics = [...localTopics];
-          newTopics[index] = { ...newTopics[index], [field]: value };
+          newTopics[index] = { ...topic, [field]: value };
           setLocalTopics(newTopics);
-          if (newTopics[index].id && !newTopics[index].id.startsWith('tmp')) {
-              if (!supabase) return;
-              await supabase.from('board_top_topics').update({ [field]: value }).eq('id', newTopics[index].id);
+          if (!topic.id.startsWith('temp-')) {
+             await supabase.from('board_top_topics').update({ [field]: value }).eq('id', topic.id);
           }
       };
       const handleAdd = async () => {
@@ -556,14 +536,13 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       };
       return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-           <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Star color="warning" /> Top Themen der Woche</DialogTitle>
+           <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Star color="warning" /> Top Themen</DialogTitle>
            <DialogContent>
                <Stack spacing={2} sx={{ mt: 1 }}>
-                   {localTopics.length === 0 && <Typography variant="body2" color="text.secondary">Keine Top-Themen.</Typography>}
                    {localTopics.map((topic, index) => (
                        <Box key={topic.id} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                            <TextField fullWidth size="small" placeholder="Thema..." value={topic.title} onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} />
-                           <TextField type="date" size="small" label="Fällig" InputLabelProps={{ shrink: true }} value={topic.due_date || ''} onChange={(e) => handleSaveTopic(index, 'due_date', e.target.value)} sx={{ width: 150 }} />
+                           <TextField type="date" size="small" value={topic.due_date || ''} onChange={(e) => handleSaveTopic(index, 'due_date', e.target.value)} sx={{ width: 150 }} InputLabelProps={{shrink:true}} />
                            <IconButton color="error" onClick={() => handleDelete(topic.id)}><Delete /></IconButton>
                        </Box>
                    ))}
@@ -575,296 +554,225 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       );
   };
 
-  // Filter Logic
   const filteredCards = useMemo(() => {
       let result = cards;
-      if (filters.mine && currentUser) { result = result.filter(c => c.assigneeId === currentUser.id); }
+      if (filters.mine && currentUser?.id) result = result.filter(c => c.assigneeId === currentUser.id);
       if (filters.overdue) { const today = new Date().toISOString().split('T')[0]; result = result.filter(c => c.dueDate && c.dueDate < today); }
-      if (filters.important) { result = result.filter(c => c.important); }
-      if (filters.watch) { result = result.filter(c => c.watch); }
+      if (filters.important) result = result.filter(c => c.important);
+      if (filters.watch) result = result.filter(c => c.watch);
       return result;
   }, [cards, filters, currentUser]);
 
-  const backlogCards = useMemo(() => filteredCards.filter(c => c.status === 'backlog').sort((a, b) => a.position - b.position), [filteredCards]);
   const memberColumns = useMemo(() => members.map(m => {
-    const mine = filteredCards.filter(c => c.assigneeId === m.profile_id);
-    const flow1 = mine.filter(c => c.status === 'flow1').sort((a,b)=>a.position-b.position);
-    const flow = mine.filter(c => c.status === 'flow').sort((a,b)=>a.position-b.position);
-    const done = mine.filter(c => c.status === 'done').sort((a,b)=>a.position-b.position);
-    return { member: m, flow1, flow, done };
+      const mine = filteredCards.filter(c => c.assigneeId === m.profile_id);
+      return {
+          member: m,
+          flow1: mine.filter(c => c.status === 'flow1'),
+          flow: mine.filter(c => c.status === 'flow'),
+          done: mine.filter(c => c.status === 'done')
+      };
   }), [filteredCards, members]);
-  
-  const doneCardsCount = useMemo(() => filteredCards.filter(c => c.status === 'done').length, [filteredCards]);
 
-  // --- Card Renderer ---
+  const backlogCards = useMemo(() => filteredCards.filter(c => c.status === 'backlog'), [filteredCards]);
+
   const renderCard = (card: TeamBoardCard, index: number) => {
-    const due = card.dueDate ? new Date(card.dueDate).toLocaleDateString('de-DE') : null;
-    const overdue = card.dueDate ? new Date(card.dueDate) < new Date(new Date().toDateString()) : false;
-    const creator = card.createdBy ? users.find(u => u.id === card.createdBy) : null;
-    const initials = creator ? getInitials(creator.full_name || creator.name || '') : null;
-    const isHighlighted = highlightCardId === card.cardId;
-    const isImportant = card.important;
-    const isWatch = card.watch;
-
-    // Rahmenfarbe Logik: Gelb (Highlight) > Rot (Wichtig) > Blau (Watch) > Standard (Dezent)
-    const borderColor = isHighlighted ? '#ffc107' : (isImportant ? '#d32f2f' : (isWatch ? '#1976d2' : 'rgba(0,0,0,0.12)'));
+    // Design: Kantig (borderRadius: 1), dünner Rahmen
+    const borderColor = highlightCardId === card.cardId ? '#ffc107' : (card.important ? '#d32f2f' : (card.watch ? '#1976d2' : 'rgba(0,0,0,0.12)'));
+    const isExternal = card.boardId !== boardId; 
+    
+    const dateStr = card.dueDate ? new Date(card.dueDate).toLocaleDateString('de-DE') : null;
+    const isOverdue = card.dueDate ? new Date(card.dueDate) < new Date() : false;
 
     return (
       <Draggable key={card.cardId} draggableId={card.cardId} index={index} isDragDisabled={!canModify}>
         {(prov, snap) => (
-          <Card 
-            ref={(el) => { prov.innerRef(el); if (isHighlighted && el) el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' }); }}
-            style={prov.draggableProps.style}
-            {...prov.draggableProps} 
-            {...prov.dragHandleProps} 
+          <Card
+            ref={prov.innerRef} {...prov.draggableProps} {...prov.dragHandleProps}
             sx={{ 
-                width: '100%', 
                 mb: 1, 
-                borderRadius: '12px', 
-                boxShadow: snap.isDragging ? '0 14px 28px rgba(0,0,0,0.30)' : '0 3px 8px rgba(0,0,0,0.06)', 
-                position: 'relative', 
+                borderRadius: 1, // Kantiges Design
                 border: '1px solid', 
                 borderColor, 
-                animation: isHighlighted ? `${blinkAnimation} 1s 5` : 'none',
-                minHeight: MIN_CARD_HEIGHT, 
-                display: 'flex', 
-                flexDirection: 'column', 
-                backgroundColor: 'var(--panel)',
-                '&:hover': !snap.isDragging ? { transform: 'translateY(-2px)', boxShadow: '0 6px 14px rgba(0,0,0,0.18)' } : {},
-                transition: 'transform 0.12s ease, box-shadow 0.12s ease'
-            }} 
+                boxShadow: snap.isDragging ? 3 : 1, 
+                bgcolor: isExternal ? '#fafafa' : 'background.paper' 
+            }}
             onClick={() => openEditDialog(card)}
           >
-            {/* ACTION ICONS */}
-            <Box sx={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 0.5, zIndex: 2 }}>
-                {/* WICHTIG */}
-                <IconButton 
-                    size="small" 
-                    onClick={(e) => toggleCardProperty(card, 'important', e)}
-                    sx={{ 
-                        width: 24, height: 24,
-                        color: isImportant ? '#d32f2f' : 'rgba(0,0,0,0.2)',
-                        border: '1.5px solid',
-                        borderColor: isImportant ? '#d32f2f' : 'transparent',
-                        bgcolor: 'transparent',
-                        p: 0,
-                        '&:hover': { bgcolor: 'rgba(211, 47, 47, 0.04)', borderColor: '#d32f2f', color: '#d32f2f' }
-                    }}
-                    title="Wichtig"
-                >
-                    <PriorityHighIcon sx={{ fontSize: 16, fontWeight: 'bold' }} />
-                </IconButton>
-                
-                {/* WATCH */}
-                <IconButton 
-                    size="small" 
-                    onClick={(e) => toggleCardProperty(card, 'watch', e)}
-                    sx={{ 
-                        width: 24, height: 24,
-                        color: isWatch ? '#1976d2' : 'rgba(0,0,0,0.2)',
-                        bgcolor: 'transparent',
-                        p: 0,
-                        '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.04)', color: '#1976d2' }
-                    }}
-                    title="Auf Wiedervorlage"
-                >
-                    <AccessTime sx={{ fontSize: 22 }} />
-                </IconButton>
-            </Box>
-
-            <CardContent sx={{ 
-                pl: 1.5, 
-                pr: 7, // Platz für Icons lassen
-                py: 1.5, 
-                pb: '12px !important', // Mui Reset
-                display: 'flex', flexDirection: 'column', gap: 0.5, height: '100%' 
-            }}>
-              <Tooltip title={card.description} placement="top-start" arrow enterDelay={1000}>
-                <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '0.85rem', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
-                  {card.description || 'Ohne Beschreibung'}
-                </Typography>
-              </Tooltip>
-              <Box sx={{ mt: 'auto', pt: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                {due && <Typography variant="caption" color={overdue ? 'error.main' : 'text.secondary'} sx={{ fontSize: '0.7rem', fontWeight: overdue ? 700 : 400, bgcolor: overdue ? '#ffebee' : 'transparent', px: overdue ? 0.5 : 0, borderRadius: 0.5 }}>{due}</Typography>}
-                {initials && <Typography variant="caption" sx={{ fontSize: '0.6rem', color: 'text.disabled', fontWeight: 600, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: '4px', px: 0.5 }}>{initials}</Typography>}
-              </Box>
-            </CardContent>
+             <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                     <Chip label={card.boardName} size="small" icon={isExternal ? <LinkIcon style={{fontSize:12}}/> : undefined} sx={{ fontSize: '10px', height: 16, px: 0, bgcolor: isExternal ? '#e3f2fd' : 'rgba(0,0,0,0.05)' }} />
+                     <Box>
+                        {card.important && <PriorityHighIcon sx={{ fontSize: 14, color: 'error.main' }} />}
+                        {card.watch && <AccessTime sx={{ fontSize: 14, color: 'primary.main' }} />}
+                     </Box>
+                 </Box>
+                 <Typography variant="body2" sx={{ fontWeight: 500, lineHeight: 1.3 }}>{card.description}</Typography>
+                 
+                 {/* Fälligkeitsdatum unten rechts */}
+                 {dateStr && (
+                     <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                         <Chip 
+                             label={dateStr} 
+                             size="small" 
+                             variant="outlined" 
+                             sx={{ 
+                                 height: 18, 
+                                 fontSize: '0.65rem', 
+                                 color: isOverdue ? 'error.main' : 'text.secondary',
+                                 borderColor: isOverdue ? 'error.light' : 'divider'
+                             }} 
+                         />
+                     </Box>
+                 )}
+             </CardContent>
           </Card>
         )}
       </Draggable>
     );
   };
 
-  if (!supabase) return <Box sx={{ p: 4 }}><SupabaseConfigNotice /></Box>;
-  if (loading) return <Box sx={{ p: 4 }}><Typography>🔄 Teamboard wird geladen...</Typography></Box>;
+  if (loading) return <LinearProgress sx={{ mt: 4 }} />;
+  if (!supabase) return <Card><CardContent><SupabaseConfigNotice /></CardContent></Card>;
 
   return (
-    <Box sx={{ p: 2, backgroundColor: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
-      
-      {/* HEADER */}
-      <Box sx={{ p: 1, borderBottom: '1px solid var(--line)', backgroundColor: 'var(--panel)', borderRadius: '12px', display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            {onExit && <Button onClick={onExit} startIcon={<ArrowBack />}>Zurück</Button>}
-            <Box sx={{ display: 'flex', gap: 1 }}>
-                 <Chip icon={<FilterList />} label="Meine" clickable color={filters.mine ? "primary" : "default"} onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))} variant={filters.mine ? "filled" : "outlined"} />
-                 <Chip icon={<Warning />} label="Überfällig" clickable color={filters.overdue ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))} variant={filters.overdue ? "filled" : "outlined"} />
-                 <Chip icon={<PriorityHigh />} label="Wichtig" clickable color={filters.important ? "warning" : "default"} onClick={() => setFilters(prev => ({ ...prev, important: !prev.important }))} variant={filters.important ? "filled" : "outlined"} />
-                 <Chip icon={<AccessTime />} label="Wiedervorlage" clickable color={filters.watch ? "info" : "default"} onClick={() => setFilters(prev => ({ ...prev, watch: !prev.watch }))} variant={filters.watch ? "filled" : "outlined"} />
-            </Box>
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-             <Tooltip title="Top Themen">
-                 <IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}><Star fontSize="small" color="warning" /></IconButton>
-             </Tooltip>
-             <Tooltip title="KPI Dashboard">
-                 <IconButton onClick={() => setKpiOpen(true)}><Assessment fontSize="small" color="primary" /></IconButton>
-             </Tooltip>
-        </Box>
-      </Box>
-
-      {/* MAIN SPLIT VIEW */}
-      <Box sx={{ flexGrow: 1, minHeight: 0, overflow: 'hidden', display: 'flex', gap: 2 }}>
-        <DragDropContext onDragEnd={handleDragEnd}>
+    <Box sx={{ p: 2, bgcolor: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+              <Chip icon={<FilterList/>} label="Meine" clickable onClick={() => setFilters(p => ({...p, mine: !p.mine}))} color={filters.mine ? "primary" : "default"} />
+              <Chip icon={<Warning/>} label="Überfällig" clickable onClick={() => setFilters(p => ({...p, overdue: !p.overdue}))} color={filters.overdue ? "error" : "default"} />
+              <Chip icon={<PriorityHigh/>} label="Wichtig" clickable onClick={() => setFilters(p => ({...p, important: !p.important}))} color={filters.important ? "warning" : "default"} />
+              <Chip icon={<AccessTime/>} label="Watch" clickable onClick={() => setFilters(p => ({...p, watch: !p.watch}))} color={filters.watch ? "info" : "default"} />
+          </Box>
           
-            {/* --- LEFT: BACKLOG --- */}
-            <Box sx={{ width: BACKLOG_WIDTH, minWidth: BACKLOG_WIDTH, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '12px', height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-               <Box sx={{ p: 2, borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'rgba(0,0,0,0.02)' }}>
-                  <Typography variant="h6" sx={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', fontWeight: 700 }}>
-                      {statusLabels.backlog} <Typography component="span" variant="caption" sx={{ml:1, bgcolor:'rgba(0,0,0,0.08)', px:0.8, py:0.2, borderRadius:1}}>{backlogCards.length}</Typography>
-                  </Typography>
-                  {canModify && <IconButton color="primary" size="small" onClick={openCreateDialog}><AddIcon fontSize="small" /></IconButton>}
-               </Box>
-               <Droppable droppableId={droppableKey(null, 'backlog')}>
-                  {(provided, snapshot) => (
-                     <Box ref={provided.innerRef} {...provided.droppableProps} sx={{ flex: 1, overflowY: 'auto', p: 1.5, backgroundColor: snapshot.isDraggingOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent', transition: 'background-color 0.2s' }}>
-                        {backlogCards.map((card, index) => renderCard(card, index))}
-                        {provided.placeholder}
-                     </Box>
-                  )}
-               </Droppable>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+              <Tooltip title="Top Themen"><IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}><Star color="warning" /></IconButton></Tooltip>
+              <Tooltip title="KPIs"><IconButton onClick={() => setKpiOpen(true)}><Assessment color="primary" /></IconButton></Tooltip>
+              
+              {/* Settings Button NUR für Admins/Superuser */}
+              {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title="Board Einstellungen"><Settings /></IconButton>}
+          </Box>
+      </Box>
+      
+      {isHomeBoard && <Alert severity="info" sx={{ py: 0 }}>🏠 <strong>Heimatboard:</strong> Zeigt alle Aufgaben der Mitglieder.</Alert>}
+
+      <Box sx={{ flex: 1, display: 'flex', gap: 2, overflow: 'hidden' }}>
+        <DragDropContext onDragEnd={handleDragEnd}>
+            {/* BACKLOG */}
+            <Box sx={{ width: BACKLOG_WIDTH, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', borderRadius: 1, border: '1px solid var(--line)' }}>
+                <Box sx={{ p: 2, borderBottom: '1px solid var(--line)' }}><Typography variant="subtitle2">SPEICHER ({backlogCards.length})</Typography></Box>
+                <Droppable droppableId={droppableKey(null, 'backlog')}>
+                    {(prov) => (
+                        <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
+                            {backlogCards.map((c, i) => renderCard(c, i))}
+                            {prov.placeholder}
+                            {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={openCreateDialog} sx={{ mt: 1 }}>Neu</Button>}
+                        </Box>
+                    )}
+                </Droppable>
             </Box>
 
-            {/* --- RIGHT: TEAM FLOW --- */}
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '12px', height: '100%', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-               
-               {/* TABLE HEADER (Sticky) */}
-               <Box sx={{ display: 'flex', borderBottom: '1px solid var(--line)', bgcolor: 'rgba(0,0,0,0.02)', zIndex: 10 }}>
-                   <Box sx={{ width: COL_WIDTHS.member, p: 1.5, fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary' }}>Mitglied</Box>
-                   <Box sx={{ flex: 1, p: 1.5, borderLeft: '1px solid var(--line)', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary' }}>{statusLabels.flow1}</Box>
-                   <Box sx={{ flex: 1, p: 1.5, borderLeft: '1px solid var(--line)', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary' }}>{statusLabels.flow}</Box>
-                   <Box sx={{ flex: 1, p: 1.5, borderLeft: '1px solid var(--line)', fontWeight: 700, fontSize: '0.75rem', textTransform: 'uppercase', color: 'text.secondary', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                       {statusLabels.done}
-                       <Stack direction="row" spacing={1} alignItems="center">
-                           <Chip size="small" label={`${completedCount} gesamt`} variant="outlined" sx={{ height: 20, fontSize: '0.65rem' }} />
-                           {canModify && <IconButton size="small" onClick={handleCompleteFlow} disabled={flowSaving || doneCardsCount === 0} title="Woche abschließen"><CheckCircleOutline fontSize="small" color="primary" /></IconButton>}
-                       </Stack>
-                   </Box>
-               </Box>
-               
-               {/* SWIMLANES (Scrollable) */}
-               <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                   {memberColumns.map(({ member, flow1, flow, done }) => {
-                       const isCollapsed = collapsedLanes[member.id];
-                       
-                       return (
-                           <Card key={member.id} sx={{ overflow: 'visible', borderRadius: '12px', border: '1px solid var(--line)', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
-                               {/* SWIMLANE CONTENT (FLEX ROW) */}
-                               <Box sx={{ display: 'flex', minHeight: isCollapsed ? 'auto' : 160 }}>
-                                   
-                                   {/* 1. MEMBER INFO COLUMN */}
-                                   <Box sx={{ width: COL_WIDTHS.member, minWidth: COL_WIDTHS.member, p: 2, display: 'flex', flexDirection: 'column', gap: 1, bgcolor: 'var(--panel)', borderRight: '1px solid var(--line)' }}>
-                                       <Stack direction="row" alignItems="center" justifyContent="space-between">
-                                           <Avatar sx={{ width: 32, height: 32, fontSize: '0.8rem', bgcolor: 'primary.main' }}>{getInitials(member.profile?.full_name || member.profile?.email || '?')}</Avatar>
-                                           <IconButton size="small" onClick={() => toggleLaneCollapse(member.id)}>{isCollapsed ? <KeyboardArrowDown fontSize="small"/> : <KeyboardArrowUp fontSize="small"/>}</IconButton>
-                                       </Stack>
-                                       <Box>
-                                           <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>{member.profile?.full_name || member.profile?.email}</Typography>
-                                           {member.profile?.company && <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>{member.profile.company}</Typography>}
-                                       </Box>
-                                   </Box>
+            {/* SWIMLANES (Tabellen-Layout) */}
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', borderRadius: 1, border: '1px solid var(--line)', overflow: 'hidden' }}>
+                <Box sx={{ display: 'grid', gridTemplateColumns: `${COL_WIDTHS.member} 1fr 1fr 1fr`, borderBottom: '1px solid var(--line)', bgcolor: 'rgba(0,0,0,0.02)' }}>
+                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary' }}>MITARBEITER</Box>
+                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>FLOW 1</Box>
+                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>FLOW</Box>
+                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>FERTIG</Box>
+                </Box>
 
-                                   {/* 2-4. TASK COLUMNS */}
-                                   {!isCollapsed && (
-                                       <>
-                                           {[flow1, flow, done].map((rows, i) => {
-                                               const status = i===0 ? 'flow1' : i===1 ? 'flow' : 'done';
-                                               const allowQuickAdd = (status === 'flow1' || status === 'flow') && canModify;
-                                               
-                                               return (
-                                                   <Box key={status} sx={{ flex: 1, borderRight: i<2 ? '1px solid var(--line)' : 'none', display: 'flex', flexDirection: 'column' }}>
-                                                       
-                                                       {/* Column Header with Count */}
-                                                       <Box sx={{ px: 2, py: 1, borderBottom: '1px dashed var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                           <Typography variant="caption" color="text.disabled" fontWeight={600} sx={{ textTransform: 'uppercase' }}>{rows.length} Aufgaben</Typography>
-                                                           
-                                                           {/* BUTTON OR PLACEHOLDER */}
-                                                           {allowQuickAdd ? (
-                                                               <Tooltip title="Schnell hinzufügen">
-                                                                   <IconButton size="small" onClick={() => openQuickAdd(member.profile_id, status as TeamBoardStatus)} sx={{ p: 0.5, color: 'primary.main', '&:hover': { bgcolor: 'primary.light', color: 'white' } }}>
-                                                                       <AddCircleOutline fontSize="small" />
-                                                                   </IconButton>
-                                                               </Tooltip>
-                                                           ) : (
-                                                               <Box sx={{ width: 26, height: 26 }} />
-                                                           )}
-                                                       </Box>
+                <Box sx={{ flex: 1, overflowY: 'auto' }}>
+                    {memberColumns.map(({ member, flow1, flow, done }) => {
+                        const isCollapsed = collapsedLanes[member.id];
+                        return (
+                            <Box key={member.id} sx={{ display: 'grid', gridTemplateColumns: `${COL_WIDTHS.member} 1fr 1fr 1fr`, borderBottom: '1px solid var(--line)', minHeight: isCollapsed ? 50 : 140 }}>
+                                
+                                <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1, justifyContent: isCollapsed ? 'center' : 'flex-start' }}>
+                                    <Stack direction="row" alignItems="center" spacing={1.5}>
+                                        <Avatar sx={{ width: 32, height: 32, fontSize: '0.85rem', bgcolor: 'primary.main' }}>{getInitials(member.profile?.full_name || '?')}</Avatar>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{member.profile?.full_name || 'Unbekannt'}</Typography>
+                                    </Stack>
+                                    {!isCollapsed && member.profile?.company && <Typography variant="caption" color="text.secondary" sx={{ ml: 5 }}>{member.profile.company}</Typography>}
+                                </Box>
 
-                                                       <Droppable droppableId={droppableKey(member.profile_id, status as TeamBoardStatus)}>
-                                                           {(prov, snap) => (
-                                                               <Box 
-                                                                   ref={prov.innerRef} 
-                                                                   {...prov.droppableProps} 
-                                                                   sx={{ 
-                                                                       flex: 1, 
-                                                                       p: 1.5, 
-                                                                       bgcolor: snap.isDraggingOver ? 'rgba(25, 118, 210, 0.04)' : 'transparent', 
-                                                                       transition: 'background-color 0.2s',
-                                                                       display: 'flex', 
-                                                                       flexDirection: 'column', 
-                                                                       gap: 1 
-                                                                   }}
-                                                               >
-                                                                   {rows.map((c, idx) => renderCard(c, idx))}
-                                                                   {prov.placeholder}
-                                                               </Box>
-                                                           )}
-                                                       </Droppable>
-                                                   </Box>
-                                               );
-                                           })}
-                                       </>
-                                   )}
-                                   
-                                   {isCollapsed && (
-                                       <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', px: 3, color: 'text.disabled', fontStyle: 'italic', fontSize: '0.85rem' }}>
-                                           Aufgaben eingeklappt
-                                       </Box>
-                                   )}
-                               </Box>
-                           </Card>
-                       );
-                   })}
-               </Box>
+                                {!isCollapsed && (
+                                    <>
+                                        <Box sx={{ borderLeft: '1px solid var(--line)', p: 1, bgcolor: 'rgba(0,0,0,0.01)' }}>
+                                            <Droppable droppableId={droppableKey(member.profile_id, 'flow1')}>
+                                                {(prov, snap) => (
+                                                    <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
+                                                        {flow1.map((c, i) => renderCard(c, i))}
+                                                        {prov.placeholder}
+                                                        {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={() => openQuickAdd(member.profile_id, 'flow1')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
+                                                    </Box>
+                                                )}
+                                            </Droppable>
+                                        </Box>
+
+                                        <Box sx={{ borderLeft: '1px solid var(--line)', p: 1 }}>
+                                            <Droppable droppableId={droppableKey(member.profile_id, 'flow')}>
+                                                {(prov, snap) => (
+                                                    <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
+                                                        {flow.map((c, i) => renderCard(c, i))}
+                                                        {prov.placeholder}
+                                                        {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline/>} onClick={() => openQuickAdd(member.profile_id, 'flow')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
+                                                    </Box>
+                                                )}
+                                            </Droppable>
+                                        </Box>
+
+                                        <Box sx={{ borderLeft: '1px solid var(--line)', p: 1, bgcolor: 'rgba(0,0,0,0.01)' }}>
+                                            <Droppable droppableId={droppableKey(member.profile_id, 'done')}>
+                                                {(prov, snap) => (
+                                                    <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
+                                                        {done.map((c, i) => renderCard(c, i))}
+                                                        {prov.placeholder}
+                                                    </Box>
+                                                )}
+                                            </Droppable>
+                                        </Box>
+                                    </>
+                                )}
+                                {isCollapsed && <Box sx={{ gridColumn: '2 / span 3', display: 'flex', alignItems: 'center', px: 2, color: 'text.disabled', fontStyle: 'italic' }}>Eingeklappt ({flow1.length + flow.length + done.length} Aufgaben)</Box>}
+                            </Box>
+                        );
+                    })}
+                </Box>
             </Box>
-
         </DragDropContext>
       </Box>
 
-      {/* Dialoge */}
       <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{editingCard ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}</DialogTitle>
         <DialogContent dividers>
             <Stack spacing={2}>
                 <TextField label="Aufgabenbeschreibung" value={draft.description} onChange={(e) => handleDraftChange('description', e.target.value)} fullWidth multiline minRows={2} />
                 <TextField label="Zieltermin" type="date" InputLabelProps={{ shrink: true }} value={draft.dueDate} onChange={(e) => handleDraftChange('dueDate', e.target.value)} required error={dueDateError && !draft.dueDate} />
-                
                 <FormControlLabel control={<Checkbox checked={draft.important} onChange={(e) => handleDraftChange('important', e.target.checked)} />} label="Wichtige Aufgabe markieren" />
                 <FormControlLabel control={<Checkbox checked={draft.watch} onChange={(e) => handleDraftChange('watch', e.target.checked)} />} label="Auf Wiedervorlage setzen" />
             </Stack>
         </DialogContent>
-        <DialogActions>{editingCard && <Button color="error" onClick={deleteTask} disabled={saving} startIcon={<DeleteIcon />}>Löschen</Button>}<Box sx={{ flexGrow: 1 }} /><Button onClick={closeDialog} disabled={saving}>Abbrechen</Button><Button onClick={saveTask} disabled={saving} variant="contained">Speichern</Button></DialogActions>
+        <DialogActions>
+            {editingCard && <Button color="error" onClick={deleteTask}>Löschen</Button>}
+            <Button onClick={closeDialog}>Abbrechen</Button>
+            <Button onClick={saveTask} variant="contained">Speichern</Button>
+        </DialogActions>
       </Dialog>
-      
+
+      <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)}>
+          <DialogTitle>Board Einstellungen</DialogTitle>
+          <DialogContent>
+              <FormControlLabel 
+                control={<Switch checked={isHomeBoard} onChange={(e) => setIsHomeBoard(e.target.checked)} />} 
+                label={<Box><Typography variant="body1" fontWeight="bold">Als Heimatboard nutzen</Typography><Typography variant="caption" color="text.secondary">Zeigt automatisch alle Aufgaben der Mitglieder aus anderen Projekten an.</Typography></Box>} 
+                sx={{ mt: 2 }}
+              />
+          </DialogContent>
+          <DialogActions>
+              <Button onClick={() => setSettingsOpen(false)}>Abbrechen</Button>
+              <Button variant="contained" onClick={saveBoardSettings}>Speichern</Button>
+          </DialogActions>
+      </Dialog>
+
       <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
       <TeamKPIDialog open={kpiOpen} onClose={() => setKpiOpen(false)} />
     </Box>
