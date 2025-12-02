@@ -1,70 +1,80 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Box, Typography, Tabs, Tab, Container, Paper, Button } from '@mui/material';
-import { SupervisorAccount, Build } from '@mui/icons-material';
+import { useEffect, useState } from 'react';
+import { 
+  Box, 
+  Container, 
+  CircularProgress, 
+  Typography, 
+  Divider,
+  Card,
+  CardContent,
+  Stack
+} from '@mui/material';
+import { Build, SettingsSuggest } from '@mui/icons-material';
 import UserManagement from '@/components/admin/UserManagement';
 import MigrationTool from '@/components/admin/MigrationTool';
-import { useRouter } from 'next/navigation';
+import SystemBranding from '@/components/admin/SystemBranding'; // Branding importieren
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { isSuperuserEmail } from '@/constants/superuser';
+import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 
 export default function AdminPage() {
-  const [tabIndex, setTabIndex] = useState(0);
-  const [isAuthorized, setIsAuthorized] = useState(false);
-  const router = useRouter();
+  const [isSuperUser, setIsSuperUser] = useState(false);
+  const [loading, setLoading] = useState(true);
   const supabase = getSupabaseBrowserClient();
 
   useEffect(() => {
-    const checkAuth = async () => {
-      // ✅ FIX: Prüfen, ob der Client existiert, bevor wir ihn nutzen
-      if (!supabase) {
-        router.push('/');
-        return;
+    if (!supabase) return;
+    
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user?.email && isSuperuserEmail(data.user.email)) {
+        setIsSuperUser(true);
       }
+      setLoading(false);
+    });
+  }, [supabase]);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || !isSuperuserEmail(user.email || '')) {
-        router.push('/');
-        return;
-      }
-      setIsAuthorized(true);
-    };
-    checkAuth();
-  }, [supabase, router]);
-
-  if (!isAuthorized) return null;
+  if (!supabase) return <SupabaseConfigNotice />;
+  if (loading) return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>;
 
   return (
-    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" fontWeight="bold">
-          Admin Bereich
-        </Typography>
-        <Button variant="outlined" onClick={() => router.push('/')}>Zurück zum Board</Button>
-      </Box>
-
-      <Paper sx={{ width: '100%', mb: 2 }}>
-        <Tabs
-          value={tabIndex}
-          onChange={(e, v) => setTabIndex(v)}
-          indicatorColor="primary"
-          textColor="primary"
-          centered
-        >
-          <Tab icon={<SupervisorAccount />} label="Benutzerverwaltung" />
-          <Tab icon={<Build />} label="Daten-Migration" /> 
-        </Tabs>
-      </Paper>
-
-      {tabIndex === 0 && <UserManagement />}
+    <Container maxWidth="lg" sx={{ py: 4 }}>
       
-      {tabIndex === 1 && (
-          <Box>
-              <MigrationTool />
-          </Box>
+      {/* 1. Benutzer & Abteilungen (Für alle Admins) */}
+      <UserManagement isSuperUser={isSuperUser} />
+
+      {/* 2. System-Bereich (Nur für Superuser) */}
+      {isSuperUser && (
+        <Box sx={{ mt: 8 }}>
+          <Divider sx={{ my: 4 }}>
+              <Chip label="SUPERUSER ZONE" color="error" variant="outlined" />
+          </Divider>
+          
+          <Typography variant="h4" gutterBottom sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+             <SettingsSuggest fontSize="large" color="primary" /> System-Steuerung
+          </Typography>
+
+          <Stack spacing={6}>
+              {/* Branding Panel */}
+              <Box>
+                  <SystemBranding />
+              </Box>
+
+              {/* Datenbank Tools */}
+              <Box>
+                  <Typography variant="h5" gutterBottom sx={{ mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Build color="warning" /> Datenbank-Wartung
+                  </Typography>
+                  <MigrationTool />
+              </Box>
+          </Stack>
+        </Box>
       )}
 
     </Container>
   );
 }
+
+// Hilfskomponente für den Divider Chip, falls oben nicht importiert
+import { Chip } from '@mui/material';

@@ -34,6 +34,7 @@ export interface KanbanCardProps {
   canModify: boolean;
   highlighted?: boolean;
   checklistTemplates: Record<string, string[]>;
+  onClick?: () => void;
 }
 
 const statusKeys = ['message', 'qualitaet', 'kosten', 'termine'] as const;
@@ -55,6 +56,7 @@ export function KanbanCard({
   canModify,
   highlighted,
   checklistTemplates,
+  onClick
 }: KanbanCardProps) {
   const cardId = idFor(card);
   const isDragDisabled = !canModify;
@@ -72,7 +74,7 @@ export function KanbanCard({
     return map;
   }, [users]);
 
-  // Logik für Y (Yellow) und R (Red) - kompatibel mit altem LK/SK
+  // Eskalations-Logik
   const rawEscalation = String(card.Eskalation || '').trim().toUpperCase();
   const isYellow = rawEscalation === 'Y' || rawEscalation === 'LK';
   const isRed = rawEscalation === 'R' || rawEscalation === 'SK';
@@ -134,25 +136,52 @@ export function KanbanCard({
     }
   };
 
-  const renderTRChip = (label: string, value: string | Date | undefined, color: string, border: string, background: string): ReactNode => {
+  // Hilfsfunktion für TR Chips (angepasste Farben)
+  const renderTRChip = (label: string, value: string | Date | undefined, type: 'original' | 'new'): ReactNode => {
     if (!value) return null;
     const date = new Date(value);
     if (isNaN(date.getTime())) return null;
-    return (<Chip label={`${label}: ${date.toLocaleDateString('de-DE')}`} size="small" sx={{ fontSize: '10px', height: '18px', backgroundColor: background, color, border, '& .MuiChip-label': { px: 0.8, py: 0 } }} />);
+
+    // FARBEN GETAUSCHT:
+    // Original (TR): Blau
+    // Neu (TR neu): Grün
+    const colors = type === 'original' 
+        ? { bg: '#e3f2fd', color: '#1565c0', border: '1px solid #90caf9' } // Blau
+        : { bg: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' }; // Grün
+
+    return (
+        <Chip 
+            label={`${label}: ${date.toLocaleDateString('de-DE')}`} 
+            size="small" 
+            sx={{ 
+                fontSize: '10px', 
+                height: '18px', 
+                backgroundColor: colors.bg, 
+                color: colors.color, 
+                border: colors.border, 
+                '& .MuiChip-label': { px: 0.8, py: 0 } 
+            }} 
+        />
+    );
   };
 
   return (
     <Draggable key={cardId} draggableId={cardId} index={index} isDragDisabled={isDragDisabled}>
       {(provided, snapshot) => (
         <Box
-          // ✅ FIX: Explizite Typisierung von 'el' und Cast für cardRef
           ref={(el: HTMLElement | null) => { 
               provided.innerRef(el); 
               (cardRef as React.MutableRefObject<HTMLElement | null>).current = el; 
           }}
           {...provided.draggableProps} {...provided.dragHandleProps}
           className={`card ${isYellow ? 'esk-lk' : ''} ${isRed ? 'esk-sk' : ''}`}
-          onClick={(e) => { if (!canModify) return; if (!(e.target as HTMLElement).closest('.controls')) { setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0); } }}
+          onClick={(e) => { 
+              if (!canModify) return; 
+              if (!(e.target as HTMLElement).closest('.controls')) { 
+                  if(onClick) onClick(); 
+                  else { setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0); }
+              } 
+          }}
           sx={{
             backgroundColor, border: `1px solid ${borderColor}`, borderRadius: currentSize === 'xcompact' ? '4px' : '12px', padding: currentSize === 'xcompact' ? '4px' : '10px',
             cursor: 'pointer', transition: 'transform 0.12s ease, box-shadow 0.12s ease', opacity: snapshot.isDragging ? 0.96 : 1,
@@ -186,39 +215,19 @@ export function KanbanCard({
                     
                     <IconButton 
                         size="small" 
-                        sx={{ 
-                            width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', 
-                            backgroundColor: isYellow ? '#ef6c00' : 'transparent', 
-                            color: isYellow ? 'white' : 'var(--muted)', 
-                            '&:hover': { backgroundColor: isYellow ? '#e65100' : 'rgba(0,0,0,0.06)' } 
-                        }} 
+                        sx={{ width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', backgroundColor: isYellow ? '#ef6c00' : 'transparent', color: isYellow ? 'white' : 'var(--muted)', '&:hover': { backgroundColor: isYellow ? '#e65100' : 'rgba(0,0,0,0.06)' } }} 
                         title="Yellow Escalation" 
                         disabled={!canModify} 
-                        onClick={(e) => { 
-                            e.stopPropagation(); 
-                            handleUpdateCard({ Eskalation: isYellow ? '' : 'Y', Ampel: isYellow ? 'grün' : 'rot' }); 
-                        }}
-                    >
-                        Y
-                    </IconButton>
+                        onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Eskalation: isYellow ? '' : 'Y', Ampel: isYellow ? 'grün' : 'rot' }); }}
+                    >Y</IconButton>
 
                     <IconButton 
                         size="small" 
-                        sx={{ 
-                            width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', 
-                            backgroundColor: isRed ? '#c62828' : 'transparent', 
-                            color: isRed ? 'white' : 'var(--muted)', 
-                            '&:hover': { backgroundColor: isRed ? '#b71c1c' : 'rgba(0,0,0,0.06)' } 
-                        }} 
+                        sx={{ width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', backgroundColor: isRed ? '#c62828' : 'transparent', color: isRed ? 'white' : 'var(--muted)', '&:hover': { backgroundColor: isRed ? '#b71c1c' : 'rgba(0,0,0,0.06)' } }} 
                         title="Red Escalation" 
                         disabled={!canModify} 
-                        onClick={(e) => { 
-                            e.stopPropagation(); 
-                            handleUpdateCard({ Eskalation: isRed ? '' : 'R', Ampel: isRed ? 'grün' : 'rot' }); 
-                        }}
-                    >
-                        R
-                    </IconButton>
+                        onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Eskalation: isRed ? '' : 'R', Ampel: isRed ? 'grün' : 'rot' }); }}
+                    >R</IconButton>
 
                     <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: 'transparent', color: 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} title="Bearbeiten" disabled={!canModify} onClick={(e) => { e.stopPropagation(); setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0); }}>✎</IconButton>
                   </Box>
@@ -242,10 +251,12 @@ export function KanbanCard({
               {(card.TR_Datum || card.TR_Neu || sopDate) && (
                   <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid var(--line)', display: 'flex', justifyContent: sopDate ? 'space-between' : 'center', gap: 0.5, alignItems: 'center' }}>
                     <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
-                       {renderTRChip('TR', card.TR_Datum, '#2e7d32', '1px solid #c8e6c9', '#e8f5e8')}
+                       {/* Farben getauscht: TR jetzt Blau */}
+                       {renderTRChip('TR', card.TR_Datum, 'original')}
                        
                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          {renderTRChip('TR neu', card.TR_Neu, '#1976d2', '1px solid #bbdefb', '#e3f2fd')}
+                          {/* Farben getauscht: TR neu jetzt Grün */}
+                          {renderTRChip('TR neu', card.TR_Neu, 'new')}
                           {trCompleted && (
                               <CheckCircle sx={{ fontSize: '16px', color: '#2e7d32' }} />
                           )}
@@ -256,7 +267,22 @@ export function KanbanCard({
                           )}
                        </Box>
                     </Box>
-                    {sopDate && <Chip label={`SOP: ${sopDate.toLocaleDateString('de-DE')}`} size="small" sx={{ fontSize: '10px', height: '18px', backgroundColor: '#f3e5f5', color: '#6a1b9a', border: '1px solid #e1bee7', '& .MuiChip-label': { px: 0.8, py: 0 } }} />}
+                    
+                    {/* SOP: Jetzt "ungefüllt" (variant outlined Style) */}
+                    {sopDate && (
+                        <Chip 
+                            label={`SOP: ${sopDate.toLocaleDateString('de-DE')}`} 
+                            size="small" 
+                            variant="outlined" // <-- Hier ist die Änderung für ungefüllt
+                            sx={{ 
+                                fontSize: '10px', 
+                                height: '18px', 
+                                color: '#6a1b9a', 
+                                borderColor: '#e1bee7', 
+                                '& .MuiChip-label': { px: 0.8, py: 0 } 
+                            }} 
+                        />
+                    )}
                   </Box>
               )}
 

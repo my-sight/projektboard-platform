@@ -21,7 +21,6 @@ import {
   Button,
   Divider,
   useTheme,
-  Collapse,
   useMediaQuery,
   Tabs,
   Tab,
@@ -37,10 +36,8 @@ import {
   ListAlt,
   Add,
   Delete,
-  Event,
   Business,
   InfoOutlined,
-  BugReport
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
@@ -50,7 +47,6 @@ interface PersonalDashboardProps {
   onOpenBoard: (boardId: string, cardId?: string, boardType?: 'standard' | 'team') => void;
 }
 
-// Hilfsfunktion: Tokenizer
 const tokenize = (text: any) => {
   if (!text) return [];
   return String(text).toLowerCase().split(/[\s,._-]+/).filter(t => t.length >= 2);
@@ -59,22 +55,19 @@ const tokenize = (text: any) => {
 export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const theme = useTheme();
-  // Media Query: Ist der Bildschirm kleiner als "md" (ca. Tablet-Größe)?
   const isMobile = useMediaQuery(theme.breakpoints.down('md')); 
   
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string>('');
   
-  // Daten
   const [allTasks, setAllTasks] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
   
   // UI State
-  const [mobileTab, setMobileTab] = useState(0); // 0=Team, 1=Projekte, 2=Notizen
+  const [mobileTab, setMobileTab] = useState(0);
   const [newNote, setNewNote] = useState('');
-  const [newNoteDate, setNewNoteDate] = useState('');
   
   // Filter State
   const [filters, setFilters] = useState({
@@ -97,7 +90,6 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         if (!user) { if (active) setLoading(false); return; }
         if (active) setUserId(user.id);
 
-        // Identifikatoren sammeln
         const myIds = new Set<string>([user.id]);
         const myTokens = new Set<string>();
         if (user.email) {
@@ -228,23 +220,27 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
   const addNote = async () => {
     if (!newNote.trim() || !supabase) return;
-    const { data } = await supabase.from('personal_notes').insert({ user_id: userId, content: newNote, due_date: newNoteDate || null }).select().single();
-    if (data) { setNotes([...notes, data]); setNewNote(''); setNewNoteDate(''); }
+    const { data } = await supabase.from('personal_notes').insert({ user_id: userId, content: newNote }).select().single();
+    if (data) { setNotes([...notes, data]); setNewNote(''); }
   };
+  
   const toggleNote = async (id: string, current: boolean) => {
     if (!supabase) return;
     await supabase.from('personal_notes').update({ is_done: !current }).eq('id', id);
     setNotes(notes.map(n => n.id === id ? { ...n, is_done: !current } : n));
   };
+  
   const deleteNote = async (id: string) => {
     if (!supabase) return;
     await supabase.from('personal_notes').delete().eq('id', id);
     setNotes(notes.filter(n => n.id !== id));
   };
+  
   function toBoolean(value: any) { return value === true || value === 'true'; }
 
-  // --- Sub-Components for clean Layout ---
-  const TeamTasksList = () => (
+  // --- RENDER HELPER (Hier ist der Fix: Keine Inline-Funktionen mehr!) ---
+  
+  const renderTeamTasks = () => (
       <Card variant="outlined" sx={{ height: '100%', borderRadius: 2, border: 'none', boxShadow: 'none', bgcolor: 'transparent' }}>
         <CardContent sx={{ px: isMobile ? 0 : 2 }}>
           {!isMobile && (
@@ -274,7 +270,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
       </Card>
   );
 
-  const ProjectTasksList = () => (
+  const renderProjectTasks = () => (
       <Card variant="outlined" sx={{ height: '100%', borderRadius: 2, border: 'none', boxShadow: 'none', bgcolor: 'transparent' }}>
         <CardContent sx={{ px: isMobile ? 0 : 2 }}>
           {!isMobile && (
@@ -301,14 +297,21 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
       </Card>
   );
 
-  const NotesList = () => (
+  const renderNotes = () => (
       <Card variant="outlined" sx={{ borderRadius: 2, height: '100%', border: 'none', boxShadow: 'none', bgcolor: 'transparent' }}>
         <CardContent sx={{ px: isMobile ? 0 : 2 }}>
           {!isMobile && (
               <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}><ListAlt color="action" /> Notizen</Typography>
           )}
           <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-              <TextField size="small" placeholder="Neu..." fullWidth value={newNote} onChange={(e) => setNewNote(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addNote()} />
+              <TextField 
+                  size="small" 
+                  placeholder="Neue Notiz..." 
+                  fullWidth 
+                  value={newNote} 
+                  onChange={(e) => setNewNote(e.target.value)} 
+                  onKeyDown={(e) => e.key === 'Enter' && addNote()} 
+              />
               <IconButton color="primary" onClick={addNote} disabled={!newNote.trim()}><Add /></IconButton>
           </Box>
           <List dense sx={{ bgcolor: 'background.default', borderRadius: 1 }}>
@@ -334,7 +337,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
             <Dashboard /> {isMobile ? "Cockpit" : "Mein Cockpit"}
         </Typography>
         
-        {/* Compact Filters for Mobile */}
+        {/* Filters */}
         <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 0.5, maxWidth: isMobile ? '200px' : 'auto' }}>
             <Chip icon={<Warning sx={{ fontSize: 16 }} />} label={isMobile ? "" : "Überfällig"} size="small" clickable color={filters.overdue ? "error" : "default"} variant={filters.overdue ? "filled" : "outlined"} onClick={() => setFilters(f => ({...f, overdue: !f.overdue}))} />
             <Chip icon={<PriorityHigh sx={{ fontSize: 16 }} />} label={isMobile ? "" : "Kritisch"} size="small" clickable color={filters.critical ? "warning" : "default"} variant={filters.critical ? "filled" : "outlined"} onClick={() => setFilters(f => ({...f, critical: !f.critical}))} />
@@ -359,7 +362,6 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                   </CardContent>
               </Card>
           </Grid>
-          {/* Hide less important KPIs on very small screens? No, show all, rows of 2 */}
           <Grid item xs={6} md={3}>
               <Card sx={{ bgcolor: kpis.critical > 0 ? '#fff8e1' : 'background.paper', borderLeft: '4px solid #ed6c02' }}>
                   <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -378,7 +380,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
           </Grid>
       </Grid>
 
-      {/* --- MOBILE VIEW: TABS --- */}
+      {/* --- CONTENT AREA --- */}
       {isMobile ? (
         <Box>
            <Tabs 
@@ -392,22 +394,21 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
              <Tab icon={<ListAlt fontSize="small" />} iconPosition="start" label="Notizen" />
            </Tabs>
            <Box sx={{ minHeight: 300 }}>
-             {mobileTab === 0 && <TeamTasksList />}
-             {mobileTab === 1 && <ProjectTasksList />}
-             {mobileTab === 2 && <NotesList />}
+             {mobileTab === 0 && renderTeamTasks()}
+             {mobileTab === 1 && renderProjectTasks()}
+             {mobileTab === 2 && renderNotes()}
            </Box>
         </Box>
       ) : (
-        /* --- DESKTOP VIEW: GRID --- */
         <Grid container spacing={3}>
           <Grid item xs={12} md={4}>
-            <Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><TeamTasksList /></Card>
+            <Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}>{renderTeamTasks()}</Card>
           </Grid>
           <Grid item xs={12} md={4}>
-            <Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><ProjectTasksList /></Card>
+            <Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}>{renderProjectTasks()}</Card>
           </Grid>
           <Grid item xs={12} md={4}>
-            <Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}><NotesList /></Card>
+            <Card variant="outlined" sx={{ height: '100%', borderRadius: 2 }}>{renderNotes()}</Card>
           </Grid>
         </Grid>
       )}

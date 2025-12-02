@@ -1,19 +1,20 @@
+// src/components/SnackbarProviderWrapper.tsx
 'use client';
 
 import { SnackbarProvider } from 'notistack';
 import { styled } from '@mui/material/styles';
 
-// Optional: Styling anpassen, damit es zum Theme passt
 const StyledSnackbarProvider = styled(SnackbarProvider)(({ theme }) => ({
   '&.notistack-MuiContent': {
     fontFamily: theme.typography.fontFamily,
     fontSize: '0.9rem',
+    borderRadius: theme.shape.borderRadius,
   },
   '&.notistack-MuiContent-success': {
-    backgroundColor: '#2e7d32', // Dunkles Grün
+    backgroundColor: theme.palette.success.dark,
   },
   '&.notistack-MuiContent-error': {
-    backgroundColor: '#d32f2f', // Dunkles Rot
+    backgroundColor: theme.palette.error.dark,
   },
 }));
 

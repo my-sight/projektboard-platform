@@ -1167,9 +1167,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 <Chip
                   key={member.id}
                   label={`${label}${detail}`}
+                  variant="outlined"
                   onDelete={deletable ? () => removeMember(member.id) : undefined}
                   sx={{ mr: 1, mb: 1 }}
-                  color={(member.profile?.is_active ?? true) ? 'primary' : 'default'}
                 />
               );
             })}

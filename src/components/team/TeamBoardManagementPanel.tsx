@@ -606,6 +606,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                 <Chip
                   key={member.id}
                   label={`${label}${detail}`}
+                  variant="outlined"
                   onDelete={canEdit ? () => requestRemoveMember(member.id) : undefined}
                   deleteIcon={canEdit ? <DeleteIcon fontSize="small" /> : undefined}
                   sx={{ mr: 1, mb: 1 }}
