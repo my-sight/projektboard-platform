@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   Box,
   Button,
@@ -193,6 +193,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       const today = new Date().toISOString().split('T')[0];
       const overdue = cards.filter(c => c.dueDate && c.dueDate < today);
       
+      // Workload per Member
       const memberLoad = members.map(m => {
           const count = active.filter(c => c.assigneeId === m.profile_id).length;
           return { 
@@ -240,6 +241,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
   const loadAllUsers = useCallback(async () => { try { const profiles = await fetchClientProfiles(); setUsers(profiles); return profiles; } catch (err) { return []; } }, []);
 
+  // ✅ FIX: Hier wurde der Cast hinzugefügt, um den Type Error zu beheben
   const loadMembers = useCallback(async (availableProfiles: ClientProfile[]) => {
       if (!supabase) return [];
       const { data, error } = await supabase.from('board_members').select('id, profile_id').eq('board_id', boardId).order('created_at', { ascending: true });
@@ -248,7 +250,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
       const mapped = rows.map((entry) => {
           const profile = availableProfiles.find((c) => c.id === entry.profile_id) ?? null;
           return (profile && (profile.is_active ?? true) && !isSuperuserEmail(profile.email)) ? { ...entry, profile } : null;
-        }).filter((e): e is MemberWithProfile => Boolean(e));
+        }).filter((e) => e !== null) as MemberWithProfile[];
       setMembers(mapped);
       return mapped;
     }, [boardId, supabase]);
@@ -597,7 +599,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const isImportant = card.important;
     const isWatch = card.watch;
 
-    // ✅ KANTIGES DESIGN (4px Border Radius) & Subtile Rahmenfarben
+    // Rahmenfarbe Logik: Gelb (Highlight) > Rot (Wichtig) > Blau (Watch) > Standard (Dezent)
     const borderColor = isHighlighted ? '#ffc107' : (isImportant ? '#d32f2f' : (isWatch ? '#1976d2' : 'rgba(0,0,0,0.12)'));
 
     return (
@@ -611,11 +613,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             sx={{ 
                 width: '100%', 
                 mb: 1, 
-                borderRadius: 1, // 4px (Kantig)
+                borderRadius: 1, // KANTIG
                 boxShadow: snap.isDragging ? '0 14px 28px rgba(0,0,0,0.30)' : '0 3px 8px rgba(0,0,0,0.06)', 
                 position: 'relative', 
                 border: '1px solid', 
-                borderColor, // Dynamische Farbe
+                borderColor, 
                 animation: isHighlighted ? `${blinkAnimation} 1s 5` : 'none',
                 minHeight: MIN_CARD_HEIGHT, 
                 display: 'flex', 
@@ -665,9 +667,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
             <CardContent sx={{ 
                 pl: 1.5, 
-                pr: 7, // Platz für Icons
+                pr: 7, // Platz für Icons lassen
                 py: 1.5, 
-                pb: '12px !important', 
+                pb: '12px !important', // Mui Reset
                 display: 'flex', flexDirection: 'column', gap: 0.5, height: '100%' 
             }}>
               <Tooltip title={card.description} placement="top-start" arrow enterDelay={1000}>
