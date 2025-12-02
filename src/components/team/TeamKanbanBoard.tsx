@@ -21,7 +21,8 @@ import {
   Avatar,
   Collapse,
   LinearProgress,
-  Grid
+  Grid,
+  useTheme
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -216,12 +217,14 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
   // --- Data Loading ---
   const persistAllCards = useCallback(async (entries: TeamBoardCard[]) => {
+      if (!supabase) return;
       const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
       const response = await fetch(`/api/boards/${boardId}/cards`, { method: 'POST', headers, body: JSON.stringify({ cards: buildPersistPayload(boardId, entries) }), credentials: 'include' });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
     }, [boardId, supabase]);
 
   const loadBoardSettings = useCallback(async () => {
+    if (!supabase) return;
     const headers = await buildSupabaseAuthHeaders(supabase);
     const response = await fetch(`/api/boards/${boardId}/settings`, { method: 'GET', headers, credentials: 'include' });
     if (response.status === 404) { setBoardSettings({}); setCompletedCount(0); return; }
@@ -232,6 +235,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   }, [boardId, supabase]);
 
   const persistCompletedCount = useCallback(async (nextCount: number) => {
+      if (!supabase) return;
       const nextSettings = { ...boardSettings, teamBoard: { ...(boardSettings.teamBoard || {}), completedCount: nextCount } };
       const headers = { 'Content-Type': 'application/json', ...(await buildSupabaseAuthHeaders(supabase)) };
       const response = await fetch(`/api/boards/${boardId}/settings`, { method: 'POST', headers, body: JSON.stringify({ settings: nextSettings }), credentials: 'include' });
@@ -241,7 +245,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
   const loadAllUsers = useCallback(async () => { try { const profiles = await fetchClientProfiles(); setUsers(profiles); return profiles; } catch (err) { return []; } }, []);
 
-  // ✅ FIX: Hier wurde der Cast hinzugefügt, um den Type Error zu beheben
   const loadMembers = useCallback(async (availableProfiles: ClientProfile[]) => {
       if (!supabase) return [];
       const { data, error } = await supabase.from('board_members').select('id, profile_id').eq('board_id', boardId).order('created_at', { ascending: true });
@@ -265,6 +268,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
   }, [boardId, supabase]);
 
   const loadTopTopics = useCallback(async () => {
+    if (!supabase) return;
     const { data } = await supabase.from('board_top_topics').select('*').eq('board_id', boardId).order('position');
     if (data) setTopTopics(data);
   }, [boardId, supabase]);
@@ -382,7 +386,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         nextList.splice(prevKey === nextKey && idx >= 0 ? idx : nextList.length, 0, updated);
         working.set(nextKey, nextList);
       } else {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await supabase!.auth.getUser();
         const newCard = { rowId: `team-${crypto.randomUUID()}`, cardId: `team-${crypto.randomUUID()}`, ...draft, position: 0, createdBy: user?.id };
         const key = droppableKey(newCard.assigneeId, newCard.status);
         const list = working.get(key) || [];
@@ -536,14 +540,17 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
           newTopics[index] = { ...newTopics[index], [field]: value };
           setLocalTopics(newTopics);
           if (newTopics[index].id && !newTopics[index].id.startsWith('tmp')) {
+              if (!supabase) return;
               await supabase.from('board_top_topics').update({ [field]: value }).eq('id', newTopics[index].id);
           }
       };
       const handleAdd = async () => {
+          if (!supabase) return;
           const { data } = await supabase.from('board_top_topics').insert({ board_id: boardId, title: '', position: localTopics.length }).select().single();
           if (data) setLocalTopics([...localTopics, data]);
       };
       const handleDelete = async (id: string) => {
+          if (!supabase) return;
           await supabase.from('board_top_topics').delete().eq('id', id);
           setLocalTopics(prev => prev.filter(t => t.id !== id));
       };
@@ -613,7 +620,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             sx={{ 
                 width: '100%', 
                 mb: 1, 
-                borderRadius: 1, // KANTIG
+                borderRadius: '12px', 
                 boxShadow: snap.isDragging ? '0 14px 28px rgba(0,0,0,0.30)' : '0 3px 8px rgba(0,0,0,0.06)', 
                 position: 'relative', 
                 border: '1px solid', 
@@ -695,7 +702,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     <Box sx={{ p: 2, backgroundColor: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column', gap: 2, overflow: 'hidden' }}>
       
       {/* HEADER */}
-      <Box sx={{ p: 1, borderBottom: '1px solid var(--line)', backgroundColor: 'var(--panel)', borderRadius: 1, display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+      <Box sx={{ p: 1, borderBottom: '1px solid var(--line)', backgroundColor: 'var(--panel)', borderRadius: '12px', display: 'flex', gap: 2, alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
             {onExit && <Button onClick={onExit} startIcon={<ArrowBack />}>Zurück</Button>}
             <Box sx={{ display: 'flex', gap: 1 }}>
@@ -720,7 +727,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         <DragDropContext onDragEnd={handleDragEnd}>
           
             {/* --- LEFT: BACKLOG --- */}
-            <Box sx={{ width: BACKLOG_WIDTH, minWidth: BACKLOG_WIDTH, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 1, height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+            <Box sx={{ width: BACKLOG_WIDTH, minWidth: BACKLOG_WIDTH, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '12px', height: '100%', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
                <Box sx={{ p: 2, borderBottom: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'rgba(0,0,0,0.02)' }}>
                   <Typography variant="h6" sx={{ fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'text.secondary', fontWeight: 700 }}>
                       {statusLabels.backlog} <Typography component="span" variant="caption" sx={{ml:1, bgcolor:'rgba(0,0,0,0.08)', px:0.8, py:0.2, borderRadius:1}}>{backlogCards.length}</Typography>
@@ -738,7 +745,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             </Box>
 
             {/* --- RIGHT: TEAM FLOW --- */}
-            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: 1, height: '100%', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+            <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'var(--panel)', border: '1px solid var(--line)', borderRadius: '12px', height: '100%', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
                
                {/* TABLE HEADER (Sticky) */}
                <Box sx={{ display: 'flex', borderBottom: '1px solid var(--line)', bgcolor: 'rgba(0,0,0,0.02)', zIndex: 10 }}>
@@ -760,7 +767,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                        const isCollapsed = collapsedLanes[member.id];
                        
                        return (
-                           <Card key={member.id} sx={{ overflow: 'visible', borderRadius: 1, border: '1px solid var(--line)', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
+                           <Card key={member.id} sx={{ overflow: 'visible', borderRadius: '12px', border: '1px solid var(--line)', boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
                                {/* SWIMLANE CONTENT (FLEX ROW) */}
                                <Box sx={{ display: 'flex', minHeight: isCollapsed ? 'auto' : 160 }}>
                                    
