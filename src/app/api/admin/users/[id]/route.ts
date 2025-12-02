@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveAdminSupabaseClient } from '@/lib/supabaseServer';
-import { SUPERUSER_EMAIL } from '@/constants/superuser';
+import { isSuperuserEmail } from '@/constants/superuser'; // ✅ KORREKTUR: Import der Funktion
 
 async function isTargetSuperuser(
   supabase: Awaited<ReturnType<typeof resolveAdminSupabaseClient>>['client'],
@@ -20,7 +20,8 @@ async function isTargetSuperuser(
     return false;
   }
 
-  return (data.email ?? '').toLowerCase() === SUPERUSER_EMAIL;
+  // ✅ KORREKTUR: Nutzung der Hilfsfunktion
+  return isSuperuserEmail(data.email);
 }
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
