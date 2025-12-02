@@ -34,7 +34,8 @@ import {
   IconButton,
   LinearProgress,
   Tabs,
-  Tab
+  Tab,
+  Divider
 } from '@mui/material';
 import { 
     Delete as DeleteIcon, 
@@ -85,6 +86,11 @@ interface CsvUser {
   company: string;
   role: string;
   generatedPassword?: string;
+}
+
+// ✅ HIER IST DER FIX: Props definieren
+interface UserManagementProps {
+  isSuperUser?: boolean;
 }
 
 function normalizeUserProfile(profile: any): UserProfile {
@@ -160,7 +166,8 @@ function CustomTabPanel(props: TabPanelProps) {
   );
 }
 
-export default function UserManagement() {
+// ✅ HIER IST DER FIX: Props übernehmen
+export default function UserManagement({ isSuperUser = false }: UserManagementProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   
   // --- STATE ---
@@ -170,7 +177,7 @@ export default function UserManagement() {
   const [boardAdminSelections, setBoardAdminSelections] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null); // Für "Außer mir löschen"
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   // Tabs
   const [currentTab, setCurrentTab] = useState(0);
@@ -191,6 +198,7 @@ export default function UserManagement() {
   const [importData, setImportData] = useState<CsvUser[]>([]);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const [serverCheck, setServerCheck] = useState<{ status: 'ok' | 'error' | null, msg: string }>({ status: null, msg: '' });
   
   // Inline Edit
   const [editableNames, setEditableNames] = useState<Record<string, string>>({});
@@ -267,6 +275,9 @@ export default function UserManagement() {
   const updateUserDepartment = (id: string, company: string) => !isProtectedUser(id) && mutateUser(id, { company: company || null }, 'Abteilung aktualisiert');
   const toggleUserActive = (id: string, current: boolean) => !isProtectedUser(id) && mutateUser(id, { is_active: !current }, 'Status geändert');
   const updateUserName = (id: string, name: string) => !isProtectedUser(id) && name.trim() && mutateUser(id, { full_name: name.trim() }, 'Name aktualisiert');
+  const handleInlineNameChange = (userId: string, value: string) => {
+    setEditableNames(prev => ({ ...prev, [userId]: value }));
+  };
   
   const deleteUser = async (id: string) => {
       if (isProtectedUser(id) || !confirm('Benutzer löschen?')) return;
@@ -278,36 +289,37 @@ export default function UserManagement() {
       } catch (e: any) { setMessage(`❌ ${e.message}`); }
   };
 
-  // --- NEUE FUNKTION: ALLES AUSSER MIR LÖSCHEN ---
+  // BULK DELETE (Nur für Superuser erlaubt)
   const bulkDeleteOthers = async () => {
     if (!currentUserId) return;
-
-    // Liste aller löschbaren User (Nicht Ich, Nicht Superuser)
-    const targets = users.filter(u => u.id !== currentUserId && !isProtectedUser(u.id));
-    
-    if (targets.length === 0) {
-        alert("Keine anderen Benutzer zum Löschen gefunden.");
+    // Doppelte Absicherung: Nur wenn Prop true ist
+    if (!isSuperUser) {
+        alert("Nur Superuser dürfen diese Aktion ausführen.");
         return;
     }
 
-    if (!confirm(`⚠️ ACHTUNG: Möchten Sie wirklich ALLE ${targets.length} anderen Benutzer löschen?`)) return;
-    if (!confirm("Wirklich sicher? Alle Daten dieser Nutzer gehen verloren!")) return;
+    const count = users.length - 1; 
+    if (count <= 0) return alert("Keine anderen Benutzer da.");
 
-    setLoading(true);
-    let deletedCount = 0;
+    if (!confirm(`⚠️ ACHTUNG: Alle anderen Benutzer unwiderruflich löschen?`)) return;
+    if (!confirm(`Wirklich sicher? Das löscht ${count} Benutzer und deren Profile!`)) return;
     
-    for (const user of targets) {
-        try {
-            const res = await fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' });
-            if (res.ok) deletedCount++;
-        } catch (e) {
-            console.error(`Fehler bei ${user.email}`);
-        }
+    setLoading(true);
+    try {
+        const res = await fetch('/api/admin/users/reset', { 
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ currentUserId })
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.error);
+        setMessage(`✅ Aufräumen beendet: ${result.message}`);
+        await loadData(); 
+    } catch (e: any) {
+        setMessage(`❌ Fehler beim Löschen: ${e.message}`);
+    } finally {
+        setLoading(false);
     }
-
-    await loadData();
-    setLoading(false);
-    setMessage(`✅ Aufräumen beendet: ${deletedCount} Benutzer gelöscht.`);
   };
 
   const createUser = async () => {
@@ -360,12 +372,27 @@ export default function UserManagement() {
       } catch (e: any) { setMessage(`❌ ${e.message}`); }
   };
 
-  // --- IMPORT ---
+  // --- IMPORT LOGIK ---
+  const checkServerConfig = async () => {
+      try {
+          const res = await fetch('/api/admin/users/import', { method: 'GET' });
+          const data = await res.json();
+          if (data.config?.key === 'OK') {
+              setServerCheck({ status: 'ok', msg: 'Server bereit.' });
+          } else {
+              setServerCheck({ status: 'error', msg: 'Service Key fehlt in .env.local!' });
+          }
+      } catch (e) {
+          setServerCheck({ status: 'error', msg: 'Server nicht erreichbar.' });
+      }
+  };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
+      setServerCheck({ status: null, msg: '' });
       const rows = parseCSV(e.target?.result as string);
       if (rows.length === 0) return;
 
@@ -394,7 +421,7 @@ export default function UserManagement() {
           parsedUsers.push({ email, password: fixedPassword, generatedPassword: fixedPassword, full_name, company: '', role: 'user' });
       }
       setImportData(parsedUsers);
-      if (parsedUsers.length > 0) { setImportDialogOpen(true); setImportProgress(0); }
+      if (parsedUsers.length > 0) { setImportDialogOpen(true); setImportProgress(0); checkServerConfig(); }
       else { alert('Keine gültigen Daten gefunden.'); }
       event.target.value = ''; 
     };
@@ -474,10 +501,12 @@ export default function UserManagement() {
       {/* --- TAB 0: BENUTZER --- */}
       <CustomTabPanel value={currentTab} index={0}>
          <Stack direction="row" spacing={2} sx={{ mb: 2 }} justifyContent="flex-end">
-             {/* NEW BULK DELETE BUTTON */}
-             <Button variant="outlined" color="error" startIcon={<DeleteForeverIcon />} onClick={bulkDeleteOthers}>
-                 Alle anderen löschen
-             </Button>
+             {/* NEW BULK DELETE BUTTON (Nur für Superuser sichtbar) */}
+             {isSuperUser && (
+                <Button variant="outlined" color="error" startIcon={<DeleteForeverIcon />} onClick={bulkDeleteOthers}>
+                    Alle anderen löschen
+                </Button>
+             )}
              
              <Button variant="contained" startIcon={<PersonAddIcon />} onClick={() => setCreateUserDialogOpen(true)}>Neuer Benutzer</Button>
              <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
@@ -613,24 +642,33 @@ export default function UserManagement() {
       <Dialog open={importDialogOpen} onClose={() => !importing && setImportDialogOpen(false)} maxWidth="lg" fullWidth>
           <DialogTitle>📥 Import Vorschau ({importData.length})</DialogTitle>
           <DialogContent dividers>
-              <Alert severity="info" sx={{ mb: 2 }}>PW für alle: <strong>Board2025!</strong></Alert>
-              {importing && <LinearProgress sx={{ mb: 2 }} variant="determinate" value={importProgress} />}
-              <TableContainer component={Paper} sx={{ maxHeight: 300 }} variant="outlined">
-                  <Table stickyHeader size="small">
-                      <TableHead><TableRow><TableCell>Email</TableCell><TableCell>Name</TableCell><TableCell>PW</TableCell></TableRow></TableHead>
-                      <TableBody>
-                          {importData.map((u, i) => (
-                              <TableRow key={i} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
-                                  <TableCell>{u.email}</TableCell>
-                                  <TableCell>{u.full_name}</TableCell>
-                                  <TableCell sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>{u.generatedPassword}</TableCell>
-                              </TableRow>
-                          ))}
-                      </TableBody>
-                  </Table>
-              </TableContainer>
+              <Stack spacing={2}>
+                  {/* Server Status */}
+                  {serverCheck.status === 'error' && <Alert severity="error"><strong>Server Problem:</strong> {serverCheck.msg}</Alert>}
+                  
+                  <Alert severity="info">PW für alle: <strong>Board2025!</strong></Alert>
+                  
+                  {importing && <LinearProgress variant="determinate" value={importProgress} />}
+                  
+                  <TableContainer component={Paper} sx={{ maxHeight: 300 }} variant="outlined">
+                      <Table stickyHeader size="small">
+                          <TableHead><TableRow><TableCell>Email</TableCell><TableCell>Name</TableCell><TableCell>PW</TableCell></TableRow></TableHead>
+                          <TableBody>
+                              {importData.map((u, i) => (
+                                  <TableRow key={i} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
+                                      <TableCell>{u.email}</TableCell>
+                                      <TableCell>{u.full_name}</TableCell>
+                                      <TableCell sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>{u.generatedPassword}</TableCell>
+                                  </TableRow>
+                              ))}
+                          </TableBody>
+                      </Table>
+                  </TableContainer>
+              </Stack>
           </DialogContent>
           <DialogActions>
+              <Button onClick={checkServerConfig} disabled={importing}>Verbindung testen</Button>
+              <Box sx={{ flexGrow: 1 }} />
               <Button onClick={() => setImportDialogOpen(false)} disabled={importing}>Abbrechen</Button>
               <Button onClick={executeImport} variant="contained" disabled={importing} startIcon={<UploadFileIcon />}>{importing ? 'Importiere...' : 'Starten'}</Button>
           </DialogActions>
