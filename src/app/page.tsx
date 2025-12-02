@@ -14,19 +14,16 @@ import {
   DialogContent,
   DialogTitle,
   FormControl,
-  Grid,
-  IconButton,
   InputLabel,
   MenuItem,
   Select,
   TextField,
   Typography,
   Divider,
-  Badge
+  useTheme
 } from '@mui/material';
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
 import { useAuth } from '../contexts/AuthContext';
-import AssessmentIcon from '@mui/icons-material/Assessment';
 import BoardManagementPanel from '@/components/board/BoardManagementPanel';
 import TeamKanbanBoard from '@/components/team/TeamKanbanBoard';
 import TeamBoardManagementPanel from '@/components/team/TeamBoardManagementPanel';
@@ -51,14 +48,12 @@ interface Board {
 
 export default function HomePage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const theme = useTheme();
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'management' | 'board' | 'team-management' | 'team-board'>('list');
-  
   const [openCardId, setOpenCardId] = useState<string | null>(null);
-
   const { user, loading, signOut } = useAuth();
   const boardRef = useRef<OriginalKanbanBoardHandle>(null);
-
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSuperuser, setIsSuperuser] = useState(false);
@@ -72,16 +67,11 @@ export default function HomePage() {
   const [archivedCount, setArchivedCount] = useState<number | null>(null);
   const [kpiCount, setKpiCount] = useState(0);
 
-  useEffect(() => {
-    setArchivedCount(null);
-    setKpiCount(0);
-  }, [selectedBoard]);
+  useEffect(() => { setArchivedCount(null); setKpiCount(0); }, [selectedBoard]);
 
   useEffect(() => {
     if (!supabase) return;
-    if (!loading && !user) {
-      window.location.href = '/login';
-    }
+    if (!loading && !user) window.location.href = '/login';
   }, [loading, supabase, user]);
 
   const loadProfile = useCallback(async () => {
@@ -138,12 +128,7 @@ export default function HomePage() {
     if (board) {
       setSelectedBoard(board);
       if (cardId) setOpenCardId(cardId);
-      
-      if (type === 'team') {
-          setViewMode('team-board');
-      } else {
-          setViewMode('board');
-      }
+      setViewMode(type === 'team' ? 'team-board' : 'board');
     }
   };
 
@@ -175,7 +160,7 @@ export default function HomePage() {
   if (!supabase) return <Container maxWidth="sm" sx={{ py: 8 }}><SupabaseConfigNotice /></Container>;
   if (!user) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 Weiterleitung...</Typography></Box>;
 
-  // BOARD VIEW (Standard)
+  // --- Views für Board & Management ---
   if (selectedBoard && selectedBoard.boardType === 'standard' && viewMode === 'board') {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -185,27 +170,16 @@ export default function HomePage() {
             <Typography variant="h6">{selectedBoard.name || 'Board'}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            {/* Archiv-Button entfernt */}
-            {/* Settings-Button entfernt (ist im Board) */}
             <Typography variant="body2">👋 {user.email}</Typography>
             <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
           </Box>
         </Box>
         <Box sx={{ flex: 1 }}>
-          <OriginalKanbanBoard 
-            ref={boardRef} 
-            boardId={selectedBoard.id} 
-            onArchiveCountChange={setArchivedCount} 
-            onKpiCountChange={setKpiCount} 
-            highlightCardId={openCardId}
-            onExit={() => { setViewMode('list'); setOpenCardId(null); }}
-          />
+          <OriginalKanbanBoard ref={boardRef} boardId={selectedBoard.id} onArchiveCountChange={setArchivedCount} onKpiCountChange={setKpiCount} highlightCardId={openCardId} onExit={() => { setViewMode('list'); setOpenCardId(null); }} />
         </Box>
       </Box>
     );
   }
-
-  // TEAM BOARD VIEW
   if (selectedBoard && selectedBoard.boardType === 'team' && viewMode === 'team-board') {
     return (
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
@@ -220,17 +194,11 @@ export default function HomePage() {
           </Box>
         </Box>
         <Box sx={{ flex: 1, overflow: 'hidden' }}>
-          <TeamKanbanBoard 
-              boardId={selectedBoard.id} 
-              highlightCardId={openCardId}
-              onExit={() => { setViewMode('list'); setOpenCardId(null); }}
-          />
+          <TeamKanbanBoard boardId={selectedBoard.id} highlightCardId={openCardId} onExit={() => { setViewMode('list'); setOpenCardId(null); }} />
         </Box>
       </Box>
     );
   }
-
-  // MANAGEMENT VIEWS
   if (selectedBoard && viewMode === 'management') {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -242,7 +210,6 @@ export default function HomePage() {
       </Container>
     );
   }
-
   if (selectedBoard && viewMode === 'team-management') {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -254,6 +221,25 @@ export default function HomePage() {
       </Container>
     );
   }
+
+  // --- STYLING FÜR HORIZONTAL SCROLL ---
+  // Flex-Wrap auf 'nowrap' zwingt die Elemente in eine Zeile.
+  const scrollContainerSx = {
+    display: 'flex',
+    flexWrap: 'nowrap',  // WICHTIG: Verhindert Umbruch
+    gap: 3,
+    overflowX: 'auto',   // Scrollbar erlauben
+    pb: 2,               // Platz für Scrollbar
+    scrollSnapType: 'x mandatory',
+    '&::-webkit-scrollbar': { height: 8 },
+    '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 4 },
+  };
+
+  const itemSx = {
+    flex: '0 0 auto',    // WICHTIG: Verhindert Schrumpfen
+    width: { xs: '85vw', sm: '350px' },
+    scrollSnapAlign: 'start'
+  };
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -267,62 +253,71 @@ export default function HomePage() {
 
       {message && <Alert severity={message.startsWith('✅') ? 'success' : 'error'} sx={{ mb: 3 }}>{message}</Alert>}
 
-      {/* 1. Dashboard */}
       <PersonalDashboard onOpenBoard={handleOpenBoardFromDashboard} />
       
       <Divider sx={{ my: 6 }} />
 
-      {/* 2. Boards */}
-      <Typography variant="h5" sx={{ mb: 2 }}>Projektboards</Typography>
-      <Grid container spacing={3}>
+      {/* --- PROJEKTBOARDS --- */}
+      <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>Projektboards</Typography>
+      <Box sx={scrollContainerSx}>
         {isAdmin && (
-          <Grid item xs={12} sm={6} md={4}>
-            <Card sx={{ height: 180, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed #ccc', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }} onClick={() => { setNewBoardType('standard'); setCreateDialogOpen(true); }}>
-              <Typography variant="h6" color="text.secondary">+ Neues Projektboard</Typography>
-            </Card>
-          </Grid>
+            <Box sx={itemSx}>
+                <Card sx={{ height: 180, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed #ccc', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0,0,0,0.02)' } }} onClick={() => { setNewBoardType('standard'); setCreateDialogOpen(true); }}>
+                  <Typography variant="h6" color="text.secondary" sx={{display:'flex', alignItems:'center', gap:1}}>
+                     <span>+</span> Neues Board
+                  </Typography>
+                </Card>
+            </Box>
         )}
         {standardBoards.map((board) => (
-          <Grid item xs={12} sm={6} md={4} key={board.id}>
-            <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <CardContent>
-                <Typography variant="h6">{board.name}</Typography>
-                <Typography variant="body2" color="text.secondary">{board.description}</Typography>
-              </CardContent>
-              <CardActions sx={{ justifyContent: 'space-between' }}>
-                <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode('management'); }}>Öffnen</Button>
-                {isAdmin && <Button size="small" color="error" onClick={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}>Löschen</Button>}
-              </CardActions>
-            </Card>
-          </Grid>
+            <Box key={board.id} sx={itemSx}>
+                <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 3 } }}>
+                  <CardContent>
+                    <Typography variant="h6" noWrap title={board.name}>{board.name}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {board.description || 'Keine Beschreibung'}
+                    </Typography>
+                  </CardContent>
+                  <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
+                    <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode('management'); }}>Öffnen</Button>
+                    {isAdmin && <Button size="small" color="error" onClick={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}>Löschen</Button>}
+                  </CardActions>
+                </Card>
+            </Box>
         ))}
-      </Grid>
+      </Box>
 
-      <Typography variant="h5" sx={{ mt: 5, mb: 2 }}>Teamboards</Typography>
-      <Grid container spacing={3}>
+      {/* --- TEAMBOARDS --- */}
+      <Typography variant="h5" sx={{ mt: 5, mb: 2, fontWeight: 600 }}>Teamboards</Typography>
+      <Box sx={scrollContainerSx}>
         {isAdmin && (
-          <Grid item xs={12} sm={6} md={4}>
-             <Card sx={{ height: 180, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed #ccc', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }} onClick={() => { setNewBoardType('team'); setCreateDialogOpen(true); }}>
-              <Typography variant="h6" color="text.secondary">+ Neues Teamboard</Typography>
-            </Card>
-          </Grid>
+             <Box sx={itemSx}>
+                <Card sx={{ height: 180, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed #ccc', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0,0,0,0.02)' } }} onClick={() => { setNewBoardType('team'); setCreateDialogOpen(true); }}>
+                  <Typography variant="h6" color="text.secondary" sx={{display:'flex', alignItems:'center', gap:1}}>
+                     <span>+</span> Neues Teamboard
+                  </Typography>
+                </Card>
+             </Box>
         )}
         {teamBoards.map((board) => (
-          <Grid item xs={12} sm={6} md={4} key={board.id}>
-            <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-              <CardContent>
-                <Typography variant="h6">{board.name}</Typography>
-                <Typography variant="body2" color="text.secondary">{board.description}</Typography>
-              </CardContent>
-              <CardActions sx={{ justifyContent: 'space-between' }}>
-                <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode('team-management'); }}>Öffnen</Button>
-                {isAdmin && <Button size="small" color="error" onClick={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}>Löschen</Button>}
-              </CardActions>
-            </Card>
-          </Grid>
+            <Box key={board.id} sx={itemSx}>
+                <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 3 } }}>
+                  <CardContent>
+                    <Typography variant="h6" noWrap title={board.name}>{board.name}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                        {board.description || 'Keine Beschreibung'}
+                    </Typography>
+                  </CardContent>
+                  <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
+                    <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode('team-management'); }}>Öffnen</Button>
+                    {isAdmin && <Button size="small" color="error" onClick={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}>Löschen</Button>}
+                  </CardActions>
+                </Card>
+            </Box>
         ))}
-      </Grid>
+      </Box>
       
+      {/* Dialogs */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
         <DialogTitle>Neues Board erstellen</DialogTitle>
         <DialogContent>
