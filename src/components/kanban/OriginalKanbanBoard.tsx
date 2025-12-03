@@ -30,6 +30,7 @@ import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders';
 import { ProjectBoardCard, LayoutDensity, ViewMode } from '@/types';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 const getErrorMessage = (error: unknown) => {
   if (error instanceof Error) return error.message;
@@ -82,6 +83,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
   function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, highlightCardId, onExit }: OriginalKanbanBoardProps, ref) {
     const supabase = useMemo(() => getSupabaseBrowserClient(), []);
     const { enqueueSnackbar } = useSnackbar();
+    const { t } = useLanguage();
 
     if (!supabase) {
       return <Box sx={{ p: 3 }}><SupabaseConfigNotice /></Box>;
@@ -380,7 +382,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
     const patchCard = useCallback(async (card: ProjectBoardCard, changes: Partial<ProjectBoardCard>) => {
       if (!permissions.canEditContent) {
-        enqueueSnackbar('Keine Berechtigung.', { variant: 'error' });
+        enqueueSnackbar(t('kanban.noPermission'), { variant: 'error' });
         return;
       }
 
@@ -416,13 +418,13 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         });
 
         if (!response.ok) {
-          enqueueSnackbar('Speichern fehlgeschlagen', { variant: 'error' });
+          enqueueSnackbar(t('kanban.saveFailed'), { variant: 'error' });
         }
       } catch (error) {
         console.error('Patch error:', error);
-        enqueueSnackbar('Netzwerkfehler', { variant: 'error' });
+        enqueueSnackbar(t('kanban.networkError'), { variant: 'error' });
       }
-    }, [permissions.canEditContent, rows, idFor, boardId, supabase, enqueueSnackbar, selectedCard]);
+    }, [permissions.canEditContent, rows, idFor, boardId, supabase, enqueueSnackbar, selectedCard, t]);
 
     const saveSettings = useCallback(async (options?: { skipMeta?: boolean }) => {
       if (!permissions.canManageSettings) return false;
@@ -482,14 +484,14 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         }
 
         if (!options?.skipMeta) {
-          enqueueSnackbar('Einstellungen gespeichert', { variant: 'success' });
+          enqueueSnackbar(t('kanban.settingsSaved'), { variant: 'success' });
         }
         return true;
       } catch (error) {
         enqueueSnackbar(formatSupabaseActionError('Einstellungen speichern', getErrorMessage(error)), { variant: 'error' });
         return false;
       }
-    }, [permissions.canManageSettings, boardId, supabase, cols, lanes, checklistTemplates, viewMode, density, boardName, boardDescription, boardMeta, enqueueSnackbar]);
+    }, [permissions.canManageSettings, boardId, supabase, cols, lanes, checklistTemplates, viewMode, density, boardName, boardDescription, boardMeta, enqueueSnackbar, t]);
 
     const saveCards = useCallback(async () => {
       if (!permissions.canEditContent) return false;
@@ -781,22 +783,22 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
     const restoreCard = async (card: any) => {
       if (!permissions.canEditContent) return;
-      if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" wiederherstellen?`)) return;
+      if (!window.confirm(t('kanban.restoreCardConfirm').replace('{id}', `${card.Nummer} ${card.Teil}`))) return;
 
       card["Archived"] = "";
       card["ArchivedDate"] = null;
       const updatedRows = reindexByStage([...rows, card]);
       setRows(updatedRows);
       await saveCards();
-      enqueueSnackbar('Karte wiederhergestellt', { variant: 'success' });
+      enqueueSnackbar(t('kanban.cardRestored'), { variant: 'success' });
     };
 
     const deleteCardPermanently = async (card: any) => {
       if (!permissions.canManageSettings) {
-        enqueueSnackbar('Nur Admins können Karten löschen.', { variant: 'warning' });
+        enqueueSnackbar(t('kanban.deleteCardAdminOnly'), { variant: 'warning' });
         return;
       }
-      if (!window.confirm(`Karte "${card.Nummer} ${card.Teil}" ENDGÜLTIG löschen?`)) return;
+      if (!window.confirm(t('kanban.deleteCardConfirm').replace('{id}', `${card.Nummer} ${card.Teil}`))) return;
 
       try {
         const headers = await buildSupabaseAuthHeaders(supabase);

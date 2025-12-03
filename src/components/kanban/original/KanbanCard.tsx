@@ -9,6 +9,7 @@ import { alpha, useTheme } from '@mui/material/styles';
 
 import { nullableDate, toBoolean } from '@/utils/booleans';
 import { ProjectBoardCard, LayoutDensity } from '@/types';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export type KanbanDensity = LayoutDensity;
 
@@ -59,6 +60,7 @@ export function KanbanCard({
   checklistTemplates,
   onClick
 }: KanbanCardProps) {
+  const { t } = useLanguage();
   const theme = useTheme();
   const cardId = idFor(card);
   const isDragDisabled = !canModify;
@@ -239,7 +241,7 @@ export function KanbanCard({
 
                         handleUpdateCard({ Eskalation: nextState });
                       }}
-                      title="Eskalation (Klick zum Durchschalten)"
+                      title={t('kanban.escalationToggle')}
                     >
                       <Warning sx={{ fontSize: 14 }} />
                     </IconButton>
@@ -271,7 +273,7 @@ export function KanbanCard({
                 </Box>
 
                 <Typography variant="body2" fontWeight={500} sx={{ mb: 0.5, lineHeight: 1.2, fontSize: '0.85rem' }}>
-                  {card.Teil || 'Kein Titel'}
+                  {card.Teil || t('kanban.noTitle')}
                 </Typography>
 
                 {statusKurz && (
@@ -332,7 +334,7 @@ export function KanbanCard({
                 {(card.TR_Datum || card.TR_Neu) && (
                   <Box sx={{ mt: 1, pt: 0.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {renderTRChip('TR', trOriginalDate || undefined, 'original')}
-                    {renderTRChip('Neu', trNeuDate || undefined, 'new')}
+                    {renderTRChip(t('kanban.currentNew'), trNeuDate || undefined, 'new')}
                     {trDiff !== null && trDiff !== 0 && (
                       <Chip
                         label={`${trDiff > 0 ? '+' : ''}${trDiff} T`}
@@ -349,7 +351,7 @@ export function KanbanCard({
                       />
                     )}
                     {trCompleted && (
-                      <Tooltip title="TR abgeschlossen">
+                      <Tooltip title={t('kanban.trCompleted')}>
                         <CheckCircle sx={{ fontSize: 14, color: 'success.main', ml: 0.5 }} />
                       </Tooltip>
                     )}
@@ -362,7 +364,7 @@ export function KanbanCard({
                       <Chip
                         key={idx}
                         avatar={<Avatar sx={{ width: 16, height: 16, fontSize: '0.5rem' }}>{(member.name || '?').charAt(0)}</Avatar>}
-                        label={`${member.name || 'Unbekannt'} ${member.department ? `(${member.department})` : ''}`}
+                        label={`${member.name || t('kanban.unknown')} ${member.department ? `(${member.department})` : ''}`}
                         size="small"
                         variant="outlined"
                         sx={{ height: 20, fontSize: '0.6rem', maxWidth: '100%' }}

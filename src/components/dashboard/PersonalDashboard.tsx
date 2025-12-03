@@ -43,6 +43,7 @@ import {
 import { useSnackbar } from 'notistack';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface PersonalDashboardProps {
   onOpenBoard: (boardId: string, cardId?: string, boardType?: 'standard' | 'team') => void;
@@ -51,6 +52,7 @@ interface PersonalDashboardProps {
 export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const theme = useTheme();
+  const { t } = useLanguage();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const { enqueueSnackbar } = useSnackbar();
@@ -209,7 +211,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         card_data: { ...originalData, status: 'done', assigneeId: assignee, "Board Stage": "Fertig" },
         updated_at: new Date().toISOString()
       }).eq('card_id', task.id);
-      enqueueSnackbar('Erledigt!', { variant: 'success' });
+      enqueueSnackbar(t('dashboard.doneMessage'), { variant: 'success' });
     } catch (err) { console.error(err); }
   };
 
@@ -279,7 +281,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         {tasks.length === 0 ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', opacity: 0.5, gap: 1 }}>
             <DoneAll sx={{ fontSize: 40 }} />
-            <Typography variant="body2">Alles erledigt!</Typography>
+            <Typography variant="body2">{t('dashboard.allDone')}</Typography>
           </Box>
         ) : (
           <Stack spacing={1.5}>
@@ -371,13 +373,13 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
     <Paper className="glass" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'rgba(255,255,255,0.02)' }}>
         <Avatar sx={{ width: 32, height: 32, bgcolor: 'warning.main' }}><ListAlt /></Avatar>
-        <Typography variant="h6" fontWeight={600}>Notizen</Typography>
+        <Typography variant="h6" fontWeight={600}>{t('dashboard.notes')}</Typography>
       </Box>
       <Box sx={{ p: 2, flex: 1, overflowY: 'auto' }}>
         <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
           <TextField
             size="small"
-            placeholder="Neue Notiz..."
+            placeholder={t('dashboard.newNotePlaceholder')}
             fullWidth
             value={newNote}
             onChange={(e) => setNewNote(e.target.value)}
@@ -439,17 +441,17 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.02em', mb: 0.5 }}>
-            Willkommen zurück
+            {t('dashboard.welcome')}
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            Hier ist dein Überblick für heute.
+            {t('dashboard.overview')}
           </Typography>
         </Box>
 
         <Stack direction="row" spacing={1}>
           <Chip
             icon={<Warning sx={{ fontSize: 16 }} />}
-            label="Überfällig"
+            label={t('dashboard.overdue')}
             clickable
             color={filters.overdue ? "error" : "default"}
             variant={filters.overdue ? "filled" : "outlined"}
@@ -457,7 +459,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
           />
           <Chip
             icon={<PriorityHigh sx={{ fontSize: 16 }} />}
-            label="Kritisch"
+            label={t('dashboard.critical')}
             clickable
             color={filters.critical ? "warning" : "default"}
             variant={filters.critical ? "filled" : "outlined"}
@@ -468,16 +470,16 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={6} md={3}>
-          {renderKPICard("Offene Aufgaben", kpis.total, <TrendingUp />, "primary", false)}
+          {renderKPICard(t('dashboard.openTasks'), kpis.total, <TrendingUp />, "primary", false)}
         </Grid>
         <Grid item xs={6} md={3}>
-          {renderKPICard("Überfällig", kpis.overdue, <Warning />, "error", filters.overdue, () => setFilters(f => ({ ...f, overdue: !f.overdue })))}
+          {renderKPICard(t('dashboard.overdue'), kpis.overdue, <Warning />, "error", filters.overdue, () => setFilters(f => ({ ...f, overdue: !f.overdue })))}
         </Grid>
         <Grid item xs={6} md={3}>
-          {renderKPICard("Kritisch", kpis.critical, <PriorityHigh />, "warning", filters.critical, () => setFilters(f => ({ ...f, critical: !f.critical })))}
+          {renderKPICard(t('dashboard.critical'), kpis.critical, <PriorityHigh />, "warning", filters.critical, () => setFilters(f => ({ ...f, critical: !f.critical })))}
         </Grid>
         <Grid item xs={6} md={3}>
-          {renderKPICard("Heute Fällig", kpis.dueToday, <NotificationsActive />, "info", filters.dueToday, () => setFilters(f => ({ ...f, dueToday: !f.dueToday })))}
+          {renderKPICard(t('dashboard.dueToday'), kpis.dueToday, <NotificationsActive />, "info", filters.dueToday, () => setFilters(f => ({ ...f, dueToday: !f.dueToday })))}
         </Grid>
       </Grid>
 
@@ -494,18 +496,18 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
             <Tab icon={<ListAlt fontSize="small" />} label="Notizen" />
           </Tabs>
           <Box sx={{ minHeight: 400 }}>
-            {mobileTab === 0 && renderTaskList("Team-Aufgaben", <Assignment />, teamTasks, 'team')}
-            {mobileTab === 1 && renderTaskList("Projekt-Karten", <Business />, projectTasks, 'standard')}
+            {mobileTab === 0 && renderTaskList(t('dashboard.teamTasks'), <Assignment />, teamTasks, 'team')}
+            {mobileTab === 1 && renderTaskList(t('dashboard.projectCards'), <Business />, projectTasks, 'standard')}
             {mobileTab === 2 && renderNotes()}
           </Box>
         </Box>
       ) : (
         <Grid container spacing={3} alignItems="stretch">
           <Grid item xs={12} md={4}>
-            {renderTaskList("Team-Aufgaben", <Assignment />, teamTasks, 'team')}
+            {renderTaskList(t('dashboard.teamTasks'), <Assignment />, teamTasks, 'team')}
           </Grid>
           <Grid item xs={12} md={4}>
-            {renderTaskList("Projekt-Karten", <Business />, projectTasks, 'standard')}
+            {renderTaskList(t('dashboard.projectCards'), <Business />, projectTasks, 'standard')}
           </Grid>
           <Grid item xs={12} md={4}>
             {renderNotes()}

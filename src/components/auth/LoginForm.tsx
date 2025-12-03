@@ -1,15 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { 
-  Box, 
-  Button, 
-  TextField, 
-  Typography, 
-  Alert, 
-  CircularProgress 
+import {
+  Box,
+  Button,
+  TextField,
+  Typography,
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
@@ -17,6 +18,7 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const { t } = useLanguage();
 
   const supabase = getSupabaseBrowserClient();
 
@@ -35,13 +37,13 @@ export default function LoginForm() {
       });
 
       if (error) throw error;
-      
+
       // Erfolgreicher Login -> Weiterleitung passiert oft automatisch durch Auth-Listener
       // oder wir machen es manuell:
       window.location.href = '/';
-      
+
     } catch (err: any) {
-      setError(err.message || 'Anmeldung fehlgeschlagen');
+      setError(err.message || t('auth.loginFailed'));
     } finally {
       setLoading(false);
     }
@@ -49,16 +51,16 @@ export default function LoginForm() {
 
   // Optional: Magic Link Login
   const handleMagicLink = async () => {
-      if (!email) {
-          setError('Bitte E-Mail eingeben für Magic Link');
-          return;
-      }
-      if (!supabase) return;
-      setLoading(true);
-      const { error } = await supabase.auth.signInWithOtp({ email });
-      setLoading(false);
-      if (error) setError(error.message);
-      else setMessage('Magic Link gesendet! Bitte Postfach prüfen.');
+    if (!email) {
+      setError(t('auth.magicLinkError'));
+      return;
+    }
+    if (!supabase) return;
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOtp({ email });
+    setLoading(false);
+    if (error) setError(error.message);
+    else setMessage(t('auth.magicLinkSent'));
   };
 
   return (
@@ -71,7 +73,7 @@ export default function LoginForm() {
         required
         fullWidth
         id="email"
-        label="E-Mail Adresse"
+        label={t('auth.email')}
         name="email"
         autoComplete="email"
         autoFocus
@@ -84,7 +86,7 @@ export default function LoginForm() {
         required
         fullWidth
         name="password"
-        label="Passwort"
+        label={t('auth.password')}
         type="password"
         id="password"
         autoComplete="current-password"
@@ -92,7 +94,7 @@ export default function LoginForm() {
         onChange={(e) => setPassword(e.target.value)}
         disabled={loading}
       />
-      
+
       <Button
         type="submit"
         fullWidth
@@ -100,16 +102,16 @@ export default function LoginForm() {
         sx={{ mt: 3, mb: 2 }}
         disabled={loading}
       >
-        {loading ? <CircularProgress size={24} /> : 'Anmelden'}
+        {loading ? <CircularProgress size={24} /> : t('auth.loginButton')}
       </Button>
-      
+
       <Button
         fullWidth
         variant="text"
         onClick={handleMagicLink}
         disabled={loading || !email}
       >
-        Login mit Magic Link
+        {t('auth.magicLinkButton')}
       </Button>
     </Box>
   );

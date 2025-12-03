@@ -54,6 +54,7 @@ import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders';
 import { StandardDatePicker } from '@/components/common/StandardDatePicker';
 import dayjs from 'dayjs';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 // --- Styles & Konstanten ---
 const blinkAnimation = keyframes`
@@ -163,6 +164,7 @@ const convertDbToCard = (item: any, boardMap: Map<string, string>, currentBoardI
 export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: TeamKanbanBoardProps) {
     const supabase = useMemo(() => getSupabaseBrowserClient(), []);
     const { enqueueSnackbar } = useSnackbar();
+    const { t } = useLanguage();
     const theme = useTheme();
 
     const [members, setMembers] = useState<MemberWithProfile[]>([]);
@@ -219,7 +221,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             body: JSON.stringify({ settings: nextSettings })
         });
         setSettingsOpen(false);
-        enqueueSnackbar('Einstellungen gespeichert', { variant: 'success' });
+        enqueueSnackbar(t('teamBoard.settingsSaved'), { variant: 'success' });
         window.location.reload();
     };
 
@@ -396,7 +398,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 stage: dbStage,
                 card_data: { ...card.originalData, "Board Stage": dbStage, status: 'done' }
             }).eq('id', card.rowId);
-            enqueueSnackbar('Aufgabe erledigt', { variant: 'success' });
+            enqueueSnackbar(t('teamBoard.taskCompleted'), { variant: 'success' });
         } catch (err) { setCards(cards); }
     };
 
@@ -476,7 +478,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                     position: editingCard.position
                 };
                 await supabase.from('kanban_cards').update({ card_data: mergedData }).eq('id', editingCard.rowId);
-                enqueueSnackbar('Aufgabe aktualisiert', { variant: 'success' });
+                enqueueSnackbar(t('teamBoard.taskUpdated'), { variant: 'success' });
             } else {
                 const existingInCol = cards.filter(c => c.assigneeId === draft.assigneeId && c.status === draft.status).length;
                 await supabase.from('kanban_cards').insert([{
@@ -495,7 +497,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                         status: draft.status
                     }
                 }]);
-                enqueueSnackbar('Aufgabe erstellt', { variant: 'success' });
+                enqueueSnackbar(t('teamBoard.taskCreated'), { variant: 'success' });
             }
             closeDialog();
             const mems = await loadMembers(await fetchClientProfiles());
@@ -505,7 +507,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     const deleteTask = async () => {
         if (!editingCard || !supabase) return;
-        if (!confirm("Löschen?")) return;
+        if (!confirm(t('teamBoard.deletePrompt'))) return;
         await supabase.from('kanban_cards').delete().eq('id', editingCard.rowId);
         setCards(prev => prev.filter(c => c.cardId !== editingCard.cardId));
         closeDialog();
@@ -523,25 +525,25 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             }
             await persistCompletedCount(completedCount + doneCards.length);
             setCards(prev => prev.filter(c => c.status !== 'done'));
-            enqueueSnackbar('Flow abgeschlossen', { variant: 'success' });
+            enqueueSnackbar(t('teamBoard.flowCompleted'), { variant: 'success' });
         } catch (e) { console.error(e); } finally { setFlowSaving(false); }
     };
 
     // --- Sub-Components ---
     const TeamKPIDialog = ({ open, onClose }: any) => (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Assessment color="primary" /> KPIs</DialogTitle>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Assessment color="primary" /> {t('teamBoard.kpis')}</DialogTitle>
             <DialogContent dividers>
                 <Grid container spacing={3}>
-                    <Grid item xs={4}><Card sx={{ bgcolor: 'rgba(25, 118, 210, 0.04)' }}><CardContent><Typography variant="h4" color="primary">{kpiStats.activeCount}</Typography><Typography variant="caption">Aktive Aufgaben</Typography></CardContent></Card></Grid>
-                    <Grid item xs={4}><Card sx={{ bgcolor: 'rgba(46, 125, 50, 0.04)' }}><CardContent><Typography variant="h4" color="success.main">{kpiStats.doneCount}</Typography><Typography variant="caption">Erledigt</Typography></CardContent></Card></Grid>
-                    <Grid item xs={4}><Card sx={{ bgcolor: kpiStats.overdueCount > 0 ? 'rgba(211, 47, 47, 0.04)' : 'transparent' }}><CardContent><Typography variant="h4" color="error">{kpiStats.overdueCount}</Typography><Typography variant="caption">Überfällig</Typography></CardContent></Card></Grid>
-                    <Grid item xs={12}><Typography variant="subtitle1" gutterBottom>Auslastung</Typography>
+                    <Grid item xs={4}><Card sx={{ bgcolor: 'rgba(25, 118, 210, 0.04)' }}><CardContent><Typography variant="h4" color="primary">{kpiStats.activeCount}</Typography><Typography variant="caption">{t('teamBoard.activeTasks')}</Typography></CardContent></Card></Grid>
+                    <Grid item xs={4}><Card sx={{ bgcolor: 'rgba(46, 125, 50, 0.04)' }}><CardContent><Typography variant="h4" color="success.main">{kpiStats.doneCount}</Typography><Typography variant="caption">{t('teamBoard.done')}</Typography></CardContent></Card></Grid>
+                    <Grid item xs={4}><Card sx={{ bgcolor: kpiStats.overdueCount > 0 ? 'rgba(211, 47, 47, 0.04)' : 'transparent' }}><CardContent><Typography variant="h4" color="error">{kpiStats.overdueCount}</Typography><Typography variant="caption">{t('teamBoard.overdue')}</Typography></CardContent></Card></Grid>
+                    <Grid item xs={12}><Typography variant="subtitle1" gutterBottom>{t('teamBoard.workload')}</Typography>
                         {kpiStats.memberLoad.slice(0, 5).map((m, i) => (<Box key={i} sx={{ mb: 1 }}><Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">{m.name}</Typography><Typography variant="body2">{m.count}</Typography></Box><LinearProgress variant="determinate" value={Math.min(100, (m.count / 5) * 100)} /></Box>))}
                     </Grid>
                 </Grid>
             </DialogContent>
-            <DialogActions><Button onClick={onClose}>Schließen</Button></DialogActions>
+            <DialogActions><Button onClick={onClose}>{t('teamBoard.close')}</Button></DialogActions>
         </Dialog>
     );
 
@@ -582,25 +584,25 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         return (
             <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
                 <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Star color="warning" /> Top Themen
+                    <Star color="warning" /> {t('teamBoard.topTopics')}
                 </DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={3}>
                         {/* Compose Area */}
                         <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                            <Typography variant="subtitle2" sx={{ mb: 2 }}>Neues Thema erstellen</Typography>
+                            <Typography variant="subtitle2" sx={{ mb: 2 }}>{t('teamBoard.createTopic')}</Typography>
                             <Stack spacing={2}>
                                 <TextField
                                     fullWidth
                                     multiline
                                     minRows={3}
-                                    placeholder="Worum geht es?"
+                                    placeholder={t('teamBoard.topicPlaceholder')}
                                     value={newTitle}
                                     onChange={(e) => setNewTitle(e.target.value)}
                                 />
                                 <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
                                     <StandardDatePicker
-                                        label="Fällig am"
+                                        label={t('teamBoard.dueDate')}
                                         value={newDate ? dayjs(newDate) : null}
                                         onChange={(newValue) => setNewDate(newValue ? newValue.format('YYYY-MM-DD') : null)}
                                         sx={{ width: 200 }}
@@ -610,7 +612,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                         onClick={handleAdd}
                                         disabled={!newTitle.trim()}
                                     >
-                                        Speichern
+                                        {t('teamBoard.save')}
                                     </Button>
                                 </Stack>
                             </Stack>
@@ -618,9 +620,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
                         {/* List Area */}
                         <Box>
-                            <Typography variant="subtitle2" sx={{ mb: 1 }}>Aktuelle Themen</Typography>
+                            <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('teamBoard.currentTopics')}</Typography>
                             {localTopics.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">Keine Themen vorhanden.</Typography>
+                                <Typography variant="body2" color="text.secondary">{t('teamBoard.noTopics')}</Typography>
                             ) : (
                                 <Stack spacing={1}>
                                     {localTopics.map((topic) => (
@@ -631,7 +633,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                         <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{topic.title}</Typography>
                                                         {topic.due_date && (
                                                             <Chip
-                                                                label={`Fällig: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
+                                                                label={`${t('teamBoard.due')}: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
                                                                 size="small"
                                                                 sx={{ mt: 1 }}
                                                             />
@@ -650,7 +652,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={onClose}>Schließen</Button>
+                    <Button onClick={onClose}>{t('teamBoard.close')}</Button>
                 </DialogActions>
             </Dialog>
         );

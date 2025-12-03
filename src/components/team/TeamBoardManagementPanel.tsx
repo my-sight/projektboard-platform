@@ -41,6 +41,7 @@ import { isSuperuserEmail } from '@/constants/superuser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { StandardDatePicker } from '@/components/common/StandardDatePicker';
 import dayjs from 'dayjs';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface BoardMemberRow {
   id: string;
@@ -221,6 +222,7 @@ function parseWeekInputValue(value: string): string | null {
 
 export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSee }: TeamBoardManagementPanelProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<ClientProfile[]>([]);
@@ -381,7 +383,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
       } catch (cause) {
         if (!active) return;
         console.error('❌ Fehler beim Laden des Team-Managements', cause);
-        setMessage('Fehler beim Laden der Management-Daten.');
+        setMessage(t('boardManagement.loadError'));
       } finally {
         if (active) {
           setLoading(false);
@@ -455,7 +457,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
         .upsert(payload, { onConflict: 'board_id,profile_id,week_start' });
       if (error) throw error;
 
-      setMessage('✅ Anwesenheit gespeichert');
+      setMessage(t('boardManagement.attendanceSaved'));
       setTimeout(() => setMessage(null), 4000);
 
       const copy = { ...attendanceByWeek };
@@ -475,7 +477,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
       setAttendanceByWeek(copy);
     } catch (cause) {
       console.error('❌ Fehler beim Speichern der Anwesenheit', cause);
-      setMessage('❌ Anwesenheit konnte nicht gespeichert werden.');
+      setMessage(t('boardManagement.attendanceSaveError'));
     } finally {
       setAttendanceSaving(false);
     }
@@ -499,11 +501,11 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
       };
       setMembers((prev) => [...prev, nextMember]);
       setMemberSelect('');
-      setMessage('✅ Mitglied hinzugefügt');
+      setMessage(t('boardManagement.memberAdded'));
       setTimeout(() => setMessage(null), 3000);
     } catch (cause) {
       console.error('❌ Fehler beim Hinzufügen eines Mitglieds', cause);
-      setMessage('❌ Mitglied konnte nicht hinzugefügt werden.');
+      setMessage(t('boardManagement.memberAddError'));
     }
   };
 
@@ -533,11 +535,11 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
         }
         return copy;
       });
-      setMessage('✅ Mitglied entfernt');
+      setMessage(t('boardManagement.memberRemoved'));
       setTimeout(() => setMessage(null), 3000);
     } catch (cause) {
       console.error('❌ Fehler beim Entfernen eines Mitglieds', cause);
-      setMessage('❌ Mitglied konnte nicht entfernt werden.');
+      setMessage(t('boardManagement.memberRemoveError'));
     } finally {
       setDeleteDialog({ open: false, memberId: null });
     }
@@ -545,32 +547,39 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
 
   const addTopic = async () => {
     if (!supabase) return;
-    if (topics.length >= 5) {
-      setMessage('❌ Es können maximal 5 Top-Themen angelegt werden.');
-      setTimeout(() => setMessage(null), 4000);
-      return;
-    }
+    const draft = topicDrafts['new'];
+    if (!draft?.title.trim()) return;
 
     try {
       const { data, error } = await supabase
         .from('board_top_topics')
-        .insert({ board_id: boardId, title: '', due_date: null, position: topics.length })
+        .insert({
+          board_id: boardId,
+          title: draft.title,
+          due_date: draft.dueDate || null,
+          position: topics.length,
+        })
         .select()
         .single();
       if (error) throw error;
 
       const topic = data as TopicRow;
       setTopics((prev) => [...prev, topic]);
-      setTopicDrafts((prev) => ({
-        ...prev,
-        [topic.id]: {
+      setTopicDrafts((prev) => {
+        const copy = { ...prev };
+        delete copy['new'];
+        // Initialize the new topic in drafts (though it's not strictly necessary if we only edit existing ones)
+        copy[topic.id] = {
           title: topic.title ?? '',
-          dueDate: '',
-        },
-      }));
+          dueDate: topic.due_date ?? '',
+        };
+        return copy;
+      });
+      setMessage(t('boardManagement.topicCreated'));
+      setTimeout(() => setMessage(null), 3000);
     } catch (cause) {
       console.error('❌ Fehler beim Hinzufügen eines Top-Themas', cause);
-      setMessage('❌ Top-Thema konnte nicht angelegt werden.');
+      setMessage(t('boardManagement.topicCreateError'));
     }
   };
 
@@ -608,12 +617,12 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
       );
 
       // Feedback
-      setMessage('✅ Top-Thema gespeichert');
+      setMessage(t('boardManagement.topicSaved'));
       setTimeout(() => setMessage(null), 2000);
 
     } catch (cause) {
       console.error('❌ Fehler beim Aktualisieren eines Top-Themas', cause);
-      setMessage('❌ Top-Thema konnte nicht aktualisiert werden.');
+      setMessage(t('boardManagement.topicUpdateError'));
     }
   };
 
@@ -634,7 +643,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
       });
     } catch (cause) {
       console.error('❌ Fehler beim Löschen eines Top-Themas', cause);
-      setMessage('❌ Top-Thema konnte nicht gelöscht werden.');
+      setMessage(t('boardManagement.topicDeleteError'));
     }
   };
 
@@ -652,7 +661,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     return (
       <Card>
         <CardContent>
-          <Typography>Keine Berechtigung zum Anzeigen der Management-Ansicht.</Typography>
+          <Typography>{t('boardManagement.noPermission')}</Typography>
         </CardContent>
       </Card>
     );
@@ -661,7 +670,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   if (loading) {
     return (
       <Box sx={{ py: 6, textAlign: 'center' }}>
-        <Typography variant="body1">🔄 Management-Daten werden geladen...</Typography>
+        <Typography variant="body1">{t('boardManagement.loading')}</Typography>
       </Box>
     );
   }
@@ -678,22 +687,22 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} alignItems="flex-start">
             <Box>
-              <Typography variant="h6">👥 Team-Mitglieder</Typography>
+              <Typography variant="h6">👥 {t('boardManagement.teamMembers')}</Typography>
               <Typography variant="body2" color="text.secondary">
-                Verwalte die Mitglieder des Teamboards.
+                {t('boardManagement.manageMembers')}
               </Typography>
             </Box>
             {canEdit && (
               <Stack direction="row" spacing={1} alignItems="center">
                 <FormControl size="small" sx={{ minWidth: 220 }}>
-                  <InputLabel>Mitglied hinzufügen</InputLabel>
+                  <InputLabel>{t('boardManagement.addMember')}</InputLabel>
                   <Select
-                    label="Mitglied hinzufügen"
+                    label={t('boardManagement.addMember')}
                     value={memberSelect}
                     onChange={(event) => setMemberSelect(String(event.target.value))}
                   >
                     <MenuItem value="">
-                      <em>Auswählen</em>
+                      <em>{t('boardManagement.select')}</em>
                     </MenuItem>
                     {availableProfiles.map((profile) => (
                       <MenuItem key={profile.id} value={profile.id}>
@@ -708,7 +717,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                   disabled={!memberSelect}
                   onClick={addMember}
                 >
-                  Hinzufügen
+                  {t('boardManagement.add')}
                 </Button>
               </Stack>
             )}
@@ -717,7 +726,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
           <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 3 }}>
             {members.length === 0 && (
               <Typography variant="body2" color="text.secondary">
-                Noch keine Mitglieder hinterlegt.
+                {t('boardManagement.noMembers')}
               </Typography>
             )}
             {members.map((member) => {
@@ -742,9 +751,9 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2} justifyContent="space-between">
             <Box>
-              <Typography variant="h6">🗓️ Anwesenheit</Typography>
+              <Typography variant="h6">🗓️ {t('boardManagement.attendance')}</Typography>
               <Typography variant="body2" color="text.secondary">
-                Dokumentiere, wer beim Termin anwesend war.
+                {t('boardManagement.attendanceDesc')}
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} alignItems="center">
@@ -779,7 +788,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                   onClick={saveAttendance}
                   disabled={attendanceSaving || members.length === 0}
                 >
-                  Diese Woche speichern
+                  {t('boardManagement.saveWeek')}
                 </Button>
               )}
             </Stack>
@@ -789,8 +798,8 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
             <Table size="small">
               <TableHead>
                 <TableRow>
-                  <TableCell>Mitglied</TableCell>
-                  <TableCell align="center">Aktuelle KW</TableCell>
+                  <TableCell>{t('boardManagement.member')}</TableCell>
+                  <TableCell align="center">{t('boardManagement.currentWeek')}</TableCell>
                   {historyWeeks.map((history) => (
                     <TableCell key={history.week} align="center">
                       <Stack spacing={0.5} alignItems="center">
@@ -810,7 +819,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                   <TableRow>
                     <TableCell colSpan={historyWeeks.length + 2}>
                       <Typography variant="body2" color="text.secondary">
-                        Füge Mitglieder hinzu, um Anwesenheiten zu dokumentieren.
+                        {t('boardManagement.addMembersHint')}
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -832,7 +841,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                           </Stack>
                         </TableCell>
                         <TableCell align="center">
-                          <Tooltip title={present ? 'Anwesend' : 'Abwesend'}>
+                          <Tooltip title={present ? t('boardManagement.present') : t('boardManagement.absent')}>
                             <span>
                               <Checkbox
                                 checked={present}
@@ -880,9 +889,9 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }}>
             <Box>
-              <Typography variant="h6">⭐ Top-Themen</Typography>
+              <Typography variant="h6">⭐ {t('boardManagement.topTopicsTitle')}</Typography>
               <Typography variant="body2" color="text.secondary">
-                Halte die wichtigsten Themen fest (maximal fünf Einträge).
+                {t('boardManagement.topTopicsDesc')}
               </Typography>
             </Box>
           </Stack>
@@ -891,19 +900,19 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
             {/* Compose Area */}
             {canManageTopics && topics.length < 5 && (
               <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                <Typography variant="subtitle2" sx={{ mb: 2 }}>Neues Thema erstellen</Typography>
+                <Typography variant="subtitle2" sx={{ mb: 2 }}>{t('boardManagement.createTopicTitle')}</Typography>
                 <Stack spacing={2}>
                   <TextField
                     fullWidth
                     multiline
                     minRows={3}
-                    placeholder="Worum geht es?"
+                    placeholder={t('boardManagement.topicContent')}
                     value={topicDrafts['new']?.title || ''}
                     onChange={(e) => setTopicDrafts(prev => ({ ...prev, 'new': { ...prev['new'], title: e.target.value, dueDate: prev['new']?.dueDate || '' } }))}
                   />
                   <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
                     <StandardDatePicker
-                      label="Fällig am"
+                      label={t('boardManagement.topicDue')}
                       value={topicDrafts['new']?.dueDate ? dayjs(topicDrafts['new'].dueDate) : null}
                       onChange={(newValue) => setTopicDrafts(prev => ({ ...prev, 'new': { ...prev['new'], title: prev['new']?.title || '', dueDate: newValue ? newValue.format('YYYY-MM-DD') : '' } }))}
                       sx={{ width: 200 }}
@@ -929,16 +938,16 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                             delete copy['new'];
                             return copy;
                           });
-                          setMessage('✅ Top-Thema angelegt');
+                          setMessage(t('boardManagement.topicCreated'));
                           setTimeout(() => setMessage(null), 3000);
                         } catch (e) {
                           console.error(e);
-                          setMessage('❌ Fehler beim Anlegen');
+                          setMessage(t('boardManagement.createError'));
                         }
                       }}
                       disabled={!topicDrafts['new']?.title.trim()}
                     >
-                      Speichern
+                      {t('boardManagement.saveButton')}
                     </Button>
                   </Stack>
                 </Stack>
@@ -947,9 +956,9 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
 
             {/* List Area */}
             <Box>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>Aktuelle Themen</Typography>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('boardManagement.currentTopicsTitle')}</Typography>
               {topics.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">Noch keine Top-Themen erfasst.</Typography>
+                <Typography variant="body2" color="text.secondary">{t('boardManagement.noTopicsCaptured')}</Typography>
               ) : (
                 <Stack spacing={1}>
                   {topics.map((topic) => (
@@ -958,13 +967,13 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                         <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
                           <Box>
                             <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{topic.title}</Typography>
-                            {topic.due_date && (
+                            {topic.due_date &&
                               <Chip
-                                label={`Fällig: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
+                                label={`${t('boardManagement.dueLabel')}: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
                                 size="small"
                                 sx={{ mt: 1 }}
                               />
-                            )}
+                            }
                           </Box>
                           {canManageTopics && (
                             <IconButton size="small" color="error" onClick={() => deleteTopic(topic.id)}>
@@ -983,14 +992,14 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
       </Card>
 
       <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ open: false, memberId: null })}>
-        <DialogTitle>Mitglied entfernen?</DialogTitle>
+        <DialogTitle>{t('boardManagement.removeMemberTitle')}</DialogTitle>
         <DialogContent>
-          <Typography>Dieses Mitglied wird aus dem Teamboard entfernt.</Typography>
+          <Typography>{t('boardManagement.removeMemberDesc')}</Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialog({ open: false, memberId: null })}>Abbrechen</Button>
+          <Button onClick={() => setDeleteDialog({ open: false, memberId: null })}>{t('boardManagement.cancelButton')}</Button>
           <Button color="error" variant="contained" onClick={confirmRemoveMember}>
-            Entfernen
+            {t('boardManagement.removeButton')}
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,6 +1,7 @@
 'use client';
 
 import { ExtendedCard } from '@/types';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface KanbanToolbarProps {
   searchTerm: string;
@@ -25,6 +26,7 @@ export default function KanbanToolbar({
   onDensityChange,
   cards
 }: KanbanToolbarProps) {
+  const { t } = useLanguage();
   // Get unique swimlanes from cards
   const swimlanes = Array.from(new Set(
     cards.map(card => card.swimlane).filter(Boolean)
@@ -55,7 +57,7 @@ export default function KanbanToolbar({
       {/* Search */}
       <input
         type="search"
-        placeholder="Suche nach Karten..."
+        placeholder={t('kanban.searchPlaceholder')}
         value={searchTerm}
         onChange={(e) => onSearchChange(e.target.value)}
       />
@@ -65,8 +67,8 @@ export default function KanbanToolbar({
         value={selectedLane}
         onChange={(e) => onLaneChange(e.target.value)}
       >
-        <option value="all">Alle Bereiche</option>
-        <option value="unassigned">Nicht zugeordnet</option>
+        <option value="all">{t('kanban.allLanes')}</option>
+        <option value="unassigned">{t('kanban.unassigned')}</option>
         {swimlanes.map(lane => (
           <option key={lane} value={lane}>{lane}</option>
         ))}
@@ -77,21 +79,21 @@ export default function KanbanToolbar({
         <button
           className={`btn ${viewMode === 'columns' ? 'active' : ''}`}
           onClick={() => onViewModeChange('columns')}
-          title="Spaltenansicht"
+          title={t('kanban.viewColumns')}
         >
           ⚏
         </button>
         <button
           className={`btn ${viewMode === 'swimlanes-responsible' ? 'active' : ''}`}
           onClick={() => onViewModeChange('swimlanes-responsible')}
-          title="Swimlanes nach Verantwortlichen"
+          title={t('kanban.viewSwimlanesResp')}
         >
           👥
         </button>
         <button
           className={`btn ${viewMode === 'swimlanes-category' ? 'active' : ''}`}
           onClick={() => onViewModeChange('swimlanes-category')}
-          title="Swimlanes nach Kategorie"
+          title={t('kanban.viewSwimlanesCat')}
         >
           📂
         </button>
@@ -102,21 +104,21 @@ export default function KanbanToolbar({
         <button
           className={`btn ${density === 'large' ? 'active' : ''}`}
           onClick={() => onDensityChange('large')}
-          title="Große Karten"
+          title={t('kanban.densityLarge')}
         >
           ⬜
         </button>
         <button
           className={`btn ${density === 'normal' ? 'active' : ''}`}
           onClick={() => onDensityChange('normal')}
-          title="Normale Karten"
+          title={t('kanban.densityNormal')}
         >
           ▢
         </button>
         <button
           className={`btn ${density === 'compact' ? 'active' : ''}`}
           onClick={() => onDensityChange('compact')}
-          title="Kompakte Karten"
+          title={t('kanban.densityCompact')}
         >
           ▫
         </button>
@@ -124,15 +126,15 @@ export default function KanbanToolbar({
 
       {/* Action Buttons */}
       <button className="btn primary" onClick={handleAddCard}>
-        + Neue Karte
+        + {t('kanban.newCard')}
       </button>
-      
+
       <button className="btn" onClick={handleExport}>
-        📊 Export
+        📊 {t('kanban.export')}
       </button>
-      
+
       <button className="btn" onClick={handleSettings}>
-        ⚙ Einstellungen
+        ⚙ {t('kanban.settings')}
       </button>
     </div>
   );

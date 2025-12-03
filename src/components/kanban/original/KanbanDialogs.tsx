@@ -39,6 +39,7 @@ import { Delete, Add, DeleteOutline, CloudUpload } from '@mui/icons-material';
 
 import { StandardDatePicker } from '@/components/common/StandardDatePicker';
 import dayjs from 'dayjs';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 // --- HELPER: BILD KOMPRIMIERUNG ---
 const compressImage = (file: File): Promise<string> => {
@@ -130,6 +131,7 @@ export function EditCardDialog({
   canEdit = true,
   onDelete,
 }: EditCardDialogProps) {
+  const { t } = useLanguage();
   const [uploading, setUploading] = useState(false);
 
   if (!selectedCard) return null;
@@ -156,7 +158,7 @@ export function EditCardDialog({
       handlePatch('Bild', compressedBase64);
     } catch (error) {
       console.error('Fehler beim Bild-Upload:', error);
-      alert('Fehler beim Verarbeiten des Bildes.');
+      alert(t('kanban.imageProcessError'));
     } finally {
       setUploading(false);
     }
@@ -178,7 +180,7 @@ export function EditCardDialog({
 
   const handleDeleteStatusEntry = (index: number) => {
     if (!selectedCard.StatusHistory) return;
-    if (!window.confirm('Diesen Statuseintrag wirklich löschen?')) return;
+    if (!window.confirm(t('kanban.deleteEntryConfirm'))) return;
 
     const newHistory = [...selectedCard.StatusHistory];
     newHistory.splice(index, 1);
@@ -220,16 +222,16 @@ export function EditCardDialog({
         }}
       >
         <Typography variant="h6">
-          Karte {canEdit ? 'bearbeiten' : 'ansehen'}: {selectedCard.Nummer} - {selectedCard.Teil}
+          {canEdit ? t('kanban.editCard') : t('kanban.viewCard')}: {selectedCard.Nummer} - {selectedCard.Teil}
         </Typography>
         <IconButton onClick={handleClose}>×</IconButton>
       </DialogTitle>
 
       <DialogContent sx={{ p: 0 }}>
         <Tabs value={editTabValue} onChange={(e, v) => setEditTabValue(v)}>
-          <Tab label="Status & Checkliste" />
-          <Tab label="Team" />
-          <Tab label="Details" />
+          <Tab label={t('kanban.tabStatus')} />
+          <Tab label={t('kanban.tabTeam')} />
+          <Tab label={t('kanban.tabDetails')} />
         </Tabs>
 
         {/* TAB 0: STATUS & CHECKLISTE */}
@@ -237,9 +239,9 @@ export function EditCardDialog({
           <Box sx={{ p: 3 }}>
             <Box sx={{ mb: 4 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6">Statushistorie</Typography>
+                <Typography variant="h6">{t('kanban.history')}</Typography>
                 <Button variant="outlined" size="small" onClick={() => addStatusEntry(selectedCard)} disabled={!canEdit}>
-                  🕓 Neuer Eintrag
+                  🕓 {t('kanban.newEntry')}
                 </Button>
               </Box>
 
@@ -247,7 +249,7 @@ export function EditCardDialog({
                 {(selectedCard.StatusHistory || []).map((entry: any, idx: number) => (
                   <Box key={idx} sx={{ mb: 3, border: 1, borderColor: 'divider', borderRadius: 1, p: 2, position: 'relative' }}>
                     {canEdit && (
-                      <Tooltip title="Eintrag löschen">
+                      <Tooltip title={t('kanban.deleteEntry')}>
                         <IconButton
                           size="small"
                           color="error"
@@ -262,7 +264,7 @@ export function EditCardDialog({
                     <Table size="small">
                       <TableHead>
                         <TableRow>
-                          <TableCell sx={{ fontWeight: 600, verticalAlign: 'top', pt: 1.5 }}>{entry.date || 'Datum'}</TableCell>
+                          <TableCell sx={{ fontWeight: 600, verticalAlign: 'top', pt: 1.5 }}>{entry.date || t('kanban.date')}</TableCell>
                           <TableCell colSpan={2}>
                             <TextField
                               size="small"
@@ -270,7 +272,7 @@ export function EditCardDialog({
                               multiline
                               minRows={1}
                               maxRows={3}
-                              placeholder="Statusmeldung"
+                              placeholder={t('kanban.message')}
                               value={entry.message?.text || ''}
                               disabled={!canEdit}
                               onChange={(e) => {
@@ -286,7 +288,7 @@ export function EditCardDialog({
                       </TableHead>
                       <TableBody>
                         {['qualitaet', 'kosten', 'termine'].map((key) => {
-                          const labels: Record<string, string> = { qualitaet: 'Qualität', kosten: 'Kosten', termine: 'Termine' };
+                          const labels: Record<string, string> = { qualitaet: t('kanban.quality'), kosten: t('kanban.cost'), termine: t('kanban.time') };
                           const val = entry[key] || { text: '', escalation: false };
                           return (
                             <TableRow key={key}>
@@ -325,7 +327,7 @@ export function EditCardDialog({
                                       }}
                                     />
                                   }
-                                  label="Eskalation"
+                                  label={t('kanban.escalation')}
                                 />
                               </TableCell>
                             </TableRow>
@@ -339,7 +341,7 @@ export function EditCardDialog({
             </Box>
 
             <Box sx={{ mb: 4 }}>
-              <Typography variant="h6" sx={{ mb: 1 }}>Checkliste: {stage}</Typography>
+              <Typography variant="h6" sx={{ mb: 1 }}>{t('kanban.checklist')}: {stage}</Typography>
               <List dense>
                 {tasks.map((task) => {
                   const checked = stageChecklist[task];
@@ -364,10 +366,10 @@ export function EditCardDialog({
             </Box>
 
             <Box sx={{ mt: 3 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>TR-Datum</Typography>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('kanban.trDate')}</Typography>
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <StandardDatePicker
-                  label="Original"
+                  label={t('kanban.original')}
                   value={selectedCard.TR_Datum ? dayjs(selectedCard.TR_Datum) : null}
                   onChange={(val) => handleDateChangeLocal('TR_Datum', val)}
                   onAccept={(val) => handleDateAccept('TR_Datum', val)}
@@ -375,7 +377,7 @@ export function EditCardDialog({
                 />
 
                 <StandardDatePicker
-                  label="Aktuell (Neu)"
+                  label={t('kanban.currentNew')}
                   value={selectedCard.TR_Neu ? dayjs(selectedCard.TR_Neu) : null}
                   onChange={(val) => handleDateChangeLocal('TR_Neu', val)}
                   onAccept={(val) => {
@@ -389,7 +391,7 @@ export function EditCardDialog({
               {/* ✅ FIX: Verwende `arr[idx-1]` statt `selectedCard.TR_History[idx-1]` */}
               {selectedCard.TR_History && selectedCard.TR_History.length > 0 && (
                 <Box sx={{ mt: 1.5, pl: 1.5, borderLeft: '3px solid rgba(0,0,0,0.1)' }}>
-                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>Historie:</Typography>
+                  <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>{t('kanban.history')}:</Typography>
                   {/* Explizite Typisierung von arr */}
                   {(selectedCard.TR_History || []).map((entry: any, idx: number, arr: any[]) => {
                     if (entry.date === selectedCard.TR_Neu) return null;
@@ -431,7 +433,7 @@ export function EditCardDialog({
                       }}
                     />
                   }
-                  label="TR abgeschlossen"
+                  label={t('kanban.trCompleted')}
                   sx={{ mt: 1, ml: 2 }}
                 />
               )}
@@ -442,17 +444,17 @@ export function EditCardDialog({
         {/* TAB 1: TEAM */}
         {editTabValue === 1 && (
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>Projekt-Team</Typography>
+            <Typography variant="h6" sx={{ mb: 2 }}>{t('kanban.projectTeam')}</Typography>
 
             <Stack spacing={2} sx={{ mt: 1 }}>
               {(selectedCard.Team || []).map((member: any, idx: number) => (
                 <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 2, alignItems: 'center', p: 2, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1 }}>
 
                   <FormControl size="small" fullWidth>
-                    <InputLabel>Mitglied</InputLabel>
+                    <InputLabel>{t('kanban.member')}</InputLabel>
                     <Select
                       value={member.userId || ''}
-                      label="Mitglied"
+                      label={t('kanban.member')}
                       disabled={!canEdit}
                       onChange={(e) => {
                         const selectedId = e.target.value;
@@ -470,12 +472,12 @@ export function EditCardDialog({
                         handlePatch('Team', newTeam);
                       }}
                     >
-                      <MenuItem value=""><em>Bitte wählen</em></MenuItem>
+                      <MenuItem value=""><em>{t('kanban.select')}</em></MenuItem>
                       {(() => {
                         // Sort users by department then name
                         const sortedUsers = [...users].sort((a, b) => {
-                          const deptA = (a.department || a.company || 'Ohne Abteilung').toLowerCase();
-                          const deptB = (b.department || b.company || 'Ohne Abteilung').toLowerCase();
+                          const deptA = (a.department || a.company || t('kanban.noDepartment')).toLowerCase();
+                          const deptB = (b.department || b.company || t('kanban.noDepartment')).toLowerCase();
                           if (deptA < deptB) return -1;
                           if (deptA > deptB) return 1;
                           const nameA = (a.full_name || a.name || a.email).toLowerCase();
@@ -487,7 +489,7 @@ export function EditCardDialog({
                         let lastDept = '';
 
                         sortedUsers.forEach((user) => {
-                          const currentDept = user.department || user.company || 'Ohne Abteilung';
+                          const currentDept = user.department || user.company || t('kanban.noDepartment');
                           if (currentDept !== lastDept) {
                             items.push(
                               <ListSubheader key={`header-${currentDept}`} sx={{ bgcolor: 'background.paper', fontWeight: 'bold', lineHeight: '32px' }}>
@@ -534,7 +536,7 @@ export function EditCardDialog({
               }}
               sx={{ mt: 2 }}
             >
-              Mitglied hinzufügen
+              {t('kanban.addMember')}
             </Button>
           </Box>
         )}
@@ -551,7 +553,7 @@ export function EditCardDialog({
                 mb: 3,
               }}
             >
-              <Typography>Nummer</Typography>
+              <Typography>{t('kanban.number')}</Typography>
               <TextField
                 size="small"
                 disabled={!canEdit}
@@ -559,7 +561,7 @@ export function EditCardDialog({
                 onChange={(e) => handlePatch('Nummer', e.target.value)}
               />
 
-              <Typography>Name</Typography>
+              <Typography>{t('kanban.title')}</Typography>
               <TextField
                 size="small"
                 disabled={!canEdit}
@@ -567,7 +569,7 @@ export function EditCardDialog({
                 onChange={(e) => handlePatch('Teil', e.target.value)}
               />
 
-              <Typography>Verantwortlich</Typography>
+              <Typography>{t('kanban.responsible')}</Typography>
               <Select
                 size="small"
                 disabled={!canEdit}
@@ -588,12 +590,12 @@ export function EditCardDialog({
                   }
                 }}
               >
-                <MenuItem value=""><em>Nicht zugewiesen</em></MenuItem>
+                <MenuItem value=""><em>{t('kanban.notAssigned')}</em></MenuItem>
                 {boardMembers.map((user: any) => (
                   <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
                     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
+                        {(user.full_name || user.name || user.email) ?? t('kanban.unknown')}
                         {user.department || user.company ? ` – ${user.department || user.company}` : ''}
                       </Typography>
                       {user.email && <Typography variant="caption" color="text.secondary">{user.email}</Typography>}
@@ -602,7 +604,7 @@ export function EditCardDialog({
                 ))}
               </Select>
 
-              <Typography>Fällig bis</Typography>
+              <Typography>{t('kanban.dueDate')}</Typography>
               <StandardDatePicker
                 value={selectedCard['Due Date'] ? dayjs(selectedCard['Due Date']) : null}
                 onChange={(val) => handleDateChangeLocal('Due Date', val)}
@@ -610,7 +612,7 @@ export function EditCardDialog({
                 disabled={!canEdit}
               />
 
-              <Typography>Priorität</Typography>
+              <Typography>{t('kanban.priority')}</Typography>
               <Checkbox
                 checked={toBoolean(selectedCard.Priorität)}
                 disabled={!canEdit}
@@ -619,7 +621,7 @@ export function EditCardDialog({
             </Box>
 
             <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>SOP-Datum</Typography>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('kanban.sopDate')}</Typography>
               <StandardDatePicker
                 value={selectedCard.SOP_Datum ? dayjs(selectedCard.SOP_Datum) : null}
                 onChange={(val) => handleDateChangeLocal('SOP_Datum', val)}
@@ -627,7 +629,7 @@ export function EditCardDialog({
                 disabled={!canEdit}
               />
 
-              <Typography>Bild</Typography>
+              <Typography>{t('kanban.image')}</Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Button
                   variant="outlined"
@@ -636,7 +638,7 @@ export function EditCardDialog({
                   disabled={!canEdit || uploading}
                   size="small"
                 >
-                  {uploading ? 'Komprimiere...' : 'Hochladen'}
+                  {uploading ? t('kanban.compressing') : t('kanban.upload')}
                   <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
                 </Button>
                 {selectedCard.Bild && (
@@ -646,7 +648,7 @@ export function EditCardDialog({
                     onClick={() => handlePatch('Bild', '')}
                     disabled={!canEdit}
                   >
-                    Löschen
+                    {t('kanban.delete')}
                   </Button>
                 )}
               </Box>
@@ -676,16 +678,16 @@ export function EditCardDialog({
                 setEditModalOpen(false);
               }}
             >
-              Löschen
+              {t('kanban.delete')}
             </Button>
           )}
           <Button onClick={handleCancel}>
-            Abbrechen
+            {t('kanban.cancel')}
           </Button>
         </Box>
 
         <Button variant="contained" onClick={handleClose}>
-          Speichern & Schließen
+          {t('kanban.saveAndClose')}
         </Button>
       </DialogActions>
     </Dialog >
@@ -693,6 +695,7 @@ export function EditCardDialog({
 }
 
 export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, restoreCard, deleteCardPermanently }: any) {
+  const { t } = useLanguage();
   return (
     <Dialog
       open={archiveOpen}
@@ -704,20 +707,20 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
         sx: { backgroundImage: 'none' }
       }}
     >
-      <DialogTitle>📦 Archivierte Karten</DialogTitle>
+      <DialogTitle>📦 {t('kanban.archive')}</DialogTitle>
       <DialogContent>
         {archivedCards.length === 0 ? (
-          <Typography color="text.secondary">Keine archivierten Karten vorhanden.</Typography>
+          <Typography color="text.secondary">{t('kanban.archiveEmpty')}</Typography>
         ) : (
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Nummer</TableCell>
-                <TableCell>Teil</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Verantwortlich</TableCell>
-                <TableCell>Archiviert am</TableCell>
-                <TableCell align="right">Aktionen</TableCell>
+                <TableCell>{t('kanban.number')}</TableCell>
+                <TableCell>{t('kanban.title')}</TableCell>
+                <TableCell>{t('kanban.status')}</TableCell>
+                <TableCell>{t('kanban.responsible')}</TableCell>
+                <TableCell>{t('kanban.archivedAt')}</TableCell>
+                <TableCell align="right">{t('kanban.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -727,13 +730,13 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
                   <TableCell>{card.Teil}</TableCell>
                   <TableCell>{card['Status Kurz']}</TableCell>
                   <TableCell>{card.Verantwortlich}</TableCell>
-                  <TableCell>{card.ArchivedDate || 'Unbekannt'}</TableCell>
+                  <TableCell>{card.ArchivedDate || t('kanban.unknown')}</TableCell>
                   <TableCell align="right">
                     <Button size="small" variant="outlined" onClick={() => restoreCard(card)} sx={{ mr: 1 }}>
-                      ↩️ Wiederherstellen
+                      ↩️ {t('kanban.restore')}
                     </Button>
                     <Button size="small" variant="outlined" color="error" onClick={() => deleteCardPermanently(card)}>
-                      🗑️ Endgültig löschen
+                      🗑️ {t('kanban.deletePermanently')}
                     </Button>
                   </TableCell>
                 </TableRow>
@@ -743,13 +746,14 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
         )}
       </DialogContent>
       <DialogActions>
-        <Button onClick={() => setArchiveOpen(false)}>Schließen</Button>
+        <Button onClick={() => setArchiveOpen(false)}>{t('kanban.close')}</Button>
       </DialogActions>
     </Dialog>
   );
 }
 
 export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users, boardMembers, saveCards }: any) {
+  const { t } = useLanguage();
   const [newCard, setNewCard] = useState<any>({
     Nummer: '',
     Teil: '',
@@ -770,7 +774,7 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
 
   const handleSave = () => {
     if (!newCard.Nummer?.trim() || !newCard.Teil?.trim()) {
-      alert('Nummer und Teil sind Pflichtfelder!');
+      alert(t('kanban.requiredFields'));
       return;
     }
 

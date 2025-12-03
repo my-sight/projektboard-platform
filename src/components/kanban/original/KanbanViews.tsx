@@ -5,6 +5,7 @@ import { DragDropContext, Droppable, DropResult } from '@hello-pangea/dnd';
 import { Box, IconButton, Typography, Paper, Chip } from '@mui/material';
 import { KanbanDensity } from './KanbanCard';
 import { alpha } from '@mui/material/styles';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export interface KanbanColumnsViewProps {
   rows: any[];
@@ -29,6 +30,7 @@ export function KanbanColumnsView({
   renderCard,
   allowDrag,
 }: KanbanColumnsViewProps) {
+  const { t } = useLanguage();
   const filtered = rows.filter(
     (row) =>
       !row['Archived'] &&
@@ -129,7 +131,7 @@ export function KanbanColumnsView({
                 {col.done && (
                   <IconButton
                     size="small"
-                    title="Alle Karten archivieren"
+                    title={t('kanban.archiveColumn')}
                     onClick={() => archiveColumn(col.name)}
                     disabled={!allowDrag}
                   >
@@ -193,6 +195,7 @@ export interface KanbanSwimlaneViewProps {
 }
 
 export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferStage, renderCard, allowDrag }: KanbanSwimlaneViewProps) {
+  const { t } = useLanguage();
   const filtered = rows.filter(
     (row) =>
       !row['Archived'] &&
@@ -271,7 +274,7 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
                     (row) => (String(row['Verantwortlich'] || '').trim() || '—') === resp,
                   ).length
                 }{' '}
-                Karten
+                {t('kanban.cards')}
               </Typography>
             </Paper>
 
@@ -325,6 +328,7 @@ export interface KanbanLaneViewProps {
 }
 
 export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, inferStage, renderCard, allowDrag }: KanbanLaneViewProps) {
+  const { t } = useLanguage();
   const filtered = rows.filter(
     (row) =>
       !row['Archived'] &&
@@ -395,7 +399,7 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
                 {
                   filtered.filter((row) => (row['Swimlane'] || laneNames[0]) === laneName).length
                 }{' '}
-                Karten
+                {t('kanban.cards')}
               </Typography>
             </Paper>
 

@@ -24,6 +24,7 @@ import {
 } from '@mui/material';
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
 import { useAuth } from '../contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import BoardManagementPanel from '@/components/board/BoardManagementPanel';
 import TeamKanbanBoard from '@/components/team/TeamKanbanBoard';
 import TeamBoardManagementPanel from '@/components/team/TeamBoardManagementPanel';
@@ -49,6 +50,7 @@ interface Board {
 export default function HomePage() {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const theme = useTheme();
+  const { language, setLanguage, t } = useLanguage();
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'management' | 'board' | 'team-management' | 'team-board'>('list');
   const [openCardId, setOpenCardId] = useState<string | null>(null);
@@ -91,13 +93,13 @@ export default function HomePage() {
   }, [supabase, user]);
 
   const loadBoards = useCallback(async () => {
-    if (!supabase) { setMessage('❌ Supabase-Konfiguration fehlt.'); return; }
+    if (!supabase) { setMessage(`❌ ${t('home.supabaseMissing')}`); return; }
     try {
       let boardsData: Board[] | null = null;
       try {
         const { data: rpcBoards, error: rpcError } = await supabase.rpc('list_all_boards');
         if (!rpcError) boardsData = (rpcBoards as Board[]) ?? [];
-      } catch {}
+      } catch { }
 
       if (!boardsData) {
         const { data, error } = await supabase.from('kanban_boards').select('*').order('created_at', { ascending: false });
@@ -111,8 +113,8 @@ export default function HomePage() {
         return { ...board, settings: rawSettings, visibility: board.visibility ?? 'public', boardType, boardAdminId: (board as any).board_admin_id ?? null } as Board;
       });
       setBoards(sanitizedBoards);
-    } catch (error) { setMessage('❌ Fehler beim Laden der Boards'); }
-  }, [isAdmin, supabase, user]);
+    } catch (error) { setMessage(`❌ ${t('home.loadError')}`); }
+  }, [isAdmin, supabase, user, t]);
 
   useEffect(() => {
     if (!user) { setIsAdmin(false); setIsSuperuser(false); setSelectedBoard(null); setViewMode('list'); return; }
@@ -142,8 +144,8 @@ export default function HomePage() {
       const { data, error } = await supabase.from('kanban_boards').insert([{ name: newBoardName.trim(), description: newBoardDescription.trim(), owner_id: user?.id, user_id: user?.id, visibility: 'public', settings: initialSettings }]).select().single();
       if (error) throw error;
       if (data) { loadBoards(); }
-      setCreateDialogOpen(false); setNewBoardName(''); setNewBoardDescription(''); setMessage('✅ Board erfolgreich erstellt!'); setTimeout(() => setMessage(''), 3000);
-    } catch (error) { setMessage('❌ Fehler beim Erstellen des Boards'); }
+      setCreateDialogOpen(false); setNewBoardName(''); setNewBoardDescription(''); setMessage(`✅ ${t('home.boardCreated')}`); setTimeout(() => setMessage(''), 3000);
+    } catch (error) { setMessage(`❌ ${t('home.boardCreateError')}`); }
   };
 
   const deleteBoard = async () => {
@@ -152,13 +154,13 @@ export default function HomePage() {
       const { error } = await supabase.from('kanban_boards').delete().eq('id', boardToDelete.id);
       if (error) throw error;
       setBoards((prev) => prev.filter(b => b.id !== boardToDelete.id));
-      setDeleteDialogOpen(false); setBoardToDelete(null); setMessage('✅ Board erfolgreich gelöscht!'); setTimeout(() => setMessage(''), 3000);
-    } catch (error) { setMessage('❌ Fehler beim Löschen des Boards'); }
+      setDeleteDialogOpen(false); setBoardToDelete(null); setMessage(`✅ ${t('home.boardDeleted')}`); setTimeout(() => setMessage(''), 3000);
+    } catch (error) { setMessage(`❌ ${t('home.boardDeleteError')}`); }
   };
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 Wird geladen...</Typography></Box>;
+  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 {t('home.loading')}</Typography></Box>;
   if (!supabase) return <Container maxWidth="sm" sx={{ py: 8 }}><SupabaseConfigNotice /></Container>;
-  if (!user) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 Weiterleitung...</Typography></Box>;
+  if (!user) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 {t('home.redirecting')}</Typography></Box>;
 
   // --- Views für Board & Management ---
   if (selectedBoard && selectedBoard.boardType === 'standard' && viewMode === 'board') {
@@ -166,7 +168,7 @@ export default function HomePage() {
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', backgroundColor: 'background.paper', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Button variant="outlined" onClick={() => { setViewMode('management'); setOpenCardId(null); }}>← Management</Button>
+            <Button variant="outlined" onClick={() => { setViewMode('management'); setOpenCardId(null); }}>← {t('header.backToManagement')}</Button>
             <Typography variant="h6">{selectedBoard.name || 'Board'}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -185,8 +187,8 @@ export default function HomePage() {
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', backgroundColor: 'background.paper', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Button variant="outlined" onClick={() => setViewMode('team-management')}>← Management</Button>
-            <Typography variant="h6">{selectedBoard.name || 'Teamboard'}</Typography>
+            <Button variant="outlined" onClick={() => setViewMode('team-management')}>← {t('header.backToManagement')}</Button>
+            <Typography variant="h6">{selectedBoard.name || t('home.teamBoard')}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
             <Typography variant="body2">👋 {user.email}</Typography>
@@ -203,8 +205,8 @@ export default function HomePage() {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-            <Button variant="outlined" onClick={() => { setSelectedBoard(null); setViewMode('list'); }}>← Übersicht</Button>
-            <Button variant="contained" onClick={() => setViewMode('board')}>📋 Zum Board</Button>
+          <Button variant="outlined" onClick={() => { setSelectedBoard(null); setViewMode('list'); }}>← {t('header.backToOverview')}</Button>
+          <Button variant="contained" onClick={() => setViewMode('board')}>📋 {t('header.toBoard')}</Button>
         </Box>
         <BoardManagementPanel boardId={selectedBoard.id} canEdit={isAdmin || isSelectedBoardAdmin} memberCanSee={true} />
       </Container>
@@ -214,8 +216,8 @@ export default function HomePage() {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-            <Button variant="outlined" onClick={() => { setSelectedBoard(null); setViewMode('list'); }}>← Übersicht</Button>
-            <Button variant="contained" onClick={() => setViewMode('team-board')}>📋 Zum Board</Button>
+          <Button variant="outlined" onClick={() => { setSelectedBoard(null); setViewMode('list'); }}>← {t('header.backToOverview')}</Button>
+          <Button variant="contained" onClick={() => setViewMode('team-board')}>📋 {t('header.toBoard')}</Button>
         </Box>
         <TeamBoardManagementPanel boardId={selectedBoard.id} canEdit={isAdmin || isSelectedBoardAdmin} memberCanSee={true} />
       </Container>
@@ -244,105 +246,112 @@ export default function HomePage() {
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 4 }}>
-         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            {isAdmin && <Button variant="outlined" onClick={() => (window.location.href = '/admin')}>Admin</Button>}
-            <Typography variant="body2">👋 {user.email}</Typography>
-            <Button variant="outlined" onClick={signOut} color="error">Abmelden</Button>
-         </Box>
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+          <Button
+            variant="outlined"
+            onClick={() => setLanguage(language === 'de' ? 'en' : 'de')}
+            sx={{ minWidth: 40, fontWeight: 700 }}
+          >
+            {language.toUpperCase()}
+          </Button>
+          {isAdmin && <Button variant="outlined" onClick={() => (window.location.href = '/admin')}>{t('header.admin')}</Button>}
+          <Typography variant="body2">👋 {user.email}</Typography>
+          <Button variant="outlined" onClick={signOut} color="error">{t('header.logout')}</Button>
+        </Box>
       </Box>
 
       {message && <Alert severity={message.startsWith('✅') ? 'success' : 'error'} sx={{ mb: 3 }}>{message}</Alert>}
 
       <PersonalDashboard onOpenBoard={handleOpenBoardFromDashboard} />
-      
+
       <Divider sx={{ my: 6 }} />
 
       {/* --- PROJEKTBOARDS --- */}
-      <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>Projektboards</Typography>
+      <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>{t('home.projectBoards')}</Typography>
       <Box sx={scrollContainerSx}>
         {isAdmin && (
-            <Box sx={itemSx}>
-                <Card sx={{ height: 180, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed #ccc', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0,0,0,0.02)' } }} onClick={() => { setNewBoardType('standard'); setCreateDialogOpen(true); }}>
-                  <Typography variant="h6" color="text.secondary" sx={{display:'flex', alignItems:'center', gap:1}}>
-                     <span>+</span> Neues Board
-                  </Typography>
-                </Card>
-            </Box>
+          <Box sx={itemSx}>
+            <Card sx={{ height: 180, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed #ccc', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0,0,0,0.02)' } }} onClick={() => { setNewBoardType('standard'); setCreateDialogOpen(true); }}>
+              <Typography variant="h6" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <span>+</span> {t('home.newBoard')}
+              </Typography>
+            </Card>
+          </Box>
         )}
         {standardBoards.map((board) => (
-            <Box key={board.id} sx={itemSx}>
-                <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 3 } }}>
-                  <CardContent>
-                    <Typography variant="h6" noWrap title={board.name}>{board.name}</Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                        {board.description || 'Keine Beschreibung'}
-                    </Typography>
-                  </CardContent>
-                  <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
-                    <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode('management'); }}>Öffnen</Button>
-                    {isAdmin && <Button size="small" color="error" onClick={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}>Löschen</Button>}
-                  </CardActions>
-                </Card>
-            </Box>
+          <Box key={board.id} sx={itemSx}>
+            <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 3 } }}>
+              <CardContent>
+                <Typography variant="h6" noWrap title={board.name}>{board.name}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  {board.description || t('home.noDescription')}
+                </Typography>
+              </CardContent>
+              <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
+                <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode('management'); }}>{t('home.open')}</Button>
+                {isAdmin && <Button size="small" color="error" onClick={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}>{t('home.delete')}</Button>}
+              </CardActions>
+            </Card>
+          </Box>
         ))}
       </Box>
 
       {/* --- TEAMBOARDS --- */}
-      <Typography variant="h5" sx={{ mt: 5, mb: 2, fontWeight: 600 }}>Teamboards</Typography>
+      <Typography variant="h5" sx={{ mt: 5, mb: 2, fontWeight: 600 }}>{t('home.teamBoards')}</Typography>
       <Box sx={scrollContainerSx}>
         {isAdmin && (
-             <Box sx={itemSx}>
-                <Card sx={{ height: 180, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed #ccc', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0,0,0,0.02)' } }} onClick={() => { setNewBoardType('team'); setCreateDialogOpen(true); }}>
-                  <Typography variant="h6" color="text.secondary" sx={{display:'flex', alignItems:'center', gap:1}}>
-                     <span>+</span> Neues Teamboard
-                  </Typography>
-                </Card>
-             </Box>
+          <Box sx={itemSx}>
+            <Card sx={{ height: 180, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed #ccc', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0,0,0,0.02)' } }} onClick={() => { setNewBoardType('team'); setCreateDialogOpen(true); }}>
+              <Typography variant="h6" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <span>+</span> {t('home.newTeamBoard')}
+              </Typography>
+            </Card>
+          </Box>
         )}
         {teamBoards.map((board) => (
-            <Box key={board.id} sx={itemSx}>
-                <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 3 } }}>
-                  <CardContent>
-                    <Typography variant="h6" noWrap title={board.name}>{board.name}</Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                        {board.description || 'Keine Beschreibung'}
-                    </Typography>
-                  </CardContent>
-                  <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
-                    <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode('team-management'); }}>Öffnen</Button>
-                    {isAdmin && <Button size="small" color="error" onClick={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}>Löschen</Button>}
-                  </CardActions>
-                </Card>
-            </Box>
+          <Box key={board.id} sx={itemSx}>
+            <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 3 } }}>
+              <CardContent>
+                <Typography variant="h6" noWrap title={board.name}>{board.name}</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  {board.description || t('home.noDescription')}
+                </Typography>
+              </CardContent>
+              <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
+                <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode('team-management'); }}>{t('home.open')}</Button>
+                {isAdmin && <Button size="small" color="error" onClick={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}>{t('home.delete')}</Button>}
+              </CardActions>
+            </Card>
+          </Box>
         ))}
       </Box>
-      
+
       {/* Dialogs */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
-        <DialogTitle>Neues Board erstellen</DialogTitle>
+        <DialogTitle>{t('home.createBoard')}</DialogTitle>
         <DialogContent>
-          <TextField autoFocus margin="dense" label="Name" fullWidth value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} />
+          <TextField autoFocus margin="dense" label={t('home.name')} fullWidth value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} />
           <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Typ</InputLabel>
-            <Select value={newBoardType} label="Typ" onChange={(e) => setNewBoardType(e.target.value as any)}>
-              <MenuItem value="standard">Projektboard</MenuItem>
-              <MenuItem value="team">Teamboard</MenuItem>
+            <InputLabel>{t('home.type')}</InputLabel>
+            <Select value={newBoardType} label={t('home.type')} onChange={(e) => setNewBoardType(e.target.value as any)}>
+              <MenuItem value="standard">{t('home.projectBoard')}</MenuItem>
+              <MenuItem value="team">{t('home.teamBoard')}</MenuItem>
             </Select>
           </FormControl>
-          <TextField margin="dense" label="Beschreibung" fullWidth multiline rows={3} value={newBoardDescription} onChange={(e) => setNewBoardDescription(e.target.value)} />
+          <TextField margin="dense" label={t('home.description')} fullWidth multiline rows={3} value={newBoardDescription} onChange={(e) => setNewBoardDescription(e.target.value)} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>Abbrechen</Button>
-          <Button onClick={createBoard} variant="contained">Erstellen</Button>
+          <Button onClick={() => setCreateDialogOpen(false)}>{t('home.cancel')}</Button>
+          <Button onClick={createBoard} variant="contained">{t('home.create')}</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
-        <DialogTitle>Board löschen?</DialogTitle>
-        <DialogContent><Typography>Soll "{boardToDelete?.name}" wirklich gelöscht werden?</Typography></DialogContent>
+        <DialogTitle>{t('home.deleteBoardTitle')}</DialogTitle>
+        <DialogContent><Typography>{t('home.deleteBoardConfirm').replace('{name}', boardToDelete?.name || '')}</Typography></DialogContent>
         <DialogActions>
-          <Button onClick={() => setDeleteDialogOpen(false)}>Abbrechen</Button>
-          <Button onClick={deleteBoard} color="error" variant="contained">Löschen</Button>
+          <Button onClick={() => setDeleteDialogOpen(false)}>{t('home.cancel')}</Button>
+          <Button onClick={deleteBoard} color="error" variant="contained">{t('home.delete')}</Button>
         </DialogActions>
       </Dialog>
     </Container>

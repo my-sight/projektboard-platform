@@ -55,6 +55,7 @@ import {
 } from 'recharts';
 import { StandardDatePicker } from '@/components/common/StandardDatePicker';
 import dayjs from 'dayjs';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface Department {
   id: string;
@@ -418,6 +419,7 @@ function buildEscalationViews(
 
 export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }: BoardManagementPanelProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const { t } = useLanguage();
 
   if (!supabase) {
     return (
@@ -583,7 +585,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       }
 
       if (!supabase) {
-        setMessage('❌ Supabase-Client ist nicht konfiguriert.');
+        setMessage(t('home.supabaseMissing'));
         setTimeout(() => setMessage(''), 4000);
         return false;
       }
@@ -631,7 +633,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         if (message && isMissingEscalationColumnError(message)) {
           escalationSchemaMissing = true;
         } else {
-          throw new Error(message ?? 'Unbekannter Fehler beim Laden der Eskalationen');
+          throw new Error(message ?? t('boardManagement.loadBoardError'));
         }
       }
       if (cardsResult.error) throw new Error(cardsResult.error.message);
@@ -717,7 +719,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       setStageChartData(chartData);
       return true;
     } catch (error) {
-      handleError(error, 'Fehler beim Laden der Board-Daten');
+      handleError(error, t('boardManagement.loadBoardError'));
       return false;
     } finally {
       if (!skipLoading) {
@@ -729,7 +731,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const loadAttendanceHistory = async () => {
     try {
       if (!supabase) {
-        setMessage('❌ Supabase-Client ist nicht konfiguriert.');
+        setMessage(t('home.supabaseMissing'));
         setTimeout(() => setMessage(''), 4000);
         return;
       }
@@ -758,7 +760,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         setSelectedWeek(ordered[ordered.length - 1]);
       }
     } catch (error) {
-      handleError(error, 'Fehler beim Laden der Anwesenheit');
+      handleError(error, t('boardManagement.loadAttendanceError'));
     }
   };
 
@@ -801,10 +803,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       if (error) throw new Error(error.message);
 
       await loadAttendanceHistory();
-      setMessage('✅ Anwesenheit gespeichert');
+      setMessage(t('boardManagement.attendanceSaved'));
       setTimeout(() => setMessage(''), 4000);
     } catch (error) {
-      handleError(error, 'Fehler beim Speichern der Anwesenheit');
+      handleError(error, t('boardManagement.saveAttendanceError'));
     } finally {
       setAttendanceSaving(false);
     }
@@ -825,7 +827,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       setMembers(prev => [...prev, { ...(data as Member), profile }]);
       setMemberSelect('');
     } catch (error) {
-      handleError(error, 'Fehler beim Hinzufügen des Mitglieds');
+      handleError(error, t('boardManagement.addMemberError'));
     }
   };
 
@@ -840,7 +842,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
       setMembers(prev => prev.filter(member => member.id !== memberId));
     } catch (error) {
-      handleError(error, 'Fehler beim Entfernen des Mitglieds');
+      handleError(error, t('boardManagement.removeMemberError'));
     }
   };
 
@@ -862,7 +864,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         return next;
       });
     } catch (error) {
-      handleError(error, 'Fehler beim Löschen des Top-Themas');
+      handleError(error, t('boardManagement.deleteTopicError'));
     }
   };
 
@@ -921,8 +923,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const handleClearEscalationFields = () => {
     if (!canEditEscalations) return;
 
-    if (window.confirm("Möchten Sie wirklich alle Felder dieser Eskalation leeren?")) {
-      if (window.confirm("Sind Sie ganz sicher? Alle Eingaben (Grund, Maßnahme, Termine) werden entfernt.")) {
+    if (window.confirm(t('boardManagement.clearPrompt'))) {
+      if (window.confirm(t('boardManagement.clearConfirm'))) {
         updateEscalationDraft({
           reason: '',
           measure: '',
@@ -937,7 +939,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const saveEscalation = async () => {
     if (!canEditEscalations) {
-      setMessage('❌ Keine Berechtigung zum Bearbeiten von Eskalationen.');
+      setMessage(t('boardManagement.noEditPermission'));
       setTimeout(() => setMessage(''), 4000);
       return;
     }
@@ -1009,11 +1011,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       const refreshed = await loadBaseData({ skipLoading: true });
 
       if (refreshed) {
-        setMessage('✅ Eskalation gespeichert');
+        setMessage(t('boardManagement.escalationSaved'));
         setTimeout(() => setMessage(''), 4000);
       }
     } catch (error) {
-      handleError(error, 'Fehler beim Speichern der Eskalation');
+      handleError(error, t('boardManagement.saveEscalationError'));
     }
   };
 
@@ -1028,7 +1030,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     return (
       <Card>
         <CardContent>
-          <Typography>Keine Berechtigung zum Anzeigen der Management-Ansicht.</Typography>
+          <Typography>{t('boardManagement.noPermission')}</Typography>
         </CardContent>
       </Card>
     );
@@ -1037,7 +1039,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   if (loading) {
     return (
       <Box sx={{ py: 8, textAlign: 'center' }}>
-        <Typography variant="body1">🔄 Management-Daten werden geladen...</Typography>
+        <Typography variant="body1">{t('boardManagement.loading')}</Typography>
       </Box>
     );
   }
@@ -1050,22 +1052,22 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         <CardContent>
           <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} flexWrap="wrap">
             <Box>
-              <Typography variant="h6">👥 Board-Mitglieder</Typography>
+              <Typography variant="h6">👥 {t('boardManagement.boardMembers')}</Typography>
               <Typography variant="body2" color="text.secondary">
-                Füge Mitglieder hinzu, um Anwesenheit und Verantwortlichkeiten zu erfassen.
+                {t('boardManagement.boardMembersDesc')}
               </Typography>
             </Box>
             {canEdit && (
               <Stack direction="row" spacing={1} alignItems="center">
                 <FormControl size="small" sx={{ minWidth: 220 }}>
-                  <InputLabel>Mitglied hinzufügen</InputLabel>
+                  <InputLabel>{t('boardManagement.addMember')}</InputLabel>
                   <Select
-                    label="Mitglied hinzufügen"
+                    label={t('boardManagement.addMember')}
                     value={memberSelect}
                     onChange={(event) => setMemberSelect(event.target.value)}
                   >
                     <MenuItem value="">
-                      <em>Auswählen</em>
+                      <em>{t('boardManagement.select')}</em>
                     </MenuItem>
                     {availableProfiles.map(profile => (
                       <MenuItem key={profile.id} value={profile.id}>
@@ -1080,7 +1082,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                   onClick={addMember}
                   disabled={!memberSelect}
                 >
-                  Hinzufügen
+                  {t('boardManagement.add')}
                 </Button>
               </Stack>
             )}
@@ -1089,7 +1091,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
           <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 3 }}>
             {members.length === 0 && (
               <Typography variant="body2" color="text.secondary">
-                Noch keine Mitglieder hinterlegt.
+                {t('boardManagement.noMembers')}
               </Typography>
             )}
             {members.map(member => {
@@ -1120,9 +1122,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
               justifyContent="space-between"
             >
               <Box>
-                <Typography variant="h6">🗓️ Anwesenheit</Typography>
+                <Typography variant="h6">🗓️ {t('boardManagement.attendance')}</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  KW {isoWeekNumber(selectedWeekDate)} · {weekRangeLabel(selectedWeekDate)}
+                  {t('boardManagement.calendarWeek')} {isoWeekNumber(selectedWeekDate)} · {weekRangeLabel(selectedWeekDate)}
                 </Typography>
               </Box>
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
@@ -1131,7 +1133,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 </IconButton>
                 <TextField
                   type="week"
-                  label="Kalenderwoche"
+                  label={t('boardManagement.calendarWeek')}
                   size="small"
                   value={selectedWeekInputValue}
                   onChange={event => handleWeekInputChange(event.target.value)}
@@ -1148,11 +1150,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell sx={{ minWidth: 220 }}>Mitglied</TableCell>
+                    <TableCell sx={{ minWidth: 220 }}>{t('boardManagement.member')}</TableCell>
                     <TableCell align="center" sx={{ minWidth: 160 }}>
                       <Stack spacing={0.5} alignItems="center">
                         <Typography variant="subtitle2">
-                          KW {isoWeekNumber(selectedWeekDate)}
+                          {t('boardManagement.calendarWeek')} {isoWeekNumber(selectedWeekDate)}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           {weekRangeLabel(selectedWeekDate)}
@@ -1167,7 +1169,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                             variant={history.week === selectedWeek ? 'contained' : 'text'}
                             onClick={() => selectWeek(history.week)}
                           >
-                            KW {isoWeekNumber(history.date)}
+                            {t('boardManagement.calendarWeek')} {isoWeekNumber(history.date)}
                           </Button>
                           <Typography variant="caption" color="text.secondary">
                             {weekRangeLabel(history.date)}
@@ -1182,7 +1184,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                     <TableRow>
                       <TableCell colSpan={historyWeeks.length + 2}>
                         <Typography variant="body2" color="text.secondary">
-                          Füge Mitglieder hinzu, um Anwesenheiten zu dokumentieren.
+                          {t('boardManagement.addMembersHint')}
                         </Typography>
                       </TableCell>
                     </TableRow>
@@ -1205,7 +1207,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                             </Stack>
                           </TableCell>
                           <TableCell align="center">
-                            <Tooltip title={present ? 'Anwesend' : 'Abwesend'}>
+                            <Tooltip title={present ? t('boardManagement.present') : t('boardManagement.absent')}>
                               <span>
                                 <Checkbox
                                   checked={present}
@@ -1255,9 +1257,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }}>
             <Box>
-              <Typography variant="h6">⭐ Top-Themen</Typography>
+              <Typography variant="h6">⭐ {t('boardManagement.topTopicsTitle')}</Typography>
               <Typography variant="body2" color="text.secondary">
-                Halte die wichtigsten Themen fest (maximal fünf Einträge).
+                {t('boardManagement.topTopicsDesc')}
               </Typography>
             </Box>
           </Stack>
@@ -1266,19 +1268,19 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             {/* Compose Area */}
             {canEdit && topics.length < 5 && (
               <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                <Typography variant="subtitle2" sx={{ mb: 2 }}>Neues Thema erstellen</Typography>
+                <Typography variant="subtitle2" sx={{ mb: 2 }}>{t('boardManagement.createTopicTitle')}</Typography>
                 <Stack spacing={2}>
                   <TextField
                     fullWidth
                     multiline
                     minRows={3}
-                    placeholder="Worum geht es?"
+                    placeholder={t('boardManagement.topicContent')}
                     value={topicDrafts['new']?.title || ''}
                     onChange={(e) => setTopicDrafts(prev => ({ ...prev, 'new': { ...prev['new'], title: e.target.value, dueDate: prev['new']?.dueDate || '' } }))}
                   />
                   <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
                     <StandardDatePicker
-                      label="Fällig am"
+                      label={t('boardManagement.topicDue')}
                       value={topicDrafts['new']?.dueDate ? dayjs(topicDrafts['new'].dueDate) : null}
                       onChange={(newValue) => setTopicDrafts(prev => ({ ...prev, 'new': { ...prev['new'], title: prev['new']?.title || '', dueDate: newValue ? newValue.format('YYYY-MM-DD') : '' } }))}
                       sx={{ width: 200 }}
@@ -1304,16 +1306,16 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                             delete copy['new'];
                             return copy;
                           });
-                          setMessage('✅ Top-Thema angelegt');
+                          setMessage(t('boardManagement.topicCreated'));
                           setTimeout(() => setMessage(''), 3000);
                         } catch (e) {
                           console.error(e);
-                          setMessage('❌ Fehler beim Anlegen');
+                          setMessage(t('boardManagement.topicCreateError'));
                         }
                       }}
                       disabled={!topicDrafts['new']?.title.trim()}
                     >
-                      Speichern
+                      {t('boardManagement.saveButton')}
                     </Button>
                   </Stack>
                 </Stack>
@@ -1322,9 +1324,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
             {/* List Area */}
             <Box>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>Aktuelle Themen</Typography>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('boardManagement.currentTopicsTitle')}</Typography>
               {topics.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">Noch keine Top-Themen erfasst.</Typography>
+                <Typography variant="body2" color="text.secondary">{t('boardManagement.noTopicsCaptured')}</Typography>
               ) : (
                 <Stack spacing={1}>
                   {topics.map((topic) => (
@@ -1335,7 +1337,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                             <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{topic.title}</Typography>
                             {topic.due_date && (
                               <Chip
-                                label={`Fällig: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
+                                label={`${t('boardManagement.dueLabel')}: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
                                 size="small"
                                 color={dayjs(topic.due_date).isBefore(dayjs(), 'day') ? 'error' : (dayjs(topic.due_date).isSame(dayjs(), 'day') || dayjs(topic.due_date).isSame(dayjs().add(1, 'day'), 'day') ? 'warning' : 'default')}
                                 variant={dayjs(topic.due_date).isBefore(dayjs(), 'day') || dayjs(topic.due_date).isSame(dayjs(), 'day') || dayjs(topic.due_date).isSame(dayjs().add(1, 'day'), 'day') ? 'filled' : 'outlined'}
@@ -1362,11 +1364,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            📈 Projekte pro Phase
+            📈 {t('boardManagement.projectsPerPhase')}
           </Typography>
           {stageChartData.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              Es liegen keine Projektdaten mit Phaseninformationen vor.
+              {t('boardManagement.noProjectData')}
             </Typography>
           ) : (
             <Box sx={{ width: '100%', height: 260 }}>
@@ -1389,10 +1391,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            🚨 Projekte in Eskalation
+            🚨 {t('boardManagement.escalationsTitle')}
           </Typography>
           <Typography variant="body2" color="text.secondary" gutterBottom>
-            Es werden automatisch alle Karten angezeigt, die im Board als LK/Y oder SK/R markiert sind.
+            {t('boardManagement.escalationsDesc')}
           </Typography>
           {!escalationSchemaReady && (
             <Alert severity="warning" sx={{ mt: 2 }}>
@@ -1403,7 +1405,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
           {/* ✅ UPDATE: Y und R statt LK/SK durchlaufen */}
           {(['Y', 'R'] as const).map(category => {
             const entries = filteredEscalations[category];
-            const title = category === 'Y' ? 'Y Eskalationen' : 'R Eskalationen';
+            const title = category === 'Y' ? t('boardManagement.yEscalations') : t('boardManagement.rEscalations');
             return (
               <Box key={category} sx={{ mb: category === 'Y' ? 3 : 0 }}>
                 <Typography variant="subtitle1" sx={{ mb: 1 }}>
@@ -1412,8 +1414,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 {entries.length === 0 ? (
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     {category === 'Y'
-                      ? 'Keine Y Eskalationen vorhanden.'
-                      : 'Keine R Eskalationen vorhanden.'}
+                      ? t('boardManagement.noYEscalations')
+                      : t('boardManagement.noREscalations')}
                   </Typography>
                 ) : (
                   <Stack spacing={2} sx={{ mb: 2 }}>
@@ -1447,12 +1449,12 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                               </Typography>
                               {entry.stage && (
                                 <Typography variant="body2" color="text.secondary">
-                                  Phase: {entry.stage}
+                                  {t('boardManagement.phase')}: {entry.stage}
                                 </Typography>
                               )}
                             </Box>
                             <Stack direction="row" spacing={2} alignItems="center">
-                              <Tooltip title="Fortschritt (Bearbeitung im Popup)">
+                              <Tooltip title={t('boardManagement.progressTooltip')}>
                                 <Box>
                                   <CompletionDial steps={entry.completion_steps ?? 0} onClick={() => { }} disabled />
                                 </Box>
@@ -1462,48 +1464,48 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                                 onClick={() => openEscalationEditor(entry)}
                                 disabled={!canEditEscalations || !escalationSchemaReady}
                               >
-                                Bearbeiten
+                                {t('boardManagement.edit')}
                               </Button>
                             </Stack>
                           </Stack>
                           <Grid container spacing={2} sx={{ mt: 1 }}>
                             <Grid item xs={12} md={6}>
                               <Typography variant="caption" color="text.secondary">
-                                Grund
+                                {t('boardManagement.reason')}
                               </Typography>
                               <Typography variant="body2">
-                                {entry.reason || 'Kein Grund hinterlegt.'}
+                                {entry.reason || t('boardManagement.noReason')}
                               </Typography>
                             </Grid>
                             <Grid item xs={12} md={6}>
                               <Typography variant="caption" color="text.secondary">
-                                Maßnahme
+                                {t('boardManagement.measure')}
                               </Typography>
                               <Typography variant="body2">
-                                {entry.measure || 'Keine Maßnahme hinterlegt.'}
+                                {entry.measure || t('boardManagement.noMeasure')}
                               </Typography>
                             </Grid>
                             <Grid item xs={12} md={4}>
                               <Typography variant="caption" color="text.secondary">
-                                Abteilung
+                                {t('boardManagement.department')}
                               </Typography>
                               <Typography variant="body2">
-                                {department || 'Keine Abteilung zugewiesen.'}
+                                {department || t('boardManagement.noDepartment')}
                               </Typography>
                             </Grid>
                             <Grid item xs={12} md={4}>
                               <Typography variant="caption" color="text.secondary">
-                                Verantwortung
+                                {t('boardManagement.responsibility')}
                               </Typography>
                               <Typography variant="body2">
                                 {responsible
                                   ? `${responsible.full_name || responsible.email}${responsible.company ? ` • ${responsible.company}` : ''}`
-                                  : 'Keine Verantwortung zugewiesen.'}
+                                  : t('boardManagement.noResponsibility')}
                               </Typography>
                             </Grid>
                             <Grid item xs={12} md={4}>
                               <Typography variant="caption" color="text.secondary">
-                                Zieltermin
+                                {t('boardManagement.targetDate')}
                               </Typography>
                               <Typography variant="body2">
                                 {targetLabel}
@@ -1519,7 +1521,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                             return (
                               <Box sx={{ mt: 1.5 }}>
                                 <Typography variant="caption" color="text.secondary">
-                                  Historie
+                                  {t('boardManagement.history')}
                                 </Typography>
                                 {/* --- ÄNDERUNG: Nur noch den neuesten Eintrag anzeigen --- */}
                                 <Stack spacing={0.5} sx={{ mt: 0.5 }}>
@@ -1527,7 +1529,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                                     const author = profileLookup.get(history.changed_by ?? '') ?? null;
                                     const authorLabel = author
                                       ? author.full_name || author.email || 'Unbekannt'
-                                      : 'Unbekannt';
+                                      : t('boardManagement.unknown');
                                     const changedAt = new Date(history.changed_at);
                                     return (
                                       <Typography key={history.id} variant="body2">
@@ -1537,7 +1539,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                                   })}
                                   {historyEntries.length > 1 && (
                                     <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                      ... und {historyEntries.length - 1} ältere Einträge (siehe Popup)
+                                      {t('boardManagement.olderEntries').replace('{n}', String(historyEntries.length - 1))}
                                     </Typography>
                                   )}
                                 </Stack>
@@ -1559,7 +1561,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
       <Dialog open={escalationDialogOpen} onClose={closeEscalationEditor} maxWidth="sm" fullWidth>
         <DialogTitle>
-          Eskalation bearbeiten
+          {t('boardManagement.editEscalation')}
           {editingEscalation && (
             <Typography variant="body2" color="text.secondary">
               {editingEscalation.project_code || editingEscalation.project_name
@@ -1572,7 +1574,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
           {escalationDraft ? (
             <Stack spacing={2}>
               <TextField
-                label="Grund"
+                label={t('boardManagement.reason')}
                 value={escalationDraft.reason}
                 onChange={(event) => updateEscalationDraft({ reason: event.target.value })}
                 fullWidth
@@ -1581,7 +1583,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 disabled={!canEditEscalations}
               />
               <TextField
-                label="Maßnahme"
+                label={t('boardManagement.measure')}
                 value={escalationDraft.measure}
                 onChange={(event) => updateEscalationDraft({ measure: event.target.value })}
                 fullWidth
@@ -1590,10 +1592,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 disabled={!canEditEscalations}
               />
               <FormControl fullWidth size="small" disabled={!canEditEscalations}>
-                <InputLabel>Abteilung</InputLabel>
+                <InputLabel>{t('boardManagement.department')}</InputLabel>
                 <Select
                   value={escalationDraft.department_id ?? ''}
-                  label="Abteilung"
+                  label={t('boardManagement.department')}
                   onChange={(event) =>
                     updateEscalationDraft({
                       department_id: event.target.value ? String(event.target.value) : null,
@@ -1602,7 +1604,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                   }
                 >
                   <MenuItem value="">
-                    <em>Keine</em>
+                    <em>{t('boardManagement.none')}</em>
                   </MenuItem>
                   {departments.map(department => (
                     <MenuItem key={department.id} value={department.id}>
@@ -1612,10 +1614,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 </Select>
               </FormControl>
               <FormControl fullWidth size="small" disabled={!canEditEscalations}>
-                <InputLabel>Verantwortung</InputLabel>
+                <InputLabel>{t('boardManagement.responsibility')}</InputLabel>
                 <Select
                   value={escalationDraft.responsible_id ?? ''}
-                  label="Verantwortung"
+                  label={t('boardManagement.responsibility')}
                   onChange={(event) =>
                     updateEscalationDraft({
                       responsible_id: event.target.value ? String(event.target.value) : null,
@@ -1623,7 +1625,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                   }
                 >
                   <MenuItem value="">
-                    <em>Keine</em>
+                    <em>{t('boardManagement.none')}</em>
                   </MenuItem>
                   {responsibleOptions(escalationDraft.department_id ?? null).map(option => (
                     <MenuItem key={option.id} value={option.id}>
@@ -1633,13 +1635,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 </Select>
               </FormControl>
               <StandardDatePicker
-                label="Zieltermin"
+                label={t('boardManagement.targetDate')}
                 value={escalationDraft.target_date ? dayjs(escalationDraft.target_date) : null}
                 onChange={(newValue) => updateEscalationDraft({ target_date: newValue ? newValue.format('YYYY-MM-DD') : null })}
                 disabled={!canEditEscalations}
               />
               <Stack direction="row" spacing={2} alignItems="center">
-                <Tooltip title="Fortschritt">
+                <Tooltip title={t('boardManagement.progress')}>
                   <Box>
                     <CompletionDial
                       steps={escalationDraft.completion_steps ?? 0}
@@ -1648,7 +1650,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                     />
                   </Box>
                 </Tooltip>
-                <Typography variant="body2">{escalationDraft.completion_steps ?? 0} / 4 Schritte</Typography>
+                <Typography variant="body2">{escalationDraft.completion_steps ?? 0} / 4 {t('boardManagement.steps')}</Typography>
               </Stack>
               {escalationHistoryReady && editingEscalation && (
                 (() => {
@@ -1658,13 +1660,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                   return (
                     <Box>
                       <Divider sx={{ my: 1.5 }} />
-                      <Typography variant="subtitle2">Änderungshistorie</Typography>
+                      <Typography variant="subtitle2">{t('boardManagement.changeHistory')}</Typography>
                       <List dense>
                         {historyEntries.map(history => {
                           const author = profileLookup.get(history.changed_by ?? '') ?? null;
                           const authorLabel = author
                             ? author.full_name || author.email || 'Unbekannt'
-                            : 'Unbekannt';
+                            : t('boardManagement.unknown');
                           const changedAt = new Date(history.changed_at);
                           return (
                             <ListItem key={history.id} sx={{ py: 0 }}>
@@ -1681,7 +1683,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
               )}
             </Stack>
           ) : (
-            <Typography variant="body2">Keine Eskalation ausgewählt.</Typography>
+            <Typography variant="body2">{t('boardManagement.noEscalationSelected')}</Typography>
           )}
         </DialogContent>
 
@@ -1693,13 +1695,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             onClick={handleClearEscalationFields}
             disabled={!canEditEscalations}
           >
-            🧹 Felder leeren
+            🧹 {t('boardManagement.clearFields')}
           </Button>
 
           <Box>
-            <Button onClick={closeEscalationEditor} sx={{ mr: 1 }}>Abbrechen</Button>
+            <Button onClick={closeEscalationEditor} sx={{ mr: 1 }}>{t('common.cancel')}</Button>
             <Button onClick={saveEscalation} variant="contained" disabled={!canEditEscalations}>
-              Speichern
+              {t('common.save')}
             </Button>
           </Box>
         </DialogActions>
