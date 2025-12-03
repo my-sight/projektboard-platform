@@ -1,7 +1,7 @@
 'use client';
 
 import { ReactNode, useEffect, useMemo, useRef } from 'react';
-import { Box, Chip, IconButton, Typography, Tooltip } from '@mui/material';
+import { Box, Chip, IconButton, Typography } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
 import { CheckCircle } from '@mui/icons-material'; 
 import { keyframes } from '@mui/system';
@@ -136,18 +136,16 @@ export function KanbanCard({
     }
   };
 
-  // Hilfsfunktion für TR Chips (angepasste Farben)
+  // Hilfsfunktion für TR Chips
   const renderTRChip = (label: string, value: string | Date | undefined, type: 'original' | 'new'): ReactNode => {
     if (!value) return null;
     const date = new Date(value);
     if (isNaN(date.getTime())) return null;
 
-    // FARBEN GETAUSCHT:
-    // Original (TR): Blau
-    // Neu (TR neu): Grün
+    // Farben: TR=Blau, TRneu=Grün
     const colors = type === 'original' 
-        ? { bg: '#e3f2fd', color: '#1565c0', border: '1px solid #90caf9' } // Blau
-        : { bg: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' }; // Grün
+        ? { bg: '#e3f2fd', color: '#1565c0', border: '1px solid #90caf9' } 
+        : { bg: '#e8f5e9', color: '#2e7d32', border: '1px solid #a5d6a7' }; 
 
     return (
         <Chip 
@@ -183,7 +181,7 @@ export function KanbanCard({
               } 
           }}
           sx={{
-            backgroundColor, border: `1px solid ${borderColor}`, borderRadius: currentSize === 'xcompact' ? '4px' : '12px', padding: currentSize === 'xcompact' ? '4px' : '10px',
+            backgroundColor, border: `1px solid ${borderColor}`, borderRadius: currentSize === 'xcompact' ? '4px' : '4px', padding: currentSize === 'xcompact' ? '4px' : '10px',
             cursor: 'pointer', transition: 'transform 0.12s ease, box-shadow 0.12s ease', opacity: snapshot.isDragging ? 0.96 : 1,
             transform: snapshot.isDragging ? 'rotate(2deg) scale(1.03)' : 'none',
             boxShadow: snapshot.isDragging ? '0 14px 28px rgba(0,0,0,0.30)' : '0 3px 8px rgba(0,0,0,0.06)',
@@ -211,12 +209,15 @@ export function KanbanCard({
                   )}
                   {hasPriority && <Chip label="!" size="small" color="error" sx={{ fontWeight: 700, height: 20, '& .MuiChip-label': { px: 0.75, fontSize: '12px' } }} />}
                   <Box className="controls" sx={{ display: 'flex', gap: 0.5 }}>
-                    <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: currentSize === 'large' ? '#e3f2fd' : 'transparent', color: currentSize === 'large' ? '#1976d2' : 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} title="Groß/Normal umschalten" disabled={!canModify} onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Collapsed: currentSize === 'large' ? '' : 'large' }); }}>↕</IconButton>
+                    <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: currentSize === 'large' ? '#e3f2fd' : 'transparent', color: currentSize === 'large' ? '#1976d2' : 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} 
+                        aria-label="Größe umschalten" 
+                        disabled={!canModify} 
+                        onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Collapsed: currentSize === 'large' ? '' : 'large' }); }}>↕</IconButton>
                     
                     <IconButton 
                         size="small" 
                         sx={{ width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', backgroundColor: isYellow ? '#ef6c00' : 'transparent', color: isYellow ? 'white' : 'var(--muted)', '&:hover': { backgroundColor: isYellow ? '#e65100' : 'rgba(0,0,0,0.06)' } }} 
-                        title="Yellow Escalation" 
+                        aria-label="Yellow Escalation" 
                         disabled={!canModify} 
                         onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Eskalation: isYellow ? '' : 'Y', Ampel: isYellow ? 'grün' : 'rot' }); }}
                     >Y</IconButton>
@@ -224,21 +225,39 @@ export function KanbanCard({
                     <IconButton 
                         size="small" 
                         sx={{ width: 22, height: 22, fontSize: '9px', border: '1px solid var(--line)', backgroundColor: isRed ? '#c62828' : 'transparent', color: isRed ? 'white' : 'var(--muted)', '&:hover': { backgroundColor: isRed ? '#b71c1c' : 'rgba(0,0,0,0.06)' } }} 
-                        title="Red Escalation" 
+                        aria-label="Red Escalation" 
                         disabled={!canModify} 
                         onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Eskalation: isRed ? '' : 'R', Ampel: isRed ? 'grün' : 'rot' }); }}
                     >R</IconButton>
 
-                    <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: 'transparent', color: 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} title="Bearbeiten" disabled={!canModify} onClick={(e) => { e.stopPropagation(); setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0); }}>✎</IconButton>
+                    <IconButton size="small" sx={{ width: 22, height: 22, fontSize: '10px', border: '1px solid var(--line)', backgroundColor: 'transparent', color: 'var(--muted)', '&:hover': { backgroundColor: 'rgba(0,0,0,0.06)' } }} aria-label="Bearbeiten" disabled={!canModify} onClick={(e) => { e.stopPropagation(); setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0); }}>✎</IconButton>
                   </Box>
                 </Box>
               </Box>
 
-              {card.Teil && <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 400, lineHeight: 1.3, color: 'var(--muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', mb: 1 }}>{card.Teil}</Typography>}
+              {card.Teil && (
+                 <Typography variant="body2" sx={{ fontSize: '12px', fontWeight: 400, lineHeight: 1.3, color: 'var(--muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', mb: 1 }}>
+                    {card.Teil}
+                 </Typography>
+              )}
+              
               {statusKurz && (
-                <Tooltip title={statusKurz} enterDelay={1000} arrow>
-                  <Typography variant="caption" sx={{ fontSize: '12px', color: 'var(--muted)', overflow: 'hidden', textOverflow: currentSize === 'large' ? 'clip' : 'ellipsis', whiteSpace: currentSize === 'large' ? 'pre-wrap' : 'nowrap', display: currentSize === 'large' ? '-webkit-box' : 'block', WebkitLineClamp: currentSize === 'large' ? 6 : undefined, WebkitBoxOrient: currentSize === 'large' ? 'vertical' : undefined, mb: 0.5, wordBreak: currentSize === 'large' ? 'break-word' : 'normal', cursor: 'help' }}>{statusKurz}</Typography>
-                </Tooltip>
+                 // ✅ FIX: Kein MUI-Tooltip mehr, nur normaler Text mit nativem Browser-Tooltip bei Bedarf (durch Ellipsis)
+                 <Typography variant="caption" sx={{ 
+                    fontSize: '12px', 
+                    color: 'var(--muted)', 
+                    overflow: 'hidden', 
+                    textOverflow: currentSize === 'large' ? 'clip' : 'ellipsis', 
+                    whiteSpace: currentSize === 'large' ? 'pre-wrap' : 'nowrap', 
+                    display: currentSize === 'large' ? '-webkit-box' : 'block', 
+                    WebkitLineClamp: currentSize === 'large' ? 6 : undefined, 
+                    WebkitBoxOrient: currentSize === 'large' ? 'vertical' : undefined, 
+                    mb: 0.5, 
+                    wordBreak: currentSize === 'large' ? 'break-word' : 'normal', 
+                    cursor: 'help' 
+                 }}>
+                    {statusKurz}
+                 </Typography>
               )}
               
               {currentSize === 'large' && card.Bild && (<Box sx={{ mb: 1, display: 'flex', justifyContent: 'center' }}><img src={card.Bild} alt="Projektbild" style={{ maxWidth: '100%', maxHeight: '60px', borderRadius: '6px', objectFit: 'cover' }} /></Box>)}
@@ -251,69 +270,14 @@ export function KanbanCard({
               {(card.TR_Datum || card.TR_Neu || sopDate) && (
                   <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid var(--line)', display: 'flex', justifyContent: sopDate ? 'space-between' : 'center', gap: 0.5, alignItems: 'center' }}>
                     <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', alignItems: 'center' }}>
-                       {/* Farben getauscht: TR jetzt Blau */}
                        {renderTRChip('TR', card.TR_Datum, 'original')}
-                       
                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                          {/* Farben getauscht: TR neu jetzt Grün */}
                           {renderTRChip('TR neu', card.TR_Neu, 'new')}
-                          {trCompleted && (
-                              <CheckCircle sx={{ fontSize: '16px', color: '#2e7d32' }} />
-                          )}
-                          {trDiff !== null && (
-                              <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 600, color: trDiff > 0 ? '#d32f2f' : '#2e7d32' }}>
-                                  {trDiff > 0 ? `+${trDiff}` : trDiff}
-                              </Typography>
-                          )}
+                          {trCompleted && <CheckCircle sx={{ fontSize: '16px', color: '#2e7d32' }} />}
+                          {trDiff !== null && <Typography variant="caption" sx={{ fontSize: '10px', fontWeight: 600, color: trDiff > 0 ? '#d32f2f' : '#2e7d32' }}>{trDiff > 0 ? `+${trDiff}` : trDiff}</Typography>}
                        </Box>
                     </Box>
-                    
-                    {/* SOP: Jetzt "ungefüllt" (variant outlined Style) */}
-                    {sopDate && (
-                        <Chip 
-                            label={`SOP: ${sopDate.toLocaleDateString('de-DE')}`} 
-                            size="small" 
-                            variant="outlined" // <-- Hier ist die Änderung für ungefüllt
-                            sx={{ 
-                                fontSize: '10px', 
-                                height: '18px', 
-                                color: '#6a1b9a', 
-                                borderColor: '#e1bee7', 
-                                '& .MuiChip-label': { px: 0.8, py: 0 } 
-                            }} 
-                        />
-                    )}
-                  </Box>
-              )}
-
-              {currentSize === 'large' && card.Team && Array.isArray(card.Team) && card.Team.length > 0 && (
-                  <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid var(--line)' }}>
-                    <Typography variant="caption" sx={{ fontSize: '10px', color: 'var(--muted)', fontWeight: 600, display: 'block', mb: 0.5 }}>
-                      Team ({card.Team.filter((m: any) => m.userId || m.name).length}):
-                    </Typography>
-
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {card.Team
-                        .filter((member: any) => member.userId || member.name)
-                        .map((member: any, idx: number) => {
-                          const roleColors: Record<string, string> = { entwickler: '#2196f3', designer: '#9c27b0', manager: '#ff9800', tester: '#4caf50' };
-                          const roleKey = String(member.role || '').toLowerCase();
-                          const roleColor = roleColors[roleKey] || '#757575';
-
-                          const lookupUser = member.userId ? usersById.get(String(member.userId)) : undefined;
-                          const resolvedName = (lookupUser?.full_name || lookupUser?.name || '').trim() || (member.name || '').trim();
-                          const displayName = resolvedName || 'Unbekannt';
-                          const department = lookupUser?.department || lookupUser?.company || member.department || member.company || '';
-                          
-                          const labelParts = [displayName];
-                          if (department) labelParts.push(`– ${department}`);
-                          const label = labelParts.join(' ');
-
-                          return (
-                            <Chip key={idx} label={label} size="small" sx={{ fontSize: '8px', height: 18, backgroundColor: `${roleColor}20`, color: roleColor, border: `1px solid ${roleColor}`, '& .MuiChip-label': { px: 1, py: 0, fontWeight: 500 } }} />
-                          );
-                        })}
-                    </Box>
+                    {sopDate && <Chip label={`SOP: ${sopDate.toLocaleDateString('de-DE')}`} size="small" variant="outlined" sx={{ fontSize: '10px', height: '18px', color: '#6a1b9a', borderColor: '#e1bee7', '& .MuiChip-label': { px: 0.8, py: 0 } }} />}
                   </Box>
               )}
             </>
