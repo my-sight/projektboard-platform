@@ -53,6 +53,8 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { StandardDatePicker } from '@/components/common/StandardDatePicker';
+import dayjs from 'dayjs';
 
 interface Department {
   id: string;
@@ -76,13 +78,13 @@ interface Topic {
   id: string;
   board_id: string;
   title: string;
-  calendar_week: string | null;
+  due_date: string | null;
   position: number;
 }
 
 interface TopicDraft {
   title: string;
-  calendarWeek: string;
+  dueDate: string;
 }
 
 interface KanbanCardRow {
@@ -228,7 +230,7 @@ function expandWeekRange(values: (string | null | undefined)[], ensureWeek?: str
   );
 
   const result: string[] = [];
-  for (let cursor = new Date(firstDate); cursor.getTime() <= lastDate.getTime(); ) {
+  for (let cursor = new Date(firstDate); cursor.getTime() <= lastDate.getTime();) {
     result.push(isoDate(cursor));
     cursor.setDate(cursor.getDate() + 7);
     cursor.setHours(0, 0, 0, 0);
@@ -324,8 +326,8 @@ function CompletionDial({
         '&:hover': disabled
           ? undefined
           : {
-              transform: 'scale(1.05)',
-            },
+            transform: 'scale(1.05)',
+          },
       }}
     />
   );
@@ -696,7 +698,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       topicRows.forEach(topic => {
         topicDraftValues[topic.id] = {
           title: topic.title ?? '',
-          calendarWeek: topic.calendar_week ?? '',
+          dueDate: topic.due_date ?? '',
         };
       });
       setTopicDrafts(topicDraftValues);
@@ -842,76 +844,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     }
   };
 
-  const addTopic = async () => {
-    if (topics.length >= 5) return;
-    try {
-      const { data, error } = await supabase
-        .from('board_top_topics')
-        .insert({
-          board_id: boardId,
-          title: '',
-          calendar_week: null,
-          position: topics.length,
-        })
-        .select()
-        .single();
 
-      if (error) throw new Error(error.message);
-
-      if (data) {
-        const topic = data as Topic;
-        setTopics(prev => [...prev, topic]);
-        setTopicDrafts(prev => ({
-          ...prev,
-          [topic.id]: {
-            title: topic.title ?? '',
-            calendarWeek: topic.calendar_week ?? '',
-          },
-        }));
-      }
-    } catch (error) {
-      handleError(error, 'Fehler beim Hinzufügen eines Top-Themas');
-    }
-  };
-
-  const persistTopic = async (topicId: string) => {
-    try {
-      const draft = topicDrafts[topicId] ?? { title: '', calendarWeek: '' };
-      const trimmedTitle = draft.title.trim();
-      const weekValue = draft.calendarWeek.trim();
-      const current = topics.find(topic => topic.id === topicId);
-      const currentWeek = current?.calendar_week ?? '';
-      // If nothing changed, update draft if needed and return
-      if (current && current.title === trimmedTitle && currentWeek === weekValue) {
-        if (draft.title !== trimmedTitle || draft.calendarWeek !== weekValue) {
-          setTopicDrafts(prev => ({
-            ...prev,
-            [topicId]: { title: trimmedTitle, calendarWeek: weekValue },
-          }));
-        }
-        return;
-      }
-      // Persist changes in database
-      const { error } = await supabase
-        .from('board_top_topics')
-        .update({ title: trimmedTitle, calendar_week: weekValue || null })
-        .eq('id', topicId);
-      if (error) throw new Error(error.message);
-      setTopics(prev =>
-        prev.map(topic =>
-          topic.id === topicId
-            ? { ...topic, title: trimmedTitle, calendar_week: weekValue || null }
-            : topic,
-        ),
-      );
-      setTopicDrafts(prev => ({
-        ...prev,
-        [topicId]: { title: trimmedTitle, calendarWeek: weekValue },
-      }));
-    } catch (error) {
-      handleError(error, 'Fehler beim Aktualisieren des Top-Themas');
-    }
-  };
 
   const deleteTopic = async (topicId: string) => {
     try {
@@ -1043,15 +976,15 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         prev.map(entry =>
           entry.card_id === currentEscalation.card_id
             ? {
-                ...entry,
-                id: (data as EscalationRecord | null)?.id ?? entry.id,
-                reason: payload.reason ?? null,
-                measure: payload.measure ?? null,
-                department_id: payload.department_id ?? null,
-                responsible_id: payload.responsible_id ?? null,
-                target_date: payload.target_date ?? null,
-                completion_steps: payload.completion_steps ?? 0,
-              }
+              ...entry,
+              id: (data as EscalationRecord | null)?.id ?? entry.id,
+              reason: payload.reason ?? null,
+              measure: payload.measure ?? null,
+              department_id: payload.department_id ?? null,
+              responsible_id: payload.responsible_id ?? null,
+              target_date: payload.target_date ?? null,
+              completion_steps: payload.completion_steps ?? 0,
+            }
             : entry,
         ),
       );
@@ -1208,13 +1141,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 <IconButton onClick={() => adjustWeek(1)} aria-label="Nächste Woche">
                   <ArrowForwardIcon />
                 </IconButton>
-                <Button
-                  variant="contained"
-                  onClick={saveAttendance}
-                  disabled={!canEdit || attendanceSaving || members.length === 0}
-                >
-                  Diese Woche speichern
-                </Button>
               </Stack>
             </Stack>
 
@@ -1327,91 +1253,111 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
       <Card>
         <CardContent>
-          <Stack
-            direction={{ xs: 'column', md: 'row' }}
-            justifyContent="space-between"
-            alignItems={{ xs: 'flex-start', md: 'center' }}
-            spacing={2}
-          >
+          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }}>
             <Box>
               <Typography variant="h6">⭐ Top-Themen</Typography>
               <Typography variant="body2" color="text.secondary">
                 Halte die wichtigsten Themen fest (maximal fünf Einträge).
               </Typography>
             </Box>
-            {canEdit && (
-              <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={addTopic}
-                disabled={topics.length >= 5}
-              >
-                Neues Thema
-              </Button>
-            )}
           </Stack>
 
-          <Stack spacing={2} sx={{ mt: 3 }}>
-            {topics.length === 0 && (
-              <Typography variant="body2" color="text.secondary">
-                Noch keine Top-Themen erfasst.
-              </Typography>
-            )}
-            {topics.map(topic => {
-              const draft = topicDrafts[topic.id] ?? {
-                title: topic.title ?? '',
-                calendarWeek: topic.calendar_week ?? '',
-              };
-              return (
-                <Stack
-                  key={topic.id}
-                  direction={{ xs: 'column', md: 'row' }}
-                  spacing={1}
-                  alignItems={{ xs: 'stretch', md: 'center' }}
-                >
+          <Stack spacing={3} sx={{ mt: 3 }}>
+            {/* Compose Area */}
+            {canEdit && topics.length < 5 && (
+              <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="subtitle2" sx={{ mb: 2 }}>Neues Thema erstellen</Typography>
+                <Stack spacing={2}>
                   <TextField
-                    label="Thema"
-                    value={draft.title}
-                    onChange={event =>
-                      setTopicDrafts(prev => ({
-                        ...prev,
-                        [topic.id]: {
-                          ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
-                          title: event.target.value,
-                        },
-                      }))
-                    }
-                    onBlur={() => persistTopic(topic.id)}
                     fullWidth
-                    disabled={!canEdit}
+                    multiline
+                    minRows={3}
+                    placeholder="Worum geht es?"
+                    value={topicDrafts['new']?.title || ''}
+                    onChange={(e) => setTopicDrafts(prev => ({ ...prev, 'new': { ...prev['new'], title: e.target.value, dueDate: prev['new']?.dueDate || '' } }))}
                   />
-                  <TextField
-                    type="week"
-                    label="Kalenderwoche"
-                    value={draft.calendarWeek}
-                    onChange={event =>
-                      setTopicDrafts(prev => ({
-                        ...prev,
-                        [topic.id]: {
-                          ...(prev[topic.id] ?? { title: '', calendarWeek: '' }),
-                          calendarWeek: event.target.value,
-                        },
-                      }))
-                    }
-                    onBlur={() => persistTopic(topic.id)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ width: { xs: '100%', md: 200 } }}
-                    disabled={!canEdit}
-                  />
-                  {canEdit && (
-                    <Button color="error" onClick={() => deleteTopic(topic.id)} startIcon={<DeleteIcon />}>★ Löschen</Button>
-                  )}
+                  <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+                    <StandardDatePicker
+                      label="Fällig am"
+                      value={topicDrafts['new']?.dueDate ? dayjs(topicDrafts['new'].dueDate) : null}
+                      onChange={(newValue) => setTopicDrafts(prev => ({ ...prev, 'new': { ...prev['new'], title: prev['new']?.title || '', dueDate: newValue ? newValue.format('YYYY-MM-DD') : '' } }))}
+                      sx={{ width: 200 }}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={async () => {
+                        if (!supabase) return;
+                        const draft = topicDrafts['new'];
+                        if (!draft?.title.trim()) return;
+
+                        try {
+                          const { data, error } = await supabase
+                            .from('board_top_topics')
+                            .insert({ board_id: boardId, title: draft.title, due_date: draft.dueDate || null, position: topics.length })
+                            .select()
+                            .single();
+                          if (error) throw error;
+
+                          setTopics(prev => [...prev, data as Topic]);
+                          setTopicDrafts(prev => {
+                            const copy = { ...prev };
+                            delete copy['new'];
+                            return copy;
+                          });
+                          setMessage('✅ Top-Thema angelegt');
+                          setTimeout(() => setMessage(''), 3000);
+                        } catch (e) {
+                          console.error(e);
+                          setMessage('❌ Fehler beim Anlegen');
+                        }
+                      }}
+                      disabled={!topicDrafts['new']?.title.trim()}
+                    >
+                      Speichern
+                    </Button>
+                  </Stack>
                 </Stack>
-              );
-            })}
+              </Box>
+            )}
+
+            {/* List Area */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Aktuelle Themen</Typography>
+              {topics.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">Noch keine Top-Themen erfasst.</Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {topics.map((topic) => (
+                    <Card key={topic.id} variant="outlined">
+                      <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+                          <Box>
+                            <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{topic.title}</Typography>
+                            {topic.due_date && (
+                              <Chip
+                                label={`Fällig: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
+                                size="small"
+                                color={dayjs(topic.due_date).isBefore(dayjs(), 'day') ? 'error' : (dayjs(topic.due_date).isSame(dayjs(), 'day') || dayjs(topic.due_date).isSame(dayjs().add(1, 'day'), 'day') ? 'warning' : 'default')}
+                                variant={dayjs(topic.due_date).isBefore(dayjs(), 'day') || dayjs(topic.due_date).isSame(dayjs(), 'day') || dayjs(topic.due_date).isSame(dayjs().add(1, 'day'), 'day') ? 'filled' : 'outlined'}
+                                sx={{ mt: 1, height: 20, fontSize: '0.75rem' }}
+                              />
+                            )}
+                          </Box>
+                          {canEdit && (
+                            <IconButton size="small" color="error" onClick={() => deleteTopic(topic.id)}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              )}
+            </Box>
           </Stack>
         </CardContent>
-      </Card>
+      </Card >
 
       <Card>
         <CardContent>
@@ -1508,7 +1454,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                             <Stack direction="row" spacing={2} alignItems="center">
                               <Tooltip title="Fortschritt (Bearbeitung im Popup)">
                                 <Box>
-                                  <CompletionDial steps={entry.completion_steps ?? 0} onClick={() => {}} disabled />
+                                  <CompletionDial steps={entry.completion_steps ?? 0} onClick={() => { }} disabled />
                                 </Box>
                               </Tooltip>
                               <Button
@@ -1686,14 +1632,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                   ))}
                 </Select>
               </FormControl>
-              <TextField
+              <StandardDatePicker
                 label="Zieltermin"
-                type="date"
-                value={escalationDraft.target_date ?? ''}
-                onChange={(event) => updateEscalationDraft({ target_date: event.target.value || null })}
-                fullWidth
+                value={escalationDraft.target_date ? dayjs(escalationDraft.target_date) : null}
+                onChange={(newValue) => updateEscalationDraft({ target_date: newValue ? newValue.format('YYYY-MM-DD') : null })}
                 disabled={!canEditEscalations}
-                InputLabelProps={{ shrink: true }}
               />
               <Stack direction="row" spacing={2} alignItems="center">
                 <Tooltip title="Fortschritt">
@@ -1741,18 +1684,18 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             <Typography variant="body2">Keine Eskalation ausgewählt.</Typography>
           )}
         </DialogContent>
-        
+
         {/* Button zum Leeren der Felder */}
         <DialogActions sx={{ justifyContent: 'space-between' }}>
-          <Button 
-            variant="outlined" 
-            color="warning" 
-            onClick={handleClearEscalationFields} 
+          <Button
+            variant="outlined"
+            color="warning"
+            onClick={handleClearEscalationFields}
             disabled={!canEditEscalations}
           >
             🧹 Felder leeren
           </Button>
-          
+
           <Box>
             <Button onClick={closeEscalationEditor} sx={{ mr: 1 }}>Abbrechen</Button>
             <Button onClick={saveEscalation} variant="contained" disabled={!canEditEscalations}>

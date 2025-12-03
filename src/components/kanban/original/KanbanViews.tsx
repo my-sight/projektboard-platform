@@ -2,8 +2,9 @@
 
 import { ReactNode } from 'react';
 import { DragDropContext, Droppable, DropResult } from '@hello-pangea/dnd';
-import { Box, IconButton, Typography } from '@mui/material';
+import { Box, IconButton, Typography, Paper, Chip } from '@mui/material';
 import { KanbanDensity } from './KanbanCard';
+import { alpha } from '@mui/material/styles';
 
 export interface KanbanColumnsViewProps {
   rows: any[];
@@ -39,73 +40,88 @@ export function KanbanColumnsView({
         )),
   );
 
-  const handleDragEnd = allowDrag ? onDragEnd : () => {};
+  const handleDragEnd = allowDrag ? onDragEnd : () => { };
 
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
       <Box
         sx={{
           display: 'flex',
-          gap: 1.5,
+          gap: 2,
           p: 2,
-          overflow: 'auto',
+          overflowX: 'auto',
           alignItems: 'flex-start',
-          minHeight: '100%',
+          height: '100%',
+          minHeight: 'calc(100vh - 100px)',
         }}
       >
         {cols.map((col) => {
           const colCards = filtered.filter((row) => inferStage(row) === col.name);
-          const redCount = colCards.filter((row) => String(row['Ampel'] || '').toLowerCase().startsWith('rot')).length;
+          const redCount = colCards.filter(c => {
+            const ampel = String(c.Ampel || '').toLowerCase();
+            const eskalation = String(c.Eskalation || '').toUpperCase();
+            // R counts as Red
+            return ampel === 'rot' || eskalation === 'R';
+          }).length;
+
+          const yellowCount = colCards.filter(c => {
+            const ampel = String(c.Ampel || '').toLowerCase();
+            const eskalation = String(c.Eskalation || '').toUpperCase();
+            // Y counts as Yellow
+            return ampel === 'gelb' || eskalation === 'Y';
+          }).length;
+
+          const greenCount = colCards.length - redCount - yellowCount;
 
           return (
-            <Box
+            <Paper
               key={col.id}
+              className="glass"
               sx={{
-                minWidth: 'var(--colw)',
-                width: 'var(--colw)',
-                backgroundColor: 'var(--panel)',
-                border: '1px solid var(--line)',
-                borderRadius: '14px',
+                minWidth: 320,
+                width: 320,
                 display: 'flex',
                 flexDirection: 'column',
-                minHeight: '55vh',
-                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)', // ✅ VISUELLE TRENNUNG: Shadow hinzugefügt
+                maxHeight: 'calc(100vh - 140px)',
+                bgcolor: 'background.paper',
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
               }}
             >
               <Box
                 sx={{
-                  position: 'sticky',
-                  top: 0,
-                  backgroundColor: 'var(--panel)',
-                  padding: '10px 12px',
-                  borderBottom: '1px solid var(--line)',
+                  p: 2,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  zIndex: 3,
+                  bgcolor: alpha('#fff', 0.02),
                 }}
               >
                 <Box>
                   <Typography
-                    variant="h6"
+                    variant="subtitle1"
                     sx={{
-                      fontSize: '14px',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.06em',
-                      color: 'var(--muted)',
-                      fontWeight: 600,
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1
                     }}
                   >
                     {col.name} {col.done && '✓'}
                   </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mt: 0.5 }}>
-                    <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
-                      ({colCards.length})
-                    </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mt: 0.5, minHeight: 20 }}>
+
                     {redCount > 0 && (
-                      <Typography variant="caption" sx={{ color: '#ff5a5a' }}>
-                        ● {redCount}
-                      </Typography>
+                      <Chip label={`${redCount} R`} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: alpha('#d32f2f', 0.1), color: '#d32f2f', border: '1px solid', borderColor: alpha('#d32f2f', 0.3) }} />
+                    )}
+                    {yellowCount > 0 && (
+                      <Chip label={`${yellowCount} Y`} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: alpha('#ed6c02', 0.1), color: '#ed6c02', border: '1px solid', borderColor: alpha('#ed6c02', 0.3) }} />
+                    )}
+                    {greenCount > 0 && (
+                      <Chip label={`${greenCount} G`} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: alpha('#000', 0.05), color: 'text.secondary', border: '1px solid', borderColor: 'divider' }} />
                     )}
                   </Box>
                 </Box>
@@ -116,12 +132,6 @@ export function KanbanColumnsView({
                     title="Alle Karten archivieren"
                     onClick={() => archiveColumn(col.name)}
                     disabled={!allowDrag}
-                    sx={{
-                      width: 22,
-                      height: 22,
-                      border: '1px solid var(--line)',
-                      backgroundColor: 'transparent',
-                    }}
                   >
                     📦
                   </IconButton>
@@ -135,24 +145,24 @@ export function KanbanColumnsView({
                     {...provided.droppableProps}
                     sx={{
                       flex: 1,
-                      padding: '8px',
+                      p: 1.5,
+                      pb: 8, // Added extra padding at bottom to prevent cutoff
+                      flexGrow: 1,
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: density === 'xcompact' ? 0 : 1,
-                      minHeight: '200px',
-                      backgroundColor: snapshot.isDraggingOver ? 'rgba(255,255,255,0.06)' : 'transparent',
-                      outline: snapshot.isDraggingOver ? '2px dashed var(--line)' : 'none',
-                      outlineOffset: snapshot.isDraggingOver ? '-4px' : '0',
-                      transition: 'background-color 0.12s ease, outline-color 0.12s ease',
+                      gap: density === 'xcompact' ? 0.25 : 0.5,
+                      overflowY: 'auto',
+                      minHeight: 300,
+                      bgcolor: snapshot.isDraggingOver ? alpha('#fff', 0.05) : 'transparent',
+                      transition: 'background-color 0.2s',
                     }}
                   >
                     {density === 'xcompact' ? (
                       <Box
                         sx={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(5, 1fr)',
-                          gap: 0,
-                          gridAutoRows: '18px',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+                          gap: 1,
                         }}
                       >
                         {colCards.map((card, cardIndex) => renderCard(card, cardIndex))}
@@ -164,7 +174,7 @@ export function KanbanColumnsView({
                   </Box>
                 )}
               </Droppable>
-            </Box>
+            </Paper>
           );
         })}
       </Box>
@@ -203,78 +213,59 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
     ),
   );
 
-  const handleDragEnd = allowDrag ? onDragEnd : () => {};
+  const handleDragEnd = allowDrag ? onDragEnd : () => { };
 
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: `var(--rowheadw) ${stages.map(() => 'var(--colw)').join(' ')}`,
-          gap: '8px',
+          gridTemplateColumns: `200px ${stages.map(() => '320px').join(' ')}`,
+          gap: 2,
           p: 2,
           alignItems: 'start',
           overflow: 'auto',
-          minHeight: '100%',
-          width: 'fit-content',
-          minWidth: '100%',
+          height: '100%',
         }}
       >
-        <Box
-          sx={{
-            position: 'sticky',
-            top: 0,
-            zIndex: 2,
-            backgroundColor: 'var(--panel)',
-            border: '1px solid var(--line)',
-            borderRadius: '12px',
-            padding: '10px 12px',
-            minHeight: '48px',
-          }}
-        />
+        <Box /> {/* Empty corner */}
 
         {stages.map((stage) => (
-          <Box
+          <Paper
             key={stage}
+            className="glass"
             sx={{
               position: 'sticky',
               top: 0,
               zIndex: 2,
-              backgroundColor: 'var(--panel)',
-              border: '1px solid var(--line)',
-              borderRadius: '12px',
-              padding: '10px 12px',
-              textTransform: 'uppercase',
-              color: 'var(--muted)',
-              letterSpacing: '0.06em',
-              fontSize: '14px',
-              fontWeight: 600,
+              p: 2,
+              fontWeight: 700,
+              textAlign: 'center',
+              borderRadius: 2,
             }}
           >
             {stage}
-          </Box>
+          </Paper>
         ))}
 
         {resps.map((resp) => (
           <>
-            <Box
+            <Paper
               key={`header-${resp}`}
+              className="glass"
               sx={{
                 position: 'sticky',
                 left: 0,
                 zIndex: 1,
+                p: 2,
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 12px',
-                backgroundColor: 'var(--panel)',
-                border: '1px solid var(--line)',
-                borderRadius: '12px',
-                minHeight: '48px',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                borderRadius: 2,
               }}
             >
-              <Typography sx={{ fontWeight: 700 }}>{resp}</Typography>
-              <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
+              <Typography fontWeight={700} noWrap title={resp}>{resp}</Typography>
+              <Typography variant="caption" color="text.secondary">
                 {
                   filtered.filter(
                     (row) => (String(row['Verantwortlich'] || '').trim() || '—') === resp,
@@ -282,7 +273,7 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
                 }{' '}
                 Karten
               </Typography>
-            </Box>
+            </Paper>
 
             {stages.map((stage) => {
               const cellCards = filtered.filter(
@@ -292,24 +283,25 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
               return (
                 <Droppable key={`${stage}-${resp}`} droppableId={`${stage}||${resp}`} isDropDisabled={!allowDrag}>
                   {(provided, snapshot) => (
-                    <Box
+                    <Paper
                       ref={provided.innerRef}
                       {...provided.droppableProps}
+                      className="glass"
                       sx={{
-                        backgroundColor: snapshot.isDraggingOver ? 'rgba(255,255,255,0.06)' : 'var(--panel)',
-                        border: '1px solid var(--line)',
-                        borderRadius: '12px',
-                        minHeight: '140px',
+                        bgcolor: snapshot.isDraggingOver ? alpha('#fff', 0.05) : 'background.paper',
+                        borderRadius: 2,
+                        minHeight: 140,
+                        p: 1,
                         display: 'flex',
                         flexDirection: 'column',
-                        padding: '8px',
                         gap: 1,
-                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)', // ✅ VISUELLE TRENNUNG: Shadow hinzugefügt
+                        border: '1px solid',
+                        borderColor: 'divider',
                       }}
                     >
                       {cellCards.map((card, cardIndex) => renderCard(card, cardIndex))}
                       {provided.placeholder}
-                    </Box>
+                    </Paper>
                   )}
                 </Droppable>
               );
@@ -347,80 +339,65 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
   const stages = cols.map((c) => c.name);
   const laneNames = lanes.length ? lanes : ['Allgemein'];
 
-  const handleDragEnd = allowDrag ? onDragEnd : () => {};
+  const handleDragEnd = allowDrag ? onDragEnd : () => { };
 
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: `var(--rowheadw) ${stages.map(() => 'var(--colw)').join(' ')}`,
-          gap: '8px',
+          gridTemplateColumns: `200px ${stages.map(() => '320px').join(' ')}`,
+          gap: 2,
           p: 2,
           alignItems: 'start',
+          overflow: 'auto',
+          height: '100%',
         }}
       >
-        <Box
-          sx={{
-            position: 'sticky',
-            top: 0,
-            zIndex: 2,
-            backgroundColor: 'var(--panel)',
-            border: '1px solid var(--line)',
-            borderRadius: '12px',
-            padding: '10px 12px',
-            minHeight: '48px',
-          }}
-        />
+        <Box />
 
         {stages.map((stage) => (
-          <Box
+          <Paper
             key={stage}
+            className="glass"
             sx={{
               position: 'sticky',
               top: 0,
               zIndex: 2,
-              backgroundColor: 'var(--panel)',
-              border: '1px solid var(--line)',
-              borderRadius: '12px',
-              padding: '10px 12px',
-              textTransform: 'uppercase',
-              color: 'var(--muted)',
-              letterSpacing: '0.06em',
-              fontSize: '14px',
-              fontWeight: 600,
+              p: 2,
+              fontWeight: 700,
+              textAlign: 'center',
+              borderRadius: 2,
             }}
           >
             {stage}
-          </Box>
+          </Paper>
         ))}
 
         {laneNames.map((laneName) => (
           <>
-            <Box
+            <Paper
               key={`header-${laneName}`}
+              className="glass"
               sx={{
                 position: 'sticky',
                 left: 0,
                 zIndex: 1,
+                p: 2,
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '10px 12px',
-                backgroundColor: 'var(--panel)',
-                border: '1px solid var(--line)',
-                borderRadius: '12px',
-                minHeight: '48px',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                borderRadius: 2,
               }}
             >
-              <Typography sx={{ fontWeight: 700 }}>{laneName}</Typography>
-              <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
+              <Typography fontWeight={700} noWrap title={laneName}>{laneName}</Typography>
+              <Typography variant="caption" color="text.secondary">
                 {
                   filtered.filter((row) => (row['Swimlane'] || laneNames[0]) === laneName).length
                 }{' '}
                 Karten
               </Typography>
-            </Box>
+            </Paper>
 
             {stages.map((stage) => {
               const cellCards = filtered.filter(
@@ -430,24 +407,25 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
               return (
                 <Droppable key={`${stage}-${laneName}`} droppableId={`${stage}||${laneName}`} isDropDisabled={!allowDrag}>
                   {(provided, snapshot) => (
-                    <Box
+                    <Paper
                       ref={provided.innerRef}
                       {...provided.droppableProps}
+                      className="glass"
                       sx={{
-                        backgroundColor: snapshot.isDraggingOver ? 'rgba(255,255,255,0.06)' : 'var(--panel)',
-                        border: '1px solid var(--line)',
-                        borderRadius: '12px',
-                        minHeight: '140px',
+                        bgcolor: snapshot.isDraggingOver ? alpha('#fff', 0.05) : 'background.paper',
+                        borderRadius: 2,
+                        minHeight: 140,
+                        p: 1,
                         display: 'flex',
                         flexDirection: 'column',
-                        padding: '8px',
                         gap: 1,
-                        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.05)', // ✅ VISUELLE TRENNUNG: Shadow hinzugefügt
+                        border: '1px solid',
+                        borderColor: 'divider',
                       }}
                     >
                       {cellCards.map((card, cardIndex) => renderCard(card, cardIndex))}
                       {provided.placeholder}
-                    </Box>
+                    </Paper>
                   )}
                 </Droppable>
               );

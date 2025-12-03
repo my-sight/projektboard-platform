@@ -39,6 +39,8 @@ import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { fetchClientProfiles, ClientProfile } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
 import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
+import { StandardDatePicker } from '@/components/common/StandardDatePicker';
+import dayjs from 'dayjs';
 
 interface BoardMemberRow {
   id: string;
@@ -82,28 +84,6 @@ interface TeamBoardManagementPanelProps {
   memberCanSee: boolean;
 }
 
-const formatWeekKey = (date: Date): string => {
-  const temp = new Date(date);
-  const target = startOfWeek(temp);
-  const year = target.getFullYear();
-  const week = isoWeekNumber(target);
-  return `${year}-${String(week).padStart(2, '0')}`;
-};
-
-const parseWeekKey = (value: string): Date => {
-  const [yearPart, weekPart] = value.split('-');
-  const year = Number(yearPart);
-  const week = Number(weekPart);
-  if (!Number.isFinite(year) || !Number.isFinite(week)) {
-    return startOfWeek(new Date());
-  }
-  const simple = new Date(Date.UTC(year, 0, 1));
-  const day = simple.getUTCDay();
-  const diff = (day <= 4 ? day - 1 : day - 8);
-  simple.setUTCDate(simple.getUTCDate() - diff + (week - 1) * 7);
-  return startOfWeek(simple);
-};
-
 function startOfWeek(date: Date): Date {
   const copy = new Date(date);
   const day = copy.getDay();
@@ -113,28 +93,131 @@ function startOfWeek(date: Date): Date {
   return copy;
 }
 
-function isoWeekNumber(date: Date): number {
-  const target = new Date(date.valueOf());
-  const dayNr = (date.getDay() + 6) % 7;
-  target.setDate(target.getDate() - dayNr + 3);
-  const firstThursday = new Date(target.getFullYear(), 0, 4);
-  const diff = target.valueOf() - firstThursday.valueOf();
-  return 1 + Math.round(diff / (7 * 24 * 3600 * 1000));
+function isoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
-const weekRangeLabel = (date: Date): string => {
-  const start = startOfWeek(date);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 4);
-  const formatter = new Intl.DateTimeFormat('de-DE');
-  return `${formatter.format(start)} – ${formatter.format(end)}`;
-};
+function normalizeWeekValue(value: string | null | undefined): string | null {
+  if (!value) {
+    return null;
+  }
 
-const shiftWeek = (weekKey: string, delta: number): string => {
-  const base = parseWeekKey(weekKey);
-  base.setDate(base.getDate() + delta * 7);
-  return formatWeekKey(base);
-};
+  const parsed = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return isoDate(startOfWeek(parsed));
+}
+
+function expandWeekRange(values: (string | null | undefined)[], ensureWeek?: string): string[] {
+  const normalized = values
+    .map(normalizeWeekValue)
+    .filter((value): value is string => Boolean(value));
+
+  const ensured = normalizeWeekValue(ensureWeek);
+
+  if (ensured) {
+    normalized.push(ensured);
+  }
+
+  if (normalized.length === 0) {
+    const current = isoDate(startOfWeek(new Date()));
+    return [current];
+  }
+
+  const uniqueSorted = Array.from(new Set(normalized)).sort(
+    (a, b) => new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime(),
+  );
+
+  const firstDate = startOfWeek(new Date(`${uniqueSorted[0]}T00:00:00`));
+  const currentWeek = startOfWeek(new Date());
+  const ensuredDate = ensured ? startOfWeek(new Date(`${ensured}T00:00:00`)) : null;
+  const lastCandidate = startOfWeek(
+    new Date(`${uniqueSorted[uniqueSorted.length - 1]}T00:00:00`),
+  );
+
+  const lastDate = new Date(
+    Math.max(
+      lastCandidate.getTime(),
+      currentWeek.getTime(),
+      ensuredDate?.getTime() ?? -Infinity,
+    ),
+  );
+
+  const result: string[] = [];
+  for (let cursor = new Date(firstDate); cursor.getTime() <= lastDate.getTime();) {
+    result.push(isoDate(cursor));
+    cursor.setDate(cursor.getDate() + 7);
+    cursor.setHours(0, 0, 0, 0);
+  }
+
+  return result;
+}
+
+function weekRangeLabel(weekStart: Date): string {
+  const end = new Date(weekStart);
+  end.setDate(end.getDate() + 4);
+  const startFmt = weekStart.toLocaleDateString('de-DE');
+  const endFmt = end.toLocaleDateString('de-DE');
+  return `${startFmt} – ${endFmt}`;
+}
+
+function isoWeekNumber(date: Date): number {
+  const target = new Date(date.valueOf());
+  const dayNr = (target.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  const dayOfWeek = (target.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayOfWeek + 3);
+  const weekNumber = 1 + Math.round((firstThursday - target.valueOf()) / 604800000);
+  return weekNumber;
+}
+
+function isoWeekYear(date: Date): number {
+  const target = new Date(date.valueOf());
+  target.setDate(target.getDate() - ((target.getDay() + 6) % 7) + 3);
+  return target.getFullYear();
+}
+
+function dateFromIsoWeek(year: number, week: number): Date {
+  const simple = new Date(year, 0, 4);
+  const simpleDay = simple.getDay() || 7;
+  simple.setDate(simple.getDate() - simpleDay + 1 + (week - 1) * 7);
+  simple.setHours(0, 0, 0, 0);
+  return simple;
+}
+
+function formatWeekInputValue(date: Date): string {
+  const week = isoWeekNumber(date).toString().padStart(2, '0');
+  const year = isoWeekYear(date);
+  return `${year}-W${week}`;
+}
+
+function parseWeekInputValue(value: string): string | null {
+  const trimmed = value.trim();
+  const match = /^([0-9]{4})-W([0-9]{2})$/i.exec(trimmed);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, yearText, weekText] = match;
+  const year = Number(yearText);
+  const week = Number(weekText);
+
+  if (!Number.isFinite(year) || !Number.isFinite(week) || week < 1 || week > 53) {
+    return null;
+  }
+
+  const weekDate = startOfWeek(dateFromIsoWeek(year, week));
+  return isoDate(weekDate);
+}
 
 export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSee }: TeamBoardManagementPanelProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -147,21 +230,62 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   const [attendanceByWeek, setAttendanceByWeek] = useState<
     Record<string, Record<string, AttendanceRecord | undefined>>
   >({});
-  const [selectedWeek, setSelectedWeek] = useState<string>(formatWeekKey(new Date()));
-  const [historyWeeks, setHistoryWeeks] = useState<WeekHistoryItem[]>([]);
   const [attendanceDraft, setAttendanceDraft] = useState<Record<string, boolean>>({});
   const [attendanceSaving, setAttendanceSaving] = useState(false);
   const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; memberId: string | null }>({ open: false, memberId: null });
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
+  const [selectedWeek, setSelectedWeek] = useState<string>(() => isoDate(startOfWeek(new Date())));
+  const [orderedWeeks, setOrderedWeeks] = useState<string[]>(() =>
+    expandWeekRange([isoDate(startOfWeek(new Date()))]),
+  );
+
+  const selectedWeekDate = useMemo(() => {
+    if (!selectedWeek) {
+      return startOfWeek(new Date());
+    }
+
+    const parsed = new Date(`${selectedWeek}T00:00:00`);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return startOfWeek(new Date());
+    }
+
+    return startOfWeek(parsed);
+  }, [selectedWeek]);
+
+  const selectedWeekInputValue = useMemo(
+    () => formatWeekInputValue(selectedWeekDate),
+    [selectedWeekDate],
+  );
+
+  const sortedWeekEntries = useMemo(() => {
+    const baseWeeks = orderedWeeks.length ? orderedWeeks : [selectedWeek];
+    const entries = baseWeeks.map(week => ({
+      week,
+      date: startOfWeek(new Date(`${week}T00:00:00`)),
+    }));
+
+    if (!entries.some(entry => entry.week === selectedWeek)) {
+      entries.push({ week: selectedWeek, date: selectedWeekDate });
+    }
+
+    return entries.sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [orderedWeeks, selectedWeek, selectedWeekDate]);
+
+  const historyWeeks = useMemo(
+    () => sortedWeekEntries.filter(entry => entry.week !== selectedWeek),
+    [sortedWeekEntries, selectedWeek],
+  );
+
   useEffect(() => {
     if (supabase) {
-        supabase.auth.getUser().then(({ data: { user } }) => {
-            setCurrentUserId(user?.id ?? null);
-        }).catch(() => {
-            setCurrentUserId(null);
-        });
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        setCurrentUserId(user?.id ?? null);
+      }).catch(() => {
+        setCurrentUserId(null);
+      });
     }
   }, [supabase]);
 
@@ -193,7 +317,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
             .order('week_start', { ascending: true }),
           supabase
             .from('board_top_topics')
-            .select('*') // Select all fields including due_date
+            .select('*')
             .eq('board_id', boardId)
             .order('position', { ascending: true }),
         ]);
@@ -221,7 +345,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
         const attendanceRows = (attendanceResult.data as AttendanceRecord[] | null) ?? [];
         const attendanceMap: Record<string, Record<string, AttendanceRecord>> = {};
         attendanceRows.forEach((row) => {
-          const weekKey = formatWeekKey(new Date(row.week_start));
+          const weekKey = isoDate(startOfWeek(new Date(row.week_start)));
           if (!attendanceMap[weekKey]) {
             attendanceMap[weekKey] = {};
           }
@@ -229,30 +353,28 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
         });
         setAttendanceByWeek(attendanceMap);
 
-        const allWeeks = Object.keys(attendanceMap)
-          .map((week) => ({ week, date: parseWeekKey(week) }))
-          .sort((a, b) => b.date.getTime() - a.date.getTime());
+        const allWeeks = Object.keys(attendanceMap);
+        const ordered = expandWeekRange(allWeeks, isoDate(startOfWeek(new Date())));
+        setOrderedWeeks(ordered);
 
-        const nextSelected = allWeeks.length ? allWeeks[0].week : formatWeekKey(new Date());
-        setSelectedWeek(nextSelected);
-        setHistoryWeeks(allWeeks.filter((item) => item.week !== nextSelected).slice(0, 10));
+        // Select current week or latest available
+        const currentWeek = isoDate(startOfWeek(new Date()));
+        setSelectedWeek(currentWeek);
 
         const draft: Record<string, boolean> = {};
         mappedMembers.forEach((member) => {
-          const existing = attendanceMap[nextSelected]?.[member.profile_id];
+          const existing = attendanceMap[currentWeek]?.[member.profile_id];
           draft[member.profile_id] = existing ? existing.status !== 'absent' : true;
         });
         setAttendanceDraft(draft);
 
-        // Topics Loading Fix
         const topicRows = (topicsResult.data as TopicRow[] | null) ?? [];
         setTopics(topicRows);
         const topicDraftValues: Record<string, TopicDraft> = {};
         topicRows.forEach((row) => {
           topicDraftValues[row.id] = {
             title: row.title ?? '',
-            // Nutze due_date wenn vorhanden, sonst leer
-            dueDate: row.due_date ?? '', 
+            dueDate: row.due_date ?? '',
           };
         });
         setTopicDrafts(topicDraftValues);
@@ -290,26 +412,25 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     });
   }, [members, profiles]);
 
-  const selectWeek = (weekKey: string) => {
-    setSelectedWeek(weekKey);
+  const selectWeek = (week: string) => {
+    if (!week) return;
+
+    const parsed = new Date(`${week}T00:00:00`);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return;
+    }
+
+    const normalized = isoDate(startOfWeek(parsed));
+    setSelectedWeek(normalized);
+    setOrderedWeeks(prev => expandWeekRange([...prev, normalized], normalized));
+
     const nextDraft: Record<string, boolean> = {};
     members.forEach((member) => {
-      const existing = attendanceByWeek[weekKey]?.[member.profile_id];
+      const existing = attendanceByWeek[normalized]?.[member.profile_id];
       nextDraft[member.profile_id] = existing ? existing.status !== 'absent' : true;
     });
     setAttendanceDraft(nextDraft);
-    setHistoryWeeks((prev) => {
-      const weekSet = new Map<string, WeekHistoryItem>();
-      prev.forEach((item) => weekSet.set(item.week, item));
-      Object.keys(attendanceByWeek).forEach((week) => {
-        if (week !== weekKey) {
-          weekSet.set(week, { week, date: parseWeekKey(week) });
-        }
-      });
-      weekSet.delete(weekKey);
-      const sorted = Array.from(weekSet.values()).sort((a, b) => b.date.getTime() - a.date.getTime());
-      return sorted.slice(0, 10);
-    });
   };
 
   const toggleAttendanceDraft = (profileId: string) => {
@@ -320,7 +441,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     if (!supabase) return;
     setAttendanceSaving(true);
     setMessage(null);
-    const weekDate = parseWeekKey(selectedWeek);
+    const weekDate = startOfWeek(new Date(selectedWeek));
     const payload = members.map((member) => ({
       board_id: boardId,
       profile_id: member.profile_id,
@@ -470,10 +591,10 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     try {
       const { error } = await supabase
         .from('board_top_topics')
-        .update({ 
-            title: trimmedTitle, 
-            due_date: dateValue || null, // Jetzt wird due_date gespeichert
-            calendar_week: null // Wir nutzen das alte Feld nicht mehr primär
+        .update({
+          title: trimmedTitle,
+          due_date: dateValue || null, // Jetzt wird due_date gespeichert
+          calendar_week: null // Wir nutzen das alte Feld nicht mehr primär
         })
         .eq('id', topicId);
       if (error) throw error;
@@ -485,11 +606,11 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
             : topic,
         ),
       );
-      
+
       // Feedback
       setMessage('✅ Top-Thema gespeichert');
       setTimeout(() => setMessage(null), 2000);
-      
+
     } catch (cause) {
       console.error('❌ Fehler beim Aktualisieren eines Top-Themas', cause);
       setMessage('❌ Top-Thema konnte nicht aktualisiert werden.');
@@ -627,16 +748,28 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
               </Typography>
             </Box>
             <Stack direction="row" spacing={1} alignItems="center">
-              <IconButton onClick={() => selectWeek(shiftWeek(selectedWeek, -1))}>
+              <IconButton onClick={() => {
+                const next = new Date(selectedWeekDate);
+                next.setDate(next.getDate() - 7);
+                const normalized = isoDate(startOfWeek(next));
+                setSelectedWeek(normalized);
+                setOrderedWeeks(prev => expandWeekRange([...prev, normalized], normalized));
+              }}>
                 <ArrowBackIcon />
               </IconButton>
               <Box sx={{ textAlign: 'center' }}>
                 <Typography variant="subtitle1">KW {selectedWeek.split('-')[1]}</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  {weekRangeLabel(parseWeekKey(selectedWeek))}
+                  {weekRangeLabel(startOfWeek(new Date(selectedWeek)))}
                 </Typography>
               </Box>
-              <IconButton onClick={() => selectWeek(shiftWeek(selectedWeek, 1))}>
+              <IconButton onClick={() => {
+                const next = new Date(selectedWeekDate);
+                next.setDate(next.getDate() + 7);
+                const normalized = isoDate(startOfWeek(next));
+                setSelectedWeek(normalized);
+                setOrderedWeeks(prev => expandWeekRange([...prev, normalized], normalized));
+              }}>
                 <ArrowForwardIcon />
               </IconButton>
               {canEdit && (
@@ -752,86 +885,99 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                 Halte die wichtigsten Themen fest (maximal fünf Einträge).
               </Typography>
             </Box>
-            {canManageTopics && (
-              <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={addTopic}
-                disabled={topics.length >= 5}
-              >
-                Neues Thema
-              </Button>
-            )}
           </Stack>
 
-          <Stack spacing={2} sx={{ mt: 3 }}>
-            {topics.length === 0 && (
-              <Typography variant="body2" color="text.secondary">
-                Noch keine Top-Themen erfasst.
-              </Typography>
-            )}
-            {topics.map((topic) => {
-              const draft = topicDrafts[topic.id] ?? {
-                title: topic.title ?? '',
-                dueDate: topic.due_date ?? '',
-              };
-
-              return (
-                <Stack
-                  key={topic.id}
-                  direction={{ xs: 'column', md: 'row' }}
-                  spacing={1}
-                  alignItems={{ xs: 'stretch', md: 'center' }}
-                >
+          <Stack spacing={3} sx={{ mt: 3 }}>
+            {/* Compose Area */}
+            {canManageTopics && topics.length < 5 && (
+              <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="subtitle2" sx={{ mb: 2 }}>Neues Thema erstellen</Typography>
+                <Stack spacing={2}>
                   <TextField
-                    label="Thema"
-                    value={draft.title}
-                    onChange={(event) =>
-                      setTopicDrafts((prev) => ({
-                        ...prev,
-                        [topic.id]: {
-                          ...(prev[topic.id] ?? { title: '', dueDate: '' }),
-                          title: event.target.value,
-                        },
-                      }))
-                    }
-                    onBlur={() => persistTopic(topic.id)}
                     fullWidth
-                    disabled={!canManageTopics}
+                    multiline
+                    minRows={3}
+                    placeholder="Worum geht es?"
+                    value={topicDrafts['new']?.title || ''}
+                    onChange={(e) => setTopicDrafts(prev => ({ ...prev, 'new': { ...prev['new'], title: e.target.value, dueDate: prev['new']?.dueDate || '' } }))}
                   />
-                  
-                  {/* Korrigiertes Datumsfeld */}
-                  <TextField
-                    type="date"
-                    label="Fällig bis"
-                    value={draft.dueDate}
-                    onChange={(event) =>
-                      setTopicDrafts((prev) => ({
-                        ...prev,
-                        [topic.id]: {
-                          ...(prev[topic.id] ?? { title: '', dueDate: '' }),
-                          dueDate: event.target.value,
-                        },
-                      }))
-                    }
-                    onBlur={() => persistTopic(topic.id)}
-                    InputLabelProps={{ shrink: true }}
-                    sx={{ width: { xs: '100%', md: 200 } }}
-                    disabled={!canManageTopics}
-                  />
-                  
-                  {canManageTopics && (
+                  <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+                    <StandardDatePicker
+                      label="Fällig am"
+                      value={topicDrafts['new']?.dueDate ? dayjs(topicDrafts['new'].dueDate) : null}
+                      onChange={(newValue) => setTopicDrafts(prev => ({ ...prev, 'new': { ...prev['new'], title: prev['new']?.title || '', dueDate: newValue ? newValue.format('YYYY-MM-DD') : '' } }))}
+                      sx={{ width: 200 }}
+                    />
                     <Button
-                      color="error"
-                      onClick={() => deleteTopic(topic.id)}
-                      startIcon={<DeleteIcon />}
+                      variant="contained"
+                      onClick={async () => {
+                        if (!supabase) return;
+                        const draft = topicDrafts['new'];
+                        if (!draft?.title.trim()) return;
+
+                        try {
+                          const { data, error } = await supabase
+                            .from('board_top_topics')
+                            .insert({ board_id: boardId, title: draft.title, due_date: draft.dueDate || null, position: topics.length })
+                            .select()
+                            .single();
+                          if (error) throw error;
+
+                          setTopics(prev => [...prev, data as TopicRow]);
+                          setTopicDrafts(prev => {
+                            const copy = { ...prev };
+                            delete copy['new'];
+                            return copy;
+                          });
+                          setMessage('✅ Top-Thema angelegt');
+                          setTimeout(() => setMessage(null), 3000);
+                        } catch (e) {
+                          console.error(e);
+                          setMessage('❌ Fehler beim Anlegen');
+                        }
+                      }}
+                      disabled={!topicDrafts['new']?.title.trim()}
                     >
-                      Löschen
+                      Speichern
                     </Button>
-                  )}
+                  </Stack>
                 </Stack>
-              );
-            })}
+              </Box>
+            )}
+
+            {/* List Area */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Aktuelle Themen</Typography>
+              {topics.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">Noch keine Top-Themen erfasst.</Typography>
+              ) : (
+                <Stack spacing={1}>
+                  {topics.map((topic) => (
+                    <Card key={topic.id} variant="outlined">
+                      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+                          <Box>
+                            <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{topic.title}</Typography>
+                            {topic.due_date && (
+                              <Chip
+                                label={`Fällig: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
+                                size="small"
+                                sx={{ mt: 1 }}
+                              />
+                            )}
+                          </Box>
+                          {canManageTopics && (
+                            <IconButton size="small" color="error" onClick={() => deleteTopic(topic.id)}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              )}
+            </Box>
           </Stack>
         </CardContent>
       </Card>

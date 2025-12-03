@@ -3,7 +3,14 @@
 import { useState, useEffect, createContext, useContext } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { useMediaQuery } from '@mui/material';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import dayjs from 'dayjs';
+import 'dayjs/locale/de';
 import theme, { lightTheme } from './theme';
+
+// Set global locale
+dayjs.locale('de');
 
 interface ThemeContextType {
   isDark: boolean;
@@ -12,7 +19,7 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType>({
   isDark: true,
-  toggleTheme: () => {},
+  toggleTheme: () => { },
 });
 
 export const useTheme = () => useContext(ThemeContext);
@@ -46,17 +53,21 @@ export default function ThemeRegistry({
   // Prevent hydration mismatch
   if (!mounted) {
     return (
-      <ThemeProvider theme={theme}>
-        {children}
-      </ThemeProvider>
+      <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
+        <ThemeProvider theme={theme}>
+          {children}
+        </ThemeProvider>
+      </LocalizationProvider>
     );
   }
 
   return (
     <ThemeContext.Provider value={{ isDark, toggleTheme }}>
-      <ThemeProvider theme={isDark ? theme : lightTheme}>
-        {children}
-      </ThemeProvider>
+      <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
+        <ThemeProvider theme={isDark ? theme : lightTheme}>
+          {children}
+        </ThemeProvider>
+      </LocalizationProvider>
     </ThemeContext.Provider>
   );
 }

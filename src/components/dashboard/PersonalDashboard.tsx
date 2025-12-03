@@ -10,7 +10,6 @@ import {
   Chip,
   Stack,
   IconButton,
-  Tooltip,
   LinearProgress,
   Alert,
   TextField,
@@ -18,18 +17,16 @@ import {
   List,
   ListItem,
   ListItemText,
-  Button,
-  Divider,
   useTheme,
   useMediaQuery,
   Tabs,
   Tab,
-  Badge
+  Avatar,
+  Paper
 } from '@mui/material';
 import {
   Assignment,
-  CheckCircle,
-  Dashboard,
+  Dashboard as DashboardIcon,
   Warning,
   PriorityHigh,
   AccessTime,
@@ -37,8 +34,10 @@ import {
   Add,
   Delete,
   Business,
-  InfoOutlined,
-  DoneAll
+  DoneAll,
+  TrendingUp,
+  Event,
+  NotificationsActive
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
@@ -51,20 +50,19 @@ interface PersonalDashboardProps {
 export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProps) {
   const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md')); 
-  
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string>('');
-  
+
   const [allTasks, setAllTasks] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
-  const [debugInfo, setDebugInfo] = useState<string | null>(null);
-  
+
   // UI State
   const [mobileTab, setMobileTab] = useState(0);
   const [newNote, setNewNote] = useState('');
-  
+
   // Filter State
   const [filters, setFilters] = useState({
     overdue: false,
@@ -80,7 +78,6 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
     const loadData = async () => {
       if (!supabase) return;
       setLoading(true);
-      setDebugInfo(null);
 
       try {
         const { data: { user } } = await supabase.auth.getUser();
@@ -91,22 +88,22 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         const myIds = new Set<string>();
         myIds.add(user.id);
         if (user.email) myIds.add(user.email.toLowerCase().trim());
-        
+
         const metaName = user.user_metadata?.full_name || user.user_metadata?.name;
         if (metaName) myIds.add(String(metaName).toLowerCase().trim());
 
         try {
-            const profiles = await fetchClientProfiles();
-            const profile = profiles.find(p => p.id === user.id);
-            if (profile?.full_name) myIds.add(profile.full_name.toLowerCase().trim());
+          const profiles = await fetchClientProfiles();
+          const profile = profiles.find(p => p.id === user.id);
+          if (profile?.full_name) myIds.add(profile.full_name.toLowerCase().trim());
         } catch (e) { console.warn('Profile fetch warning', e); }
 
         // Boards laden für Namen
         const { data: boards } = await supabase.from('kanban_boards').select('id, name, settings');
         const bMap: Record<string, any> = {};
-        boards?.forEach(b => { 
-            const settings = b.settings as Record<string, any> | null;
-            bMap[b.id] = { name: b.name, type: settings?.boardType || 'standard' }; 
+        boards?.forEach(b => {
+          const settings = b.settings as Record<string, any> | null;
+          bMap[b.id] = { name: b.name, type: settings?.boardType || 'standard' };
         });
 
         const { data: cards, error } = await supabase.from('kanban_cards').select('*');
@@ -114,7 +111,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
         if (cards && active) {
           const foundTasks: any[] = [];
-          
+
           cards.forEach((row) => {
             let d = row.card_data;
             if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = {}; } }
@@ -123,42 +120,38 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
             const boardInfo = bMap[row.board_id] || { name: 'Unbekannt', type: 'standard' };
             let isMine = false;
-            
+
             // A) Strikter ID Check (Sicherste Methode)
             const cardUserIds = [d.userId, d.assigneeId, d.user_id, d.assignee_id].filter(Boolean);
             if (cardUserIds.includes(user.id)) {
-                isMine = true;
-            } 
+              isMine = true;
+            }
             // B) Fallback: Namens-Match (Nur wenn keine ID da ist)
-            // Wir prüfen nur EXAKTE Übereinstimmung oder "Enthält vollen Namen"
             else if (cardUserIds.length === 0) {
-               const candidates = [d.Verantwortlich, d.responsible, d.assigneeName].filter(s => typeof s === 'string');
-               for (const cand of candidates) {
-                   const raw = cand.toLowerCase().trim();
-                   // Check: Ist der Name exakt in meiner ID-Liste?
-                   if (myIds.has(raw)) { isMine = true; break; }
-                   
-                   // Check: Enthält der Feld-Text meinen vollen Namen? (z.B. "Max Mustermann (IT)")
-                   if (metaName && raw.includes(metaName.toLowerCase().trim())) { isMine = true; break; }
-               }
+              const candidates = [d.Verantwortlich, d.responsible, d.assigneeName].filter(s => typeof s === 'string');
+              for (const cand of candidates) {
+                const raw = cand.toLowerCase().trim();
+                if (myIds.has(raw)) { isMine = true; break; }
+                if (metaName && raw.includes(metaName.toLowerCase().trim())) { isMine = true; break; }
+              }
             }
 
             if (isMine) {
-               const isTeamBoard = d.type === 'teamTask' || boardInfo.type === 'team';
-               if (isTeamBoard && d.status === 'done') return;
+              const isTeamBoard = d.type === 'teamTask' || boardInfo.type === 'team';
+              if (isTeamBoard && d.status === 'done') return;
 
-               const rawDate = d['Due Date'] || d.dueDate || d.target_date;
-               const dueDate = rawDate ? String(rawDate).split('T')[0] : null;
+              const rawDate = d['Due Date'] || d.dueDate || d.target_date;
+              const dueDate = rawDate ? String(rawDate).split('T')[0] : null;
 
-               const isCritical = (d.Ampel && String(d.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(d.Eskalation || '').toUpperCase());
-               const isPriority = (toBoolean(d.Priorität)) || (d.important === true);
-               const isWatch = (d.watch === true);
+              const isCritical = (d.Ampel && String(d.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(d.Eskalation || '').toUpperCase());
+              const isPriority = (toBoolean(d.Priorität)) || (d.important === true);
+              const isWatch = (d.watch === true);
 
-               foundTasks.push({
-                   id: row.card_id, title: d.Nummer ? `${d.Nummer} ${d.Teil}` : (d.description || 'Aufgabe'),
-                   boardName: boardInfo.name, boardId: row.board_id, dueDate,
-                   type: isTeamBoard ? 'team' : 'standard', isCritical, isPriority, isWatch, stage: d['Board Stage'], originalData: d
-               });
+              foundTasks.push({
+                id: row.card_id, title: d.Nummer ? `${d.Nummer} ${d.Teil}` : (d.description || 'Aufgabe'),
+                boardName: boardInfo.name, boardId: row.board_id, dueDate,
+                type: isTeamBoard ? 'team' : 'standard', isCritical, isPriority, isWatch, stage: d['Board Stage'], originalData: d
+              });
             }
           });
           setAllTasks(foundTasks);
@@ -166,7 +159,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
         const { data: myNotes } = await supabase.from('personal_notes').select('*').eq('user_id', user.id).order('is_done', { ascending: true }).order('due_date', { ascending: true });
         if (active) setNotes(myNotes || []);
-      
+
       } catch (err) {
         console.error(err);
       } finally { if (active) setLoading(false); }
@@ -176,28 +169,28 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
   }, [supabase]);
 
   const kpis = useMemo(() => {
-      const today = new Date().toISOString().split('T')[0];
-      return {
-          total: allTasks.length,
-          overdue: allTasks.filter(t => t.dueDate && t.dueDate < today).length,
-          dueToday: allTasks.filter(t => t.dueDate === today).length,
-          critical: allTasks.filter(t => t.isCritical).length,
-          priority: allTasks.filter(t => t.isPriority).length,
-          watch: allTasks.filter(t => t.isWatch).length
-      };
+    const today = new Date().toISOString().split('T')[0];
+    return {
+      total: allTasks.length,
+      overdue: allTasks.filter(t => t.dueDate && t.dueDate < today).length,
+      dueToday: allTasks.filter(t => t.dueDate === today).length,
+      critical: allTasks.filter(t => t.isCritical).length,
+      priority: allTasks.filter(t => t.isPriority).length,
+      watch: allTasks.filter(t => t.isWatch).length
+    };
   }, [allTasks]);
 
   const getFilteredTasks = (type: 'team' | 'standard') => {
-      const today = new Date().toISOString().split('T')[0];
-      return allTasks.filter(t => {
-          if (t.type !== type) return false;
-          if (filters.overdue && (!t.dueDate || t.dueDate >= today)) return false;
-          if (filters.critical && !t.isCritical) return false;
-          if (filters.priority && !t.isPriority) return false;
-          if (filters.watch && !t.isWatch) return false;
-          if (filters.dueToday && t.dueDate !== today) return false;
-          return true;
-      });
+    const today = new Date().toISOString().split('T')[0];
+    return allTasks.filter(t => {
+      if (t.type !== type) return false;
+      if (filters.overdue && (!t.dueDate || t.dueDate >= today)) return false;
+      if (filters.critical && !t.isCritical) return false;
+      if (filters.priority && !t.isPriority) return false;
+      if (filters.watch && !t.isWatch) return false;
+      if (filters.dueToday && t.dueDate !== today) return false;
+      return true;
+    });
   };
 
   const teamTasks = getFilteredTasks('team');
@@ -208,14 +201,14 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
     if (!supabase) return;
     setAllTasks(prev => prev.filter(t => t.id !== task.id));
     try {
-        const { originalData } = task;
-        const assignee = originalData.assigneeId || userId; 
-        await supabase.from('kanban_cards').update({ 
-            stage: 'Fertig', 
-            card_data: { ...originalData, status: 'done', assigneeId: assignee, "Board Stage": "Fertig" }, 
-            updated_at: new Date().toISOString() 
-        }).eq('card_id', task.id);
-        enqueueSnackbar('Erledigt!', { variant: 'success' });
+      const { originalData } = task;
+      const assignee = originalData.assigneeId || userId;
+      await supabase.from('kanban_cards').update({
+        stage: 'Fertig',
+        card_data: { ...originalData, status: 'done', assigneeId: assignee, "Board Stage": "Fertig" },
+        updated_at: new Date().toISOString()
+      }).eq('card_id', task.id);
+      enqueueSnackbar('Erledigt!', { variant: 'success' });
     } catch (err) { console.error(err); }
   };
 
@@ -224,204 +217,269 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
     const { data } = await supabase.from('personal_notes').insert({ user_id: userId, content: newNote }).select().single();
     if (data) { setNotes([...notes, data]); setNewNote(''); }
   };
-  
+
   const toggleNote = async (id: string, current: boolean) => {
     if (!supabase) return;
     await supabase.from('personal_notes').update({ is_done: !current }).eq('id', id);
     setNotes(notes.map(n => n.id === id ? { ...n, is_done: !current } : n));
   };
-  
+
   const deleteNote = async (id: string) => {
     if (!supabase) return;
     await supabase.from('personal_notes').delete().eq('id', id);
     setNotes(notes.filter(n => n.id !== id));
   };
-  
+
   function toBoolean(value: any) { return value === true || value === 'true'; }
 
   // --- RENDER HELPER ---
-  
-  const renderTeamTasks = () => (
-      <Card variant="outlined" sx={{ borderRadius: 1, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', border: 'none' }}>
-        <Box sx={{ p: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-             <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.1rem' }}>
-                <Assignment color="primary" /> Team-Aufgaben
-              </Typography>
+
+  const renderKPICard = (title: string, value: number, icon: React.ReactNode, color: 'primary' | 'error' | 'warning' | 'info', active: boolean, onClick?: () => void) => (
+    <Card
+      className="glass"
+      sx={{
+        height: '100%',
+        cursor: onClick ? 'pointer' : 'default',
+        borderLeft: `4px solid ${theme.palette[color].main}`,
+        transition: 'all 0.2s',
+        transform: active ? 'scale(1.02)' : 'none',
+        boxShadow: active ? `0 0 20px ${theme.palette[color].main}40` : undefined
+      }}
+      onClick={onClick}
+    >
+      <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2, '&:last-child': { pb: 2 } }}>
+        <Box>
+          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>
+            {title}
+          </Typography>
+          <Typography variant="h4" fontWeight={800} sx={{ mt: 0.5, color: value > 0 ? theme.palette[color].main : 'text.primary' }}>
+            {value}
+          </Typography>
         </Box>
-        <CardContent sx={{ px: 2, pt: 2, pb: 1, maxHeight: 500, overflowY: 'auto' }}>
-          {teamTasks.length === 0 ? (
-            <Alert severity="info" icon={false}>Keine offenen Aufgaben.</Alert>
-          ) : (
-            <Stack spacing={1.5}>
-              {teamTasks.map((task, i) => (
-                <Card key={task.id + i} variant="outlined" sx={{ p: 2, borderRadius: 1, cursor: 'pointer', borderLeft: task.isCritical ? '4px solid #ed6c02' : (task.isPriority ? '4px solid #d32f2f' : '1px solid #eee'), '&:hover': { borderColor: 'primary.main' }, position:'relative' }} onClick={() => onOpenBoard(task.boardId, task.id, 'team')}>
-                  <Box sx={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 0.5, zIndex: 10 }}>
-                      {task.isWatch && <AccessTime sx={{ fontSize: 16, color: 'primary.main', mr: 1, verticalAlign: 'middle' }} />}
-                      <IconButton size="small" color="success" onClick={(e) => markTaskAsDone(task, e)} sx={{ p: 0 }}>
-                          <DoneAll sx={{ fontSize: 16 }} />
-                      </IconButton>
-                  </Box>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.3, mr: 4, display: '-webkit-box', overflow: 'hidden', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>
-                        {task.title}
-                    </Typography>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                       <Chip label={task.boardName} size="small" sx={{ fontSize: '0.65rem', height: 20 }} />
-                       {task.dueDate && <Typography variant="caption" color={new Date(task.dueDate) < new Date() ? 'error.main' : 'text.secondary'} sx={{ fontWeight: 500 }}>📅 {new Date(task.dueDate).toLocaleDateString('de-DE')}</Typography>}
-                    </Stack>
-                  </Box>
-                </Card>
-              ))}
-            </Stack>
-          )}
-        </CardContent>
-      </Card>
+        <Avatar sx={{ bgcolor: `${theme.palette[color].main}20`, color: theme.palette[color].main, width: 48, height: 48 }}>
+          {icon}
+        </Avatar>
+      </CardContent>
+    </Card>
   );
 
-  const renderProjectTasks = () => (
-      <Card variant="outlined" sx={{ borderRadius: 1, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', border: 'none' }}>
-        <Box sx={{ p: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-              <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.1rem' }}>
-                <Business color="secondary" /> Projekt-Karten
-              </Typography>
-        </Box>
-        <CardContent sx={{ px: 2, pt: 2, pb: 1, maxHeight: 500, overflowY: 'auto' }}>
-          {projectTasks.length === 0 ? (
-            <Alert severity="info" icon={false}>Keine Projekt-Karten.</Alert>
-          ) : (
-            <Stack spacing={1.5}>
-              {projectTasks.map((task, i) => (
-                <Card key={task.id + i} variant="outlined" sx={{ p: 2, borderRadius: 1, cursor: 'pointer', borderLeft: task.isCritical ? '4px solid #ed6c02' : '1px solid #eee', '&:hover': { borderColor: 'secondary.main' }, position:'relative' }} onClick={() => onOpenBoard(task.boardId, task.id, 'standard')}>
-                   <Box sx={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 0.5, zIndex: 10 }}>
-                      {task.isWatch && <AccessTime sx={{ fontSize: 16, color: 'primary.main' }} />}
-                      <IconButton size="small" color="success" onClick={(e) => markTaskAsDone(task, e)} sx={{ p: 0 }}>
-                          <DoneAll sx={{ fontSize: 16 }} />
-                      </IconButton>
-                   </Box>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                    <Typography variant="subtitle2" sx={{ fontWeight: 600, mr: 4, display: '-webkit-box', overflow: 'hidden', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2 }}>
-                        {task.title}
-                    </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {task.stage && <Chip label={task.stage} size="small" sx={{ height: 20, fontSize: '0.6rem' }} />}
-                        <Typography variant="caption" color="text.secondary">{task.boardName}</Typography>
-                    </Box>
+  const renderTaskList = (title: string, icon: React.ReactNode, tasks: any[], type: 'team' | 'standard') => (
+    <Paper className="glass" sx={{ height: '100%', maxHeight: 600, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'rgba(255,255,255,0.02)' }}>
+        <Avatar sx={{ width: 32, height: 32, bgcolor: type === 'team' ? 'primary.main' : 'secondary.main' }}>
+          {icon}
+        </Avatar>
+        <Typography variant="h6" fontWeight={600}>
+          {title}
+        </Typography>
+        <Chip label={tasks.length} size="small" sx={{ ml: 'auto', fontWeight: 700 }} />
+      </Box>
+      <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
+        {tasks.length === 0 ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', opacity: 0.5, gap: 1 }}>
+            <DoneAll sx={{ fontSize: 40 }} />
+            <Typography variant="body2">Alles erledigt!</Typography>
+          </Box>
+        ) : (
+          <Stack spacing={1.5}>
+            {tasks.map((task, i) => (
+              <Card
+                key={task.id + i}
+                variant="outlined"
+                sx={{
+                  p: 2,
+                  cursor: 'pointer',
+                  borderLeft: task.isCritical ? '4px solid #ef4444' : (task.isPriority ? '4px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)'),
+                  bgcolor: 'background.paper',
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', transform: 'translateX(4px)' },
+                  transition: 'all 0.2s'
+                }}
+                onClick={() => onOpenBoard(task.boardId, task.id, type)}
+              >
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                  <Chip
+                    label={task.boardName}
+                    size="small"
+                    sx={{ fontSize: '0.65rem', height: 20, bgcolor: 'rgba(255,255,255,0.05)' }}
+                  />
+                  {task.dueDate && (
+                    <Chip
+                      icon={<Event sx={{ fontSize: '12px !important' }} />}
+                      label={new Date(task.dueDate).toLocaleDateString('de-DE')}
+                      size="small"
+                      color={new Date(task.dueDate) < new Date() ? 'error' : 'default'}
+                      variant={new Date(task.dueDate) < new Date() ? 'filled' : 'outlined'}
+                      sx={{ height: 20, fontSize: '0.7rem' }}
+                    />
+                  )}
+                </Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.4, mb: 1 }}>
+                  {task.title}
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    {task.isWatch && <AccessTime sx={{ fontSize: 16, color: 'info.main' }} />}
+                    {task.isCritical && <Warning sx={{ fontSize: 16, color: 'error.main' }} />}
                   </Box>
-                </Card>
-              ))}
-            </Stack>
-          )}
-        </CardContent>
-      </Card>
+                  <IconButton
+                    size="small"
+                    color="success"
+                    onClick={(e) => markTaskAsDone(task, e)}
+                    sx={{ bgcolor: 'rgba(16, 185, 129, 0.1)', '&:hover': { bgcolor: 'rgba(16, 185, 129, 0.2)' } }}
+                  >
+                    <DoneAll sx={{ fontSize: 16 }} />
+                  </IconButton>
+                </Box>
+              </Card>
+            ))}
+          </Stack>
+        )}
+      </Box>
+    </Paper>
   );
 
   const renderNotes = () => (
-      <Card variant="outlined" sx={{ borderRadius: 1, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', border: 'none' }}>
-        <Box sx={{ p: 2, pb: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1, fontSize: '1.1rem' }}><ListAlt color="action" /> Notizen</Typography>
+    <Paper className="glass" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'rgba(255,255,255,0.02)' }}>
+        <Avatar sx={{ width: 32, height: 32, bgcolor: 'warning.main' }}><ListAlt /></Avatar>
+        <Typography variant="h6" fontWeight={600}>Notizen</Typography>
+      </Box>
+      <Box sx={{ p: 2, flex: 1, overflowY: 'auto' }}>
+        <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+          <TextField
+            size="small"
+            placeholder="Neue Notiz..."
+            fullWidth
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addNote()}
+            sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
+          />
+          <IconButton
+            color="primary"
+            onClick={addNote}
+            disabled={!newNote.trim()}
+            sx={{ bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' }, '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.1)' } }}
+          >
+            <Add />
+          </IconButton>
         </Box>
-        <CardContent sx={{ px: 2, pt: 2, pb: 1, maxHeight: 500, overflowY: 'auto' }}>
-          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-              <TextField 
-                  size="small" 
-                  placeholder="Neue Notiz..." 
-                  fullWidth 
-                  value={newNote} 
-                  onChange={(e) => setNewNote(e.target.value)} 
-                  onKeyDown={(e) => e.key === 'Enter' && addNote()} 
+        <List dense sx={{ bgcolor: 'transparent' }}>
+          {notes.map((note) => (
+            <ListItem
+              key={note.id}
+              secondaryAction={<IconButton edge="end" size="small" onClick={() => deleteNote(note.id)} sx={{ opacity: 0.5, '&:hover': { opacity: 1, color: 'error.main' } }}><Delete fontSize="small" /></IconButton>}
+              sx={{
+                bgcolor: 'background.paper',
+                mb: 1,
+                borderRadius: 1,
+                border: '1px solid rgba(255,255,255,0.05)',
+                transition: 'all 0.2s',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }
+              }}
+            >
+              <Checkbox
+                checked={note.is_done}
+                onChange={() => toggleNote(note.id, note.is_done)}
+                size="small"
+                sx={{ color: 'text.secondary', '&.Mui-checked': { color: 'success.main' } }}
               />
-              <IconButton color="primary" onClick={addNote} disabled={!newNote.trim()}><Add /></IconButton>
-          </Box>
-          <List dense sx={{ bgcolor: 'background.default', borderRadius: 1 }}>
-            {notes.map((note) => (
-              <ListItem key={note.id} secondaryAction={<IconButton edge="end" size="small" onClick={() => deleteNote(note.id)}><Delete fontSize="small" /></IconButton>}>
-                    <Checkbox checked={note.is_done} onChange={() => toggleNote(note.id, note.is_done)} size="small" />
-                    <ListItemText primary={<Typography sx={{ fontSize: '0.9rem', textDecoration: note.is_done ? 'line-through' : 'none', opacity: note.is_done ? 0.6 : 1 }}>{note.content}</Typography>} />
-              </ListItem>
-            ))}
-          </List>
-        </CardContent>
-      </Card>
+              <ListItemText
+                primary={
+                  <Typography sx={{
+                    fontSize: '0.95rem',
+                    textDecoration: note.is_done ? 'line-through' : 'none',
+                    color: note.is_done ? 'text.secondary' : 'text.primary',
+                    transition: 'all 0.2s'
+                  }}>
+                    {note.content}
+                  </Typography>
+                }
+              />
+            </ListItem>
+          ))}
+        </List>
+      </Box>
+    </Paper>
   );
 
-  if (loading) return <LinearProgress sx={{ mt: 4 }} />;
+  if (loading) return <LinearProgress sx={{ mt: 4, borderRadius: 4 }} />;
 
   return (
     <Box sx={{ mt: 2, mb: 6 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Typography variant={isMobile ? "h6" : "h5"} sx={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Dashboard /> {isMobile ? "Cockpit" : "Mein Cockpit"}
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 0.5, maxWidth: isMobile ? '200px' : 'auto' }}>
-            <Chip icon={<Warning sx={{ fontSize: 16 }} />} label={isMobile ? "" : "Überfällig"} size="small" clickable color={filters.overdue ? "error" : "default"} variant={filters.overdue ? "filled" : "outlined"} onClick={() => setFilters(f => ({...f, overdue: !f.overdue}))} />
-            <Chip icon={<PriorityHigh sx={{ fontSize: 16 }} />} label={isMobile ? "" : "Kritisch"} size="small" clickable color={filters.critical ? "warning" : "default"} variant={filters.critical ? "filled" : "outlined"} onClick={() => setFilters(f => ({...f, critical: !f.critical}))} />
-            <Chip icon={<AccessTime sx={{ fontSize: 16 }} />} label={isMobile ? "" : "Watch"} size="small" clickable color={filters.watch ? "info" : "default"} variant={filters.watch ? "filled" : "outlined"} onClick={() => setFilters(f => ({...f, watch: !f.watch}))} />
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.02em', mb: 0.5 }}>
+            Willkommen zurück
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Hier ist dein Überblick für heute.
+          </Typography>
         </Box>
+
+        <Stack direction="row" spacing={1}>
+          <Chip
+            icon={<Warning sx={{ fontSize: 16 }} />}
+            label="Überfällig"
+            clickable
+            color={filters.overdue ? "error" : "default"}
+            variant={filters.overdue ? "filled" : "outlined"}
+            onClick={() => setFilters(f => ({ ...f, overdue: !f.overdue }))}
+          />
+          <Chip
+            icon={<PriorityHigh sx={{ fontSize: 16 }} />}
+            label="Kritisch"
+            clickable
+            color={filters.critical ? "warning" : "default"}
+            variant={filters.critical ? "filled" : "outlined"}
+            onClick={() => setFilters(f => ({ ...f, critical: !f.critical }))}
+          />
+        </Stack>
       </Box>
 
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={6} md={3}>
-              <Card sx={{ bgcolor: 'background.paper', borderLeft: `4px solid ${theme.palette.primary.main}`, borderRadius: 1 }}>
-                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                      <Typography variant="caption" color="text.secondary">Offen</Typography>
-                      <Typography variant="h5" fontWeight="bold">{kpis.total}</Typography>
-                  </CardContent>
-              </Card>
-          </Grid>
-          <Grid item xs={6} md={3}>
-              <Card sx={{ bgcolor: kpis.overdue > 0 ? '#fff5f5' : 'background.paper', borderLeft: '4px solid #d32f2f', borderRadius: 1 }}>
-                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                      <Typography variant="caption" color="text.secondary">Fällig</Typography>
-                      <Typography variant="h5" fontWeight="bold" color={kpis.overdue > 0 ? 'error.main' : 'text.primary'}>{kpis.overdue}</Typography>
-                  </CardContent>
-              </Card>
-          </Grid>
-          <Grid item xs={6} md={3}>
-              <Card sx={{ bgcolor: kpis.critical > 0 ? '#fff8e1' : 'background.paper', borderLeft: '4px solid #ed6c02', borderRadius: 1 }}>
-                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                      <Typography variant="caption" color="text.secondary">Kritisch</Typography>
-                      <Typography variant="h5" fontWeight="bold" color={kpis.critical > 0 ? 'warning.main' : 'text.primary'}>{kpis.critical}</Typography>
-                  </CardContent>
-              </Card>
-          </Grid>
-          <Grid item xs={6} md={3}>
-              <Card sx={{ bgcolor: kpis.dueToday > 0 ? '#e3f2fd' : 'background.paper', borderLeft: '4px solid #0288d1', borderRadius: 1 }}>
-                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                      <Typography variant="caption" color="text.secondary">Heute</Typography>
-                      <Typography variant="h5" fontWeight="bold" color={kpis.dueToday > 0 ? 'info.main' : 'text.primary'}>{kpis.dueToday}</Typography>
-                  </CardContent>
-              </Card>
-          </Grid>
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={6} md={3}>
+          {renderKPICard("Offene Aufgaben", kpis.total, <TrendingUp />, "primary", false)}
+        </Grid>
+        <Grid item xs={6} md={3}>
+          {renderKPICard("Überfällig", kpis.overdue, <Warning />, "error", filters.overdue, () => setFilters(f => ({ ...f, overdue: !f.overdue })))}
+        </Grid>
+        <Grid item xs={6} md={3}>
+          {renderKPICard("Kritisch", kpis.critical, <PriorityHigh />, "warning", filters.critical, () => setFilters(f => ({ ...f, critical: !f.critical })))}
+        </Grid>
+        <Grid item xs={6} md={3}>
+          {renderKPICard("Heute Fällig", kpis.dueToday, <NotificationsActive />, "info", filters.dueToday, () => setFilters(f => ({ ...f, dueToday: !f.dueToday })))}
+        </Grid>
       </Grid>
 
       {isMobile ? (
         <Box>
-           <Tabs 
-             value={mobileTab} 
-             onChange={(e, v) => setMobileTab(v)} 
-             variant="fullWidth" 
-             sx={{ borderBottom: 1, borderColor: 'divider', mb: 2, bgcolor: 'background.paper', borderRadius: 1 }}
-           >
-             <Tab icon={<Assignment fontSize="small" />} iconPosition="start" label={`Team (${teamTasks.length})`} />
-             <Tab icon={<Business fontSize="small" />} iconPosition="start" label={`Projekte (${projectTasks.length})`} />
-             <Tab icon={<ListAlt fontSize="small" />} iconPosition="start" label="Notizen" />
-           </Tabs>
-           <Box sx={{ minHeight: 300 }}>
-             {mobileTab === 0 && renderTeamTasks()}
-             {mobileTab === 1 && renderProjectTasks()}
-             {mobileTab === 2 && renderNotes()}
-           </Box>
+          <Tabs
+            value={mobileTab}
+            onChange={(e, v) => setMobileTab(v)}
+            variant="fullWidth"
+            sx={{ mb: 2, bgcolor: 'background.paper', borderRadius: 2 }}
+          >
+            <Tab icon={<Assignment fontSize="small" />} label="Team" />
+            <Tab icon={<Business fontSize="small" />} label="Projekte" />
+            <Tab icon={<ListAlt fontSize="small" />} label="Notizen" />
+          </Tabs>
+          <Box sx={{ minHeight: 400 }}>
+            {mobileTab === 0 && renderTaskList("Team-Aufgaben", <Assignment />, teamTasks, 'team')}
+            {mobileTab === 1 && renderTaskList("Projekt-Karten", <Business />, projectTasks, 'standard')}
+            {mobileTab === 2 && renderNotes()}
+          </Box>
         </Box>
       ) : (
-        <Grid container spacing={3} alignItems="flex-start">
+        <Grid container spacing={3} alignItems="stretch">
           <Grid item xs={12} md={4}>
-             {renderTeamTasks()}
+            {renderTaskList("Team-Aufgaben", <Assignment />, teamTasks, 'team')}
           </Grid>
           <Grid item xs={12} md={4}>
-             {renderProjectTasks()}
+            {renderTaskList("Projekt-Karten", <Business />, projectTasks, 'standard')}
           </Grid>
           <Grid item xs={12} md={4}>
-             {renderNotes()}
+            {renderNotes()}
           </Grid>
         </Grid>
       )}
