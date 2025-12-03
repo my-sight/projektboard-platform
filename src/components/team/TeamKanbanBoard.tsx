@@ -23,7 +23,8 @@ import {
     Grid,
     Switch,
     Tooltip,
-    useTheme
+    useTheme,
+    alpha
 } from '@mui/material';
 import {
     Add as AddIcon,
@@ -687,7 +688,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                             border: '1px solid',
                             borderColor,
                             boxShadow: snap.isDragging ? 3 : 1,
-                            bgcolor: isExternal ? '#fafafa' : 'background.paper',
+                            bgcolor: isExternal ? '#fafafa' : alpha(theme.palette.background.paper, 0.8),
                             minHeight: MIN_CARD_HEIGHT,
                             position: 'relative',
                             // ✅ ANIMATION WIEDERHERGESTELLT

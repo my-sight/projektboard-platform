@@ -1,9 +1,9 @@
 'use client';
 
-import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useRef } from 'react';
 import { Box, Chip, IconButton, Typography, Card, CardContent, Avatar, Tooltip } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
-import { CheckCircle, AccessTime, Warning, PriorityHigh, MoreHoriz, Edit, Delete, UnfoldMore, UnfoldLess } from '@mui/icons-material';
+import { CheckCircle, AccessTime, Warning, PriorityHigh, UnfoldMore, UnfoldLess } from '@mui/icons-material';
 import { keyframes } from '@mui/system';
 import { alpha, useTheme } from '@mui/material/styles';
 
@@ -183,7 +183,7 @@ export function KanbanCard({
                 boxShadow: theme.shadows[3],
                 borderColor: theme.palette.primary.main
               },
-              bgcolor: isRed ? alpha(theme.palette.error.main, 0.04) : (isYellow ? alpha(theme.palette.warning.main, 0.04) : 'background.paper')
+              bgcolor: isRed ? alpha(theme.palette.error.main, 0.04) : (isYellow ? alpha(theme.palette.warning.main, 0.04) : alpha(theme.palette.background.paper, 0.8))
             }}
             onClick={(e) => {
               if (!canModify) return;

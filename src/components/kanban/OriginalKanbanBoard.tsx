@@ -4,7 +4,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useSt
 import {
   Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
   Typography, TextField, IconButton, Chip, Tabs, Tab, Grid, Card,
-  CardContent, Badge, List, ListItem, InputAdornment, Tooltip, Stack
+  CardContent, Badge, List, ListItem, Tooltip, Stack
 } from '@mui/material';
 import { DropResult } from '@hello-pangea/dnd';
 import {
