@@ -121,7 +121,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
             d = d || {};
             if (d.Archived === '1' || d.archived) return;
 
-            const boardInfo = bMap[row.board_id] || { name: 'Unbekannt', type: 'standard' };
+            const boardInfo = bMap[row.board_id] || { name: t('kanban.unknown'), type: 'standard' };
             let isMine = false;
 
             // A) Strikter ID Check (Sicherste Methode)
@@ -151,7 +151,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
               const isWatch = (d.watch === true);
 
               foundTasks.push({
-                id: row.card_id, title: d.Nummer ? `${d.Nummer} ${d.Teil}` : (d.description || 'Aufgabe'),
+                id: row.card_id, title: d.Nummer ? `${d.Nummer} ${d.Teil}` : (d.description || t('dashboard.task')),
                 boardName: boardInfo.name, boardId: row.board_id, dueDate,
                 type: isTeamBoard ? 'team' : 'standard', isCritical, isPriority, isWatch, stage: d['Board Stage'], originalData: d
               });
@@ -491,9 +491,9 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
             variant="fullWidth"
             sx={{ mb: 2, bgcolor: 'background.paper', borderRadius: 2 }}
           >
-            <Tab icon={<Assignment fontSize="small" />} label="Team" />
-            <Tab icon={<Business fontSize="small" />} label="Projekte" />
-            <Tab icon={<ListAlt fontSize="small" />} label="Notizen" />
+            <Tab icon={<Assignment fontSize="small" />} label={t('dashboard.team')} />
+            <Tab icon={<Business fontSize="small" />} label={t('dashboard.projects')} />
+            <Tab icon={<ListAlt fontSize="small" />} label={t('dashboard.notes')} />
           </Tabs>
           <Box sx={{ minHeight: 400 }}>
             {mobileTab === 0 && renderTaskList(t('dashboard.teamTasks'), <Assignment />, teamTasks, 'team')}

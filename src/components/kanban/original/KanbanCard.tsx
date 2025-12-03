@@ -298,7 +298,7 @@ export function KanbanCard({
 
                 {currentSize === 'large' && card.Bild && (
                   <Box sx={{ mb: 1, borderRadius: 1, overflow: 'hidden' }}>
-                    <img src={card.Bild} alt="Preview" style={{ width: '100%', height: 'auto', maxHeight: 120, objectFit: 'cover' }} />
+                    <img src={card.Bild} alt={t('kanban.preview')} style={{ width: '100%', height: 'auto', maxHeight: 120, objectFit: 'cover' }} />
                   </Box>
                 )}
 

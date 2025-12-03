@@ -341,7 +341,7 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
   );
 
   const stages = cols.map((c) => c.name);
-  const laneNames = lanes.length ? lanes : ['Allgemein'];
+  const laneNames = lanes.length ? lanes : [t('kanban.generalLane')];
 
   const handleDragEnd = allowDrag ? onDragEnd : () => { };
 

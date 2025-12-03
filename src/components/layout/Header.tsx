@@ -7,7 +7,7 @@ import Link from 'next/link';
 
 export default function Header() {
   const { config } = useSystemConfig();
-  const { language, setLanguage } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
 
   return (
     <AppBar position="static" color="inherit" elevation={1}>
@@ -38,7 +38,7 @@ export default function Header() {
           {language.toUpperCase()}
         </Button>
 
-        <Button color="inherit" href="/login">Login</Button>
+        <Button color="inherit" href="/login">{t('header.login')}</Button>
       </Toolbar>
     </AppBar>
   );

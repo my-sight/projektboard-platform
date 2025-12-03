@@ -36,6 +36,7 @@ import {
   DragIndicator as DragIcon
 } from '@mui/icons-material';
 import { Board } from '@/types';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface BoardSettingsProps {
   open: boolean;
@@ -59,6 +60,7 @@ function TabPanel({ children, value, index }: TabPanelProps) {
 }
 
 export default function BoardSettings({ open, board, onClose, onSave }: BoardSettingsProps) {
+  const { t } = useLanguage();
   const [tabValue, setTabValue] = useState(0);
   const [formData, setFormData] = useState({
     name: '',
@@ -95,24 +97,24 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
 
   const handleSave = async () => {
     if (!formData.name.trim()) {
-      setError('Board-Name ist erforderlich');
+      setError(t('boardSettings.boardNameRequired'));
       return;
     }
 
     try {
       setSaving(true);
       setError(null);
-      
+
       await onSave({
         name: formData.name,
         description: formData.description,
         settings: formData.settings
       });
-      
+
       onClose();
     } catch (error) {
       console.error('Error saving board settings:', error);
-      setError(error instanceof Error ? error.message : 'Fehler beim Speichern');
+      setError(error instanceof Error ? error.message : t('boardSettings.saveError'));
     } finally {
       setSaving(false);
     }
@@ -121,8 +123,8 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
   if (!board) return null;
 
   return (
-    <Dialog 
-      open={open} 
+    <Dialog
+      open={open}
       onClose={onClose}
       maxWidth="md"
       fullWidth
@@ -130,14 +132,14 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
         sx: { minHeight: '70vh' }
       }}
     >
-      <DialogTitle sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
+      <DialogTitle sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
         alignItems: 'center',
         pb: 1
       }}>
         <Typography variant="h6">
-          Board-Einstellungen
+          {t('boardSettings.title')}
         </Typography>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
@@ -151,15 +153,15 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
           </Alert>
         )}
 
-        <Tabs 
-          value={tabValue} 
+        <Tabs
+          value={tabValue}
           onChange={(_, newValue) => setTabValue(newValue)}
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
-          <Tab label="Allgemein" />
-          <Tab label="Ansicht" />
-          <Tab label="Spalten" />
-          <Tab label="Erweitert" />
+          <Tab label={t('boardSettings.general')} />
+          <Tab label={t('boardSettings.view')} />
+          <Tab label={t('boardSettings.columns')} />
+          <Tab label={t('boardSettings.advanced')} />
         </Tabs>
 
         <Box sx={{ height: '400px', overflow: 'auto' }}>
@@ -167,42 +169,42 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
           <TabPanel value={tabValue} index={0}>
             <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
               <TextField
-                label="Board-Name"
+                label={t('boardSettings.boardName')}
                 fullWidth
                 required
                 value={formData.name}
                 onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                 error={!formData.name.trim()}
-                helperText={!formData.name.trim() ? 'Board-Name ist erforderlich' : ''}
+                helperText={!formData.name.trim() ? t('boardSettings.boardNameRequired') : ''}
               />
 
               <TextField
-                label="Beschreibung"
+                label={t('boardSettings.description')}
                 fullWidth
                 multiline
                 rows={3}
                 value={formData.description}
                 onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Beschreibe das Board..."
+                placeholder={t('boardSettings.descriptionPlaceholder')}
               />
 
               <Divider />
 
               <Box>
                 <Typography variant="subtitle2" gutterBottom>
-                  Board-Information
+                  {t('boardSettings.boardInfo')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Erstellt: {new Date(board.created_at).toLocaleString('de-DE')}
+                  {t('boardSettings.created')}: {new Date(board.created_at).toLocaleString('de-DE')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Zuletzt geändert: {new Date(board.updated_at).toLocaleString('de-DE')}
+                  {t('boardSettings.lastModified')}: {new Date(board.updated_at).toLocaleString('de-DE')}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Spalten: {(board.columns?.length ?? 0)}
+                  {t('boardSettings.columnsCount')}: {(board.columns?.length ?? 0)}
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Karten: {(board.columns ?? []).reduce((total, col) => total + (col.cards?.length || 0), 0)}
+                  {t('boardSettings.cardsCount')}: {(board.columns ?? []).reduce((total, col) => total + (col.cards?.length || 0), 0)}
                 </Typography>
               </Box>
             </Box>
@@ -212,40 +214,40 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
           <TabPanel value={tabValue} index={1}>
             <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
               <FormControl fullWidth>
-                <InputLabel>Standard-Ansicht</InputLabel>
+                <InputLabel>{t('boardSettings.defaultView')}</InputLabel>
                 <Select
                   value={formData.settings.view_mode}
-                  label="Standard-Ansicht"
+                  label={t('boardSettings.defaultView')}
                   onChange={(e) => setFormData(prev => ({
                     ...prev,
                     settings: { ...prev.settings, view_mode: e.target.value as any }
                   }))}
                 >
-                  <MenuItem value="columns">Spalten-Ansicht</MenuItem>
-                  <MenuItem value="list">Listen-Ansicht</MenuItem>
+                  <MenuItem value="columns">{t('boardSettings.viewColumns')}</MenuItem>
+                  <MenuItem value="list">{t('boardSettings.viewList')}</MenuItem>
                 </Select>
               </FormControl>
 
               <FormControl fullWidth>
-                <InputLabel>Standard-Dichte</InputLabel>
+                <InputLabel>{t('boardSettings.defaultDensity')}</InputLabel>
                 <Select
                   value={formData.settings.density}
-                  label="Standard-Dichte"
+                  label={t('boardSettings.defaultDensity')}
                   onChange={(e) => setFormData(prev => ({
                     ...prev,
                     settings: { ...prev.settings, density: e.target.value as any }
                   }))}
                 >
-                  <MenuItem value="compact">Kompakt</MenuItem>
-                  <MenuItem value="normal">Normal</MenuItem>
-                  <MenuItem value="comfortable">Komfortabel</MenuItem>
+                  <MenuItem value="compact">{t('boardSettings.densityCompact')}</MenuItem>
+                  <MenuItem value="normal">{t('boardSettings.densityNormal')}</MenuItem>
+                  <MenuItem value="comfortable">{t('boardSettings.densityComfortable')}</MenuItem>
                 </Select>
               </FormControl>
 
               <Divider />
 
               <Typography variant="subtitle2">
-                Karten-Anzeige
+                {t('boardSettings.cardDisplay')}
               </Typography>
 
               <FormControlLabel
@@ -258,7 +260,7 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
                     }))}
                   />
                 }
-                label="Zugewiesene Personen anzeigen"
+                label={t('boardSettings.showAssignee')}
               />
 
               <FormControlLabel
@@ -271,7 +273,7 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
                     }))}
                   />
                 }
-                label="Fälligkeitsdaten anzeigen"
+                label={t('boardSettings.showDueDates')}
               />
             </Box>
           </TabPanel>
@@ -281,10 +283,10 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
             <Box sx={{ p: 2 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="subtitle2">
-                  Spalten verwalten
+                  {t('boardSettings.manageColumns')}
                 </Typography>
                 <Button startIcon={<AddIcon />} size="small">
-                  Spalte hinzufügen
+                  {t('boardSettings.addColumn')}
                 </Button>
               </Box>
 
@@ -303,12 +305,12 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
                     />
                     <ListItemText
                       primary={column.name}
-                      secondary={`${column.cards?.length || 0} Karten${column.is_done ? ' • Fertig-Spalte' : ''}`}
+                      secondary={`${column.cards?.length || 0} ${t('boardSettings.cards')}${column.is_done ? ` • ${t('boardSettings.doneColumn')}` : ''}`}
                     />
                     <ListItemSecondaryAction>
                       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                         {column.is_done && (
-                          <Chip label="Fertig" size="small" color="success" />
+                          <Chip label={t('boardSettings.done')} size="small" color="success" />
                         )}
                         <IconButton size="small">
                           <EditIcon fontSize="small" />
@@ -328,18 +330,18 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
           <TabPanel value={tabValue} index={3}>
             <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 3 }}>
               <TextField
-                label="Karten-Limit pro Spalte"
+                label={t('boardSettings.cardLimit')}
                 type="number"
                 fullWidth
                 value={formData.settings.card_limit_per_column || ''}
                 onChange={(e) => setFormData(prev => ({
                   ...prev,
-                  settings: { 
-                    ...prev.settings, 
-                    card_limit_per_column: e.target.value ? parseInt(e.target.value) : null 
+                  settings: {
+                    ...prev.settings,
+                    card_limit_per_column: e.target.value ? parseInt(e.target.value) : null
                   }
                 }))}
-                helperText="Leer lassen für unbegrenzt"
+                helperText={t('boardSettings.unlimited')}
               />
 
               <FormControlLabel
@@ -352,20 +354,20 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
                     }))}
                   />
                 }
-                label="Automatisches Archivieren nach 30 Tagen in 'Fertig'"
+                label={t('boardSettings.autoArchive')}
               />
 
               <Divider />
 
               <Box>
                 <Typography variant="subtitle2" color="error" gutterBottom>
-                  Gefährliche Aktionen
+                  {t('boardSettings.dangerZone')}
                 </Typography>
                 <Button variant="outlined" color="error" size="small">
-                  Board archivieren
+                  {t('boardSettings.archiveBoard')}
                 </Button>
                 <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                  Das Board wird ausgeblendet, aber nicht gelöscht.
+                  {t('boardSettings.archiveBoardDesc')}
                 </Typography>
               </Box>
             </Box>
@@ -375,16 +377,16 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
 
       <DialogActions sx={{ p: 2, gap: 1 }}>
         <Button onClick={onClose} disabled={saving}>
-          Abbrechen
+          {t('boardSettings.cancel')}
         </Button>
-        
+
         <Button
           variant="contained"
           onClick={handleSave}
           disabled={saving || !formData.name.trim()}
           startIcon={saving ? undefined : <SaveIcon />}
         >
-          {saving ? 'Speichern...' : 'Speichern'}
+          {saving ? t('boardSettings.saving') : t('boardSettings.save')}
         </Button>
       </DialogActions>
     </Dialog>
