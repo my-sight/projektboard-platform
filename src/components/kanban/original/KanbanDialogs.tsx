@@ -31,7 +31,8 @@ import {
   Stack,
   InputAdornment,
   Tooltip,
-  CircularProgress
+  CircularProgress,
+  ListSubheader
 } from '@mui/material';
 import { ProjectBoardCard } from '@/types';
 import { Delete, Add, DeleteOutline, CloudUpload } from '@mui/icons-material';
@@ -91,6 +92,7 @@ export interface EditCardDialogProps {
   rows: ProjectBoardCard[];
   setRows: (rows: ProjectBoardCard[]) => void;
   users: any[];
+  boardMembers: any[];
   lanes: string[];
   checklistTemplates: Record<string, string[]>;
   inferStage: (card: ProjectBoardCard) => string;
@@ -114,6 +116,7 @@ export function EditCardDialog({
   rows,
   setRows,
   users,
+  boardMembers,
   lanes,
   checklistTemplates,
   inferStage,
@@ -443,7 +446,7 @@ export function EditCardDialog({
 
             <Stack spacing={2} sx={{ mt: 1 }}>
               {(selectedCard.Team || []).map((member: any, idx: number) => (
-                <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: '2fr 1fr auto', gap: 2, alignItems: 'center', p: 2, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1 }}>
+                <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 2, alignItems: 'center', p: 2, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1 }}>
 
                   <FormControl size="small" fullWidth>
                     <InputLabel>Mitglied</InputLabel>
@@ -468,27 +471,47 @@ export function EditCardDialog({
                       }}
                     >
                       <MenuItem value=""><em>Bitte wählen</em></MenuItem>
-                      {users.map((user: any) => (
-                        <MenuItem key={user.id} value={user.id}>
-                          <Box>
-                            <Typography variant="body2">{user.full_name || user.name || user.email}</Typography>
-                          </Box>
-                        </MenuItem>
-                      ))}
+                      {(() => {
+                        // Sort users by department then name
+                        const sortedUsers = [...users].sort((a, b) => {
+                          const deptA = (a.department || a.company || 'Ohne Abteilung').toLowerCase();
+                          const deptB = (b.department || b.company || 'Ohne Abteilung').toLowerCase();
+                          if (deptA < deptB) return -1;
+                          if (deptA > deptB) return 1;
+                          const nameA = (a.full_name || a.name || a.email).toLowerCase();
+                          const nameB = (b.full_name || b.name || b.email).toLowerCase();
+                          return nameA.localeCompare(nameB);
+                        });
+
+                        const items: JSX.Element[] = [];
+                        let lastDept = '';
+
+                        sortedUsers.forEach((user) => {
+                          const currentDept = user.department || user.company || 'Ohne Abteilung';
+                          if (currentDept !== lastDept) {
+                            items.push(
+                              <ListSubheader key={`header-${currentDept}`} sx={{ bgcolor: 'background.paper', fontWeight: 'bold', lineHeight: '32px' }}>
+                                {currentDept}
+                              </ListSubheader>
+                            );
+                            lastDept = currentDept;
+                          }
+                          items.push(
+                            <MenuItem key={user.id} value={user.id}>
+                              <Box>
+                                <Typography variant="body2">
+                                  {user.full_name || user.name || user.email}
+                                </Typography>
+                              </Box>
+                            </MenuItem>
+                          );
+                        });
+                        return items;
+                      })()}
                     </Select>
                   </FormControl>
 
-                  <TextField
-                    label="Rolle"
-                    size="small"
-                    value={member.role || ''}
-                    disabled={!canEdit}
-                    onChange={(e) => {
-                      const newTeam = [...(selectedCard.Team || [])];
-                      newTeam[idx] = { ...newTeam[idx], role: e.target.value };
-                      handlePatch('Team', newTeam);
-                    }}
-                  />
+
 
                   <IconButton color="error" disabled={!canEdit} onClick={() => {
                     const newTeam = [...(selectedCard.Team || [])];
@@ -566,7 +589,7 @@ export function EditCardDialog({
                 }}
               >
                 <MenuItem value=""><em>Nicht zugewiesen</em></MenuItem>
-                {users.map((user: any) => (
+                {boardMembers.map((user: any) => (
                   <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
                     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
@@ -726,7 +749,7 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
   );
 }
 
-export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users, saveCards }: any) {
+export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users, boardMembers, saveCards }: any) {
   const [newCard, setNewCard] = useState<any>({
     Nummer: '',
     Teil: '',
@@ -806,24 +829,18 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
               label="Verantwortlich"
               onChange={(e) => {
                 const selectedName = e.target.value;
-                const user = users.find((u: any) => (u.full_name || u.name || u.email) === selectedName);
+                const selectedUser = boardMembers.find((u: any) => (u.full_name || u.name || u.email) === selectedName);
                 setNewCard({
                   ...newCard,
                   Verantwortlich: selectedName,
-                  VerantwortlichEmail: user?.email || ''
+                  VerantwortlichEmail: selectedUser?.email || ''
                 });
               }}
             >
-              <MenuItem value="">
-                <em>Keiner</em>
-              </MenuItem>
-              {users.map((user: any) => (
-                <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
-                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                    <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                      {(user.full_name || user.name || user.email) ?? 'Unbekannt'}
-                    </Typography>
-                  </Box>
+              <MenuItem value=""><em>Nicht zugewiesen</em></MenuItem>
+              {boardMembers?.map((user: any) => (
+                <MenuItem key={user.id} value={user.full_name || user.name || user.email}>
+                  {user.full_name || user.name || user.email}
                 </MenuItem>
               ))}
             </Select>

@@ -94,6 +94,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
     const [cols, setCols] = useState(DEFAULT_COLS);
     const [lanes, setLanes] = useState<string[]>(['Projekt A', 'Projekt B', 'Projekt C']);
     const [users, setUsers] = useState<any[]>([]);
+    const [boardMembers, setBoardMembers] = useState<any[]>([]);
     const [canModifyBoard, setCanModifyBoard] = useState(false);
     const [currentUserName, setCurrentUserName] = useState<string | null>(null);
 
@@ -707,12 +708,42 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       }
     }, []);
 
+    const loadBoardMembers = useCallback(async (allProfiles: any[]) => {
+      try {
+        const { data: membersData, error: membersError } = await supabase
+          .from('board_members')
+          .select('profile_id')
+          .eq('board_id', boardId);
+
+        if (membersError) throw membersError;
+
+        const memberIds = new Set(membersData?.map(m => m.profile_id) || []);
+
+        const { data: boardData } = await supabase
+          .from('kanban_boards')
+          .select('owner_id, board_admin_id')
+          .eq('id', boardId)
+          .maybeSingle();
+
+        if (boardData) {
+          if (boardData.owner_id) memberIds.add(boardData.owner_id);
+          if (boardData.board_admin_id) memberIds.add(boardData.board_admin_id);
+        }
+
+        const members = allProfiles.filter(u => memberIds.has(u.id));
+        setBoardMembers(members);
+      } catch (error) {
+        console.error('Fehler beim Laden der Board-Mitglieder:', error);
+      }
+    }, [boardId, supabase]);
+
     useEffect(() => {
       let isMounted = true;
       const initializeBoard = async () => {
         if (!isMounted) return;
         await loadBoardMeta();
         const loadedUsers = await loadUsers();
+        await loadBoardMembers(loadedUsers);
         await resolvePermissions(loadedUsers);
         await loadSettings();
         await loadCards();
@@ -1303,6 +1334,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           rows={rows}
           setRows={setRows}
           users={users}
+          boardMembers={boardMembers}
           lanes={lanes}
           checklistTemplates={checklistTemplates}
           inferStage={inferStage}
@@ -1316,7 +1348,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           canEdit={permissions.canEditContent}
           onDelete={deleteCardPermanently}
         />
-        <NewCardDialog newCardOpen={newCardOpen} setNewCardOpen={setNewCardOpen} cols={cols} lanes={lanes} rows={rows} setRows={setRows} users={users} />
+        <NewCardDialog newCardOpen={newCardOpen} setNewCardOpen={setNewCardOpen} cols={cols} lanes={lanes} rows={rows} setRows={setRows} users={users} boardMembers={boardMembers} />
         <TRKPIPopup open={kpiPopupOpen} onClose={() => setKpiPopupOpen(false)} />
         <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
         <ArchiveDialog archiveOpen={archiveOpen} setArchiveOpen={setArchiveOpen} archivedCards={archivedCards} restoreCard={restoreCard} deleteCardPermanently={deleteCardPermanently} />

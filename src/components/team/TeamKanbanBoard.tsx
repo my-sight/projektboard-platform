@@ -260,6 +260,14 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 let d = item.card_data || {};
                 if (d?.Archived === '1' || d?.archived) return;
 
+                // Filter logic:
+                // STRICT REQUIREMENT: TeamKanbanBoard (used for both Team Boards and Homeboard)
+                // MUST ONLY show "Aufgabenkarten" (Team Tasks).
+                // "Projektkarten" (which have 'Nummer') must NEVER be shown here.
+
+                const isProjektkarte = !!(d.Nummer || d.project_number);
+                if (isProjektkarte) return;
+
                 const assignee = d.assigneeId || d.userId || d.VerantwortlichId;
                 const isLocal = item.board_id === boardId;
 
@@ -708,8 +716,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                             <IconButton size="small" onClick={(e) => toggleCardProperty(card, 'watch', e)} sx={{ p: 0.5 }}>
                                 <AccessTime sx={{ fontSize: 16, color: card.watch ? 'primary.main' : 'action.disabled' }} />
                             </IconButton>
-                            {/* Haken für Schnell-Erledigung */}
-                            {card.status !== 'done' && (
+                            {/* Haken für Schnell-Erledigung: NUR für Aufgabenkarten (keine Nummer) */}
+                            {card.status !== 'done' && !card.originalData?.Nummer && (
                                 <IconButton size="small" color="success" onClick={(e) => handleQuickFinish(card, e)} sx={{ p: 0.5 }}>
                                     <DoneAll sx={{ fontSize: 16 }} />
                                 </IconButton>

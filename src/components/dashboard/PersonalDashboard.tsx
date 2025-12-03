@@ -22,7 +22,8 @@ import {
   Tabs,
   Tab,
   Avatar,
-  Paper
+  Paper,
+  Tooltip
 } from '@mui/material';
 import {
   Assignment,
@@ -287,7 +288,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                 key={task.id + i}
                 variant="outlined"
                 sx={{
-                  p: 2,
+                  p: 1.5, // Reduced padding
                   cursor: 'pointer',
                   borderLeft: task.isCritical ? '4px solid #ef4444' : (task.isPriority ? '4px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)'),
                   bgcolor: 'background.paper',
@@ -296,39 +297,67 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                 }}
                 onClick={() => onOpenBoard(task.boardId, task.id, type)}
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 0.5 }}>
                   <Chip
                     label={task.boardName}
                     size="small"
-                    sx={{ fontSize: '0.65rem', height: 20, bgcolor: 'rgba(255,255,255,0.05)' }}
+                    variant="outlined"
+                    sx={{
+                      fontSize: '0.6rem',
+                      height: 16,
+                      borderColor: 'primary.main',
+                      color: 'primary.main',
+                      fontWeight: 700,
+                      maxWidth: '60%',
+                      px: 0.5
+                    }}
                   />
                   {task.dueDate && (
                     <Chip
-                      icon={<Event sx={{ fontSize: '12px !important' }} />}
+                      icon={<Event sx={{ fontSize: '10px !important' }} />}
                       label={new Date(task.dueDate).toLocaleDateString('de-DE')}
                       size="small"
                       color={new Date(task.dueDate) < new Date() ? 'error' : 'default'}
                       variant={new Date(task.dueDate) < new Date() ? 'filled' : 'outlined'}
-                      sx={{ height: 20, fontSize: '0.7rem' }}
+                      sx={{ height: 16, fontSize: '0.6rem' }}
                     />
                   )}
                 </Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 600, lineHeight: 1.4, mb: 1 }}>
-                  {task.title}
-                </Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Tooltip title={task.title} placement="top-start" enterDelay={500}>
+                  <Typography variant="body2" sx={{
+                    fontWeight: 500,
+                    lineHeight: 1.2,
+                    fontSize: '0.8rem',
+                    mb: 0.5,
+                    display: '-webkit-box',
+                    overflow: 'hidden',
+                    WebkitBoxOrient: 'vertical',
+                    WebkitLineClamp: 2,
+                    // minHeight removed for compactness
+                  }}>
+                    {task.title}
+                  </Typography>
+                </Tooltip>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 20 }}>
                   <Box sx={{ display: 'flex', gap: 0.5 }}>
-                    {task.isWatch && <AccessTime sx={{ fontSize: 16, color: 'info.main' }} />}
-                    {task.isCritical && <Warning sx={{ fontSize: 16, color: 'error.main' }} />}
+                    {task.isWatch && <AccessTime sx={{ fontSize: 14, color: 'info.main' }} />}
+                    {task.isCritical && <Warning sx={{ fontSize: 14, color: 'error.main' }} />}
                   </Box>
-                  <IconButton
-                    size="small"
-                    color="success"
-                    onClick={(e) => markTaskAsDone(task, e)}
-                    sx={{ bgcolor: 'rgba(16, 185, 129, 0.1)', '&:hover': { bgcolor: 'rgba(16, 185, 129, 0.2)' } }}
-                  >
-                    <DoneAll sx={{ fontSize: 16 }} />
-                  </IconButton>
+                  {/* "Done" Button ONLY for Team Tasks */}
+                  {type === 'team' && (
+                    <IconButton
+                      size="small"
+                      color="success"
+                      onClick={(e) => markTaskAsDone(task, e)}
+                      sx={{
+                        p: 0.5,
+                        bgcolor: 'rgba(16, 185, 129, 0.1)',
+                        '&:hover': { bgcolor: 'rgba(16, 185, 129, 0.2)' }
+                      }}
+                    >
+                      <DoneAll sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  )}
                 </Box>
               </Card>
             ))}
