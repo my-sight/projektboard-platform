@@ -816,7 +816,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         setRows(prev => prev.filter(r => idFor(r) !== idFor(card)));
         setArchivedCards(prev => prev.filter(r => idFor(r) !== idFor(card)));
 
-        enqueueSnackbar('Karte endgültig gelöscht', { variant: 'success' });
+        enqueueSnackbar(t('kanban.cardDeleted'), { variant: 'success' });
       } catch (error) {
         enqueueSnackbar(formatSupabaseActionError('Karte löschen', getErrorMessage(error)), { variant: 'error' });
       }
@@ -824,7 +824,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
     const archiveColumn = (columnName: string) => {
       if (!permissions.canEditContent) return;
-      if (!window.confirm(`Alle Karten in "${columnName}" archivieren?`)) return;
+      if (!window.confirm(t('kanban.archiveColumnConfirm').replace('{column}', columnName))) return;
 
       const updatedRows = rows.map(r => {
         if (inferStage(r) === columnName) {
@@ -835,7 +835,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       }).filter(r => r["Archived"] !== "1");
 
       setRows(updatedRows);
-      enqueueSnackbar(`Karten archiviert`, { variant: 'info' });
+      enqueueSnackbar(t('kanban.cardsArchived'), { variant: 'info' });
     };
 
     const addStatusEntry = (card: any) => {
@@ -904,9 +904,10 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
         if (missingTasks.length > 0) {
           const confirmed = window.confirm(
-            `⚠️ In der Phase "${sourceStage}" sind noch ${missingTasks.length} Punkte offen:\n` +
-            missingTasks.map(t => `- ${t}`).join('\n') +
-            `\n\nMöchtest du die Karte trotzdem verschieben?`
+            t('kanban.checklistUnfinished')
+              .replace('{stage}', sourceStage)
+              .replace('{count}', String(missingTasks.length))
+              .replace('{items}', missingTasks.map(t => `- ${t}`).join('\n'))
           );
           if (!confirmed) return;
         }
@@ -1010,7 +1011,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
           <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Assessment color="primary" />
-            Projekt-KPIs & Metriken
+            {t('kanban.kpiTitle')}
             <IconButton onClick={onClose} sx={{ ml: 'auto' }}><Close /></IconButton>
           </DialogTitle>
           <DialogContent dividers>
@@ -1018,18 +1019,18 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
               <Grid item xs={12} sm={4}>
                 <Card variant="outlined" sx={{ height: '100%', backgroundColor: isOverdue ? '#ffebee' : '#f0f0f0' }}>
                   <CardContent>
-                    <Typography variant="subtitle2" color="text.secondary">Überfällige TRs</Typography>
+                    <Typography variant="subtitle2" color="text.secondary">{t('kanban.overdueTrs')}</Typography>
                     <Typography variant="h4" color={isOverdue ? 'error.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
                       {kpis.trOverdue.length}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">Gesamt {kpis.totalCards} Karten</Typography>
+                    <Typography variant="caption" color="text.secondary">{t('kanban.totalCards').replace('{count}', String(kpis.totalCards))}</Typography>
                   </CardContent>
                 </Card>
               </Grid>
               <Grid item xs={12} sm={4}>
                 <Card variant="outlined" sx={{ height: '100%', backgroundColor: hasEscalations ? '#fff3e0' : '#f0f0f0' }}>
                   <CardContent>
-                    <Typography variant="subtitle2" color="text.secondary">Eskalationen</Typography>
+                    <Typography variant="subtitle2" color="text.secondary">{t('kanban.escalations')}</Typography>
                     <Typography variant="h4" color={hasEscalations ? 'warning.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
                       {kpis.yEscalations.length + kpis.rEscalations.length}
                     </Typography>
@@ -1040,11 +1041,11 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
               <Grid item xs={12} sm={4}>
                 <Card variant="outlined" sx={{ height: '100%', backgroundColor: kpis.ampelGreen > 0 ? '#e8f5e8' : '#f0f0f0' }}>
                   <CardContent>
-                    <Typography variant="subtitle2" color="text.secondary">Gesamt</Typography>
+                    <Typography variant="subtitle2" color="text.secondary">{t('kanban.total')}</Typography>
                     <Typography variant="h4" color="text.primary" sx={{ fontWeight: 700 }}>
                       {kpis.totalCards}
                     </Typography>
-                    <Typography variant="caption" color="text.secondary">Alle Karten</Typography>
+                    <Typography variant="caption" color="text.secondary">{t('kanban.allCards')}</Typography>
                   </CardContent>
                 </Card>
               </Grid>
@@ -1052,14 +1053,14 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
               <Grid item xs={12}>
                 <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: kpis.totalTrDeviation > 0 ? 'error.light' : 'success.light', borderRadius: 1, bgcolor: kpis.totalTrDeviation > 0 ? 'error.50' : 'success.50' }}>
                   <Typography variant="subtitle2" sx={{ color: kpis.totalTrDeviation > 0 ? 'error.main' : 'success.main', fontWeight: 'bold' }}>
-                    Gesamtabweichung TR: {kpis.totalTrDeviation > 0 ? '+' : ''}{kpis.totalTrDeviation} Tage
+                    {t('kanban.totalTrDeviation').replace('{sign}', kpis.totalTrDeviation > 0 ? '+' : '').replace('{days}', String(kpis.totalTrDeviation))}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Summe aller Verschiebungen (Neu vs. Original)
+                    {t('kanban.trDeviationDesc')}
                   </Typography>
                 </Box>
 
-                <Typography variant="h6" gutterBottom sx={{ mt: 2, color: 'text.secondary' }}>Kartenverteilung (Stages)</Typography>
+                <Typography variant="h6" gutterBottom sx={{ mt: 2, color: 'text.secondary' }}>{t('kanban.cardDistribution')}</Typography>
                 <Card variant="outlined">
                   <CardContent>
                     <List dense>
@@ -1092,7 +1093,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
               </Grid>
             </Grid>
           </DialogContent>
-          <DialogActions><Button onClick={onClose} variant="outlined">Schließen</Button></DialogActions>
+          <DialogActions><Button onClick={onClose} variant="outlined">{t('kanban.close')}</Button></DialogActions>
         </Dialog>
       );
     };
@@ -1144,18 +1145,18 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
           <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Star color="warning" /> Top Themen der Woche
+            <Star color="warning" /> {t('kanban.topTopicsTitle')}
           </DialogTitle>
           <DialogContent>
             <Stack spacing={2} sx={{ mt: 1 }}>
-              {localTopics.length === 0 && <Typography variant="body2" color="text.secondary">Keine Top-Themen vorhanden.</Typography>}
+              {localTopics.length === 0 && <Typography variant="body2" color="text.secondary">{t('kanban.noTopTopics')}</Typography>}
               {localTopics.map((topic, index) => (
                 <Box key={topic.id} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <TextField fullWidth size="small" placeholder="Thema..." value={topic.title} onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} />
+                  <TextField fullWidth size="small" placeholder={t('kanban.topicPlaceholder')} value={topic.title} onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} />
 
                   <Box sx={{ width: 200 }}>
                     <StandardDatePicker
-                      label="Fälligkeitsdatum"
+                      label={t('kanban.dueDate')}
                       value={topic.due_date ? dayjs(topic.due_date) : null}
                       onChange={(newValue) => handleDateAccept(index, newValue)}
                     />             </Box>
@@ -1163,10 +1164,10 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
                   <IconButton color="error" onClick={() => handleDelete(topic.id)}><DeleteOutline /></IconButton>
                 </Box>
               ))}
-              {localTopics.length < 5 && <Button startIcon={<AddCircle />} onClick={handleAdd}>Thema hinzufügen</Button>}
+              {localTopics.length < 5 && <Button startIcon={<AddCircle />} onClick={handleAdd}>{t('kanban.addTopic')}</Button>}
             </Stack>
           </DialogContent>
-          <DialogActions><Button onClick={onClose}>Schließen</Button></DialogActions>
+          <DialogActions><Button onClick={onClose}>{t('kanban.close')}</Button></DialogActions>
         </Dialog >
       );
     };
@@ -1197,7 +1198,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       const addChecklistItem = (colName: string) => {
         const newT = { ...currentTemplates };
         if (!newT[colName]) newT[colName] = [];
-        newT[colName].push(`Neuer Punkt ${newT[colName].length + 1}`);
+        newT[colName].push(`${t('kanban.newEntry')} ${newT[colName].length + 1}`);
         setCurrentTemplates(newT);
       };
       const updateChecklistItem = (colName: string, idx: number, text: string) => {
@@ -1216,23 +1217,23 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         setCurrentCols(newC);
       };
       const handleAddCol = () => { if (newColName.trim()) { setCurrentCols([...currentCols, { id: `c${Date.now()}`, name: newColName, done: false }]); setNewColName(''); } };
-      const handleDelCol = (id: string) => { if (confirm('Löschen?')) setCurrentCols(currentCols.filter(c => c.id !== id)); };
+      const handleDelCol = (id: string) => { if (confirm(t('kanban.deletePrompt'))) setCurrentCols(currentCols.filter(c => c.id !== id)); };
       const handleToggleDone = (id: string) => { setCurrentCols(currentCols.map(c => c.id === id ? { ...c, done: !c.done } : c)); }
 
       return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Settings color="primary" /> Board Einstellungen<IconButton onClick={onClose} sx={{ ml: 'auto' }}><Close /></IconButton></DialogTitle>
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Settings color="primary" /> {t('kanban.boardSettings')}<IconButton onClick={onClose} sx={{ ml: 'auto' }}><Close /></IconButton></DialogTitle>
           <DialogContent dividers>
             <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-              <Tab label="Meta-Daten" />
-              <Tab label="Spalten" />
-              <Tab label="Checklisten" />
+              <Tab label={t('kanban.metaData')} />
+              <Tab label={t('kanban.columns')} />
+              <Tab label={t('kanban.checklists')} />
             </Tabs>
 
             {tab === 0 && (
               <Box sx={{ pt: 1 }}>
-                <TextField label="Board-Name" value={boardName} onChange={(e) => setBoardName(e.target.value)} fullWidth sx={{ mt: 2 }} disabled={!permissions.canManageSettings} />
-                <TextField label="Beschreibung" value={boardDescription} onChange={(e) => setBoardDescription(e.target.value)} fullWidth multiline rows={2} sx={{ mt: 2 }} disabled={!permissions.canManageSettings} />
+                <TextField label={t('kanban.boardName')} value={boardName} onChange={(e) => setBoardName(e.target.value)} fullWidth sx={{ mt: 2 }} disabled={!permissions.canManageSettings} />
+                <TextField label={t('kanban.description')} value={boardDescription} onChange={(e) => setBoardDescription(e.target.value)} fullWidth multiline rows={2} sx={{ mt: 2 }} disabled={!permissions.canManageSettings} />
               </Box>
             )}
 
@@ -1244,7 +1245,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
                       <Box>
                         <IconButton size="small" onClick={() => handleMove(col.id, 'up')} disabled={!permissions.canManageSettings || idx === 0}><ArrowUpward fontSize="small" /></IconButton>
                         <IconButton size="small" onClick={() => handleMove(col.id, 'down')} disabled={!permissions.canManageSettings || idx === currentCols.length - 1}><ArrowDownward fontSize="small" /></IconButton>
-                        <Button size="small" onClick={() => handleToggleDone(col.id)} disabled={!permissions.canManageSettings} sx={{ ml: 1, border: '1px solid', borderColor: col.done ? 'success.main' : 'grey.400', color: col.done ? 'success.main' : 'text.primary' }}>{col.done ? 'Fertig' : 'Normal'}</Button>
+                        <Button size="small" onClick={() => handleToggleDone(col.id)} disabled={!permissions.canManageSettings} sx={{ ml: 1, border: '1px solid', borderColor: col.done ? 'success.main' : 'grey.400', color: col.done ? 'success.main' : 'text.primary' }}>{col.done ? t('kanban.done') : t('kanban.normal')}</Button>
                         <IconButton onClick={() => handleDelCol(col.id)} disabled={!permissions.canManageSettings}><Delete /></IconButton>
                       </Box>
                     }>
@@ -1253,8 +1254,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
                   ))}
                 </List>
                 <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                  <TextField size="small" label="Neue Spalte" value={newColName} onChange={(e) => setNewColName(e.target.value)} fullWidth disabled={!permissions.canManageSettings} />
-                  <Button variant="contained" startIcon={<Add />} onClick={handleAddCol} disabled={!permissions.canManageSettings}>Hinzufügen</Button>
+                  <TextField size="small" label={t('kanban.newColumn')} value={newColName} onChange={(e) => setNewColName(e.target.value)} fullWidth disabled={!permissions.canManageSettings} />
+                  <Button variant="contained" startIcon={<Add />} onClick={handleAddCol} disabled={!permissions.canManageSettings}>{t('kanban.add')}</Button>
                 </Box>
               </Box>
             )}
@@ -1275,13 +1276,13 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
                         </ListItem>
                       ))}
                     </List>
-                    <Button startIcon={<Add />} size="small" onClick={() => addChecklistItem(col.name)} disabled={!permissions.canManageSettings}>Punkt hinzufügen</Button>
+                    <Button startIcon={<Add />} size="small" onClick={() => addChecklistItem(col.name)} disabled={!permissions.canManageSettings}>{t('kanban.addItem')}</Button>
                   </Card>
                 ))}
               </Box>
             )}
           </DialogContent>
-          <DialogActions><Button onClick={onClose}>Abbrechen</Button><Button onClick={handleSave} variant="contained" disabled={!permissions.canManageSettings}>Speichern</Button></DialogActions>
+          <DialogActions><Button onClick={onClose}>{t('kanban.cancel')}</Button><Button onClick={handleSave} variant="contained" disabled={!permissions.canManageSettings}>{t('kanban.save')}</Button></DialogActions>
         </Dialog>
       );
     };
@@ -1290,32 +1291,32 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg)', color: 'var(--ink)', '&': { '--colw': '300px', '--rowheadw': '260px' } as any }}>
         <Box sx={{ position: 'sticky', top: 0, zIndex: 5, background: 'linear-gradient(180deg,rgba(0,0,0,.05),transparent),var(--panel)', borderBottom: '1px solid var(--line)', p: 2 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr repeat(2, auto) repeat(3, auto) repeat(3, auto)', gap: 1.5, alignItems: 'center', mt: 0 }}>
-            <TextField size="small" placeholder="Suchen..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} sx={{ minWidth: 220 }} />
+            <TextField size="small" placeholder={t('kanban.search')} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} sx={{ minWidth: 220 }} />
 
             <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 0.5 }}>
-              <Chip icon={<FilterList />} label="Meine" clickable color={filters.mine ? "primary" : "default"} onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))} />
-              <Chip icon={<Warning />} label="Überfällig" clickable color={filters.overdue ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))} />
-              <Chip icon={<PriorityHigh />} label="Wichtig" clickable color={filters.priority ? "warning" : "default"} onClick={() => setFilters(prev => ({ ...prev, priority: !prev.priority }))} />
-              <Chip icon={<ErrorOutline />} label="Kritisch" clickable color={filters.critical ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, critical: !prev.critical }))} />
+              <Chip icon={<FilterList />} label={t('kanban.myCards')} clickable color={filters.mine ? "primary" : "default"} onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))} />
+              <Chip icon={<Warning />} label={t('kanban.overdue')} clickable color={filters.overdue ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))} />
+              <Chip icon={<PriorityHigh />} label={t('kanban.important')} clickable color={filters.priority ? "warning" : "default"} onClick={() => setFilters(prev => ({ ...prev, priority: !prev.priority }))} />
+              <Chip icon={<ErrorOutline />} label={t('kanban.critical')} clickable color={filters.critical ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, critical: !prev.critical }))} />
             </Box>
 
-            <Button variant={density === 'compact' ? 'contained' : 'outlined'} onClick={() => setDensity('compact')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: kompakt"><ViewHeadline fontSize="small" /></Button>
-            <Button variant={density === 'large' ? 'contained' : 'outlined'} onClick={() => setDensity('large')} sx={{ minWidth: 'auto', p: 1 }} title="Layout: groß"><ViewModule fontSize="small" /></Button>
+            <Button variant={density === 'compact' ? 'contained' : 'outlined'} onClick={() => setDensity('compact')} sx={{ minWidth: 'auto', p: 1 }} title={t('kanban.layoutCompact')}><ViewHeadline fontSize="small" /></Button>
+            <Button variant={density === 'large' ? 'contained' : 'outlined'} onClick={() => setDensity('large')} sx={{ minWidth: 'auto', p: 1 }} title={t('kanban.layoutLarge')}><ViewModule fontSize="small" /></Button>
 
-            <Button variant="contained" size="small" startIcon={<AddCircle />} onClick={() => setNewCardOpen(true)} disabled={!permissions.canEditContent}>Neue Karte</Button>
+            <Button variant="contained" size="small" startIcon={<AddCircle />} onClick={() => setNewCardOpen(true)} disabled={!permissions.canEditContent}>{t('kanban.newCard')}</Button>
 
             {permissions.canManageSettings && (
-              <IconButton onClick={() => setSettingsOpen(true)} title="Board-Einstellungen">
+              <IconButton onClick={() => setSettingsOpen(true)} title={t('kanban.boardSettings')}>
                 <Settings fontSize="small" />
               </IconButton>
             )}
-            <Tooltip title="Top Themen">
+            <Tooltip title={t('kanban.topTopics')}>
               <IconButton onClick={() => { loadTopTopics(); setTopTopicsOpen(true); }}>
                 <Star fontSize="small" color="warning" />
               </IconButton>
             </Tooltip>
             <Badge badgeContent={kpiBadgeCount} color="error" overlap="circular">
-              <IconButton onClick={() => setKpiPopupOpen(true)} title="KPIs & Metriken"><Assessment fontSize="small" /></IconButton>
+              <IconButton onClick={() => setKpiPopupOpen(true)} title={t('kanban.kpiTitle')}><Assessment fontSize="small" /></IconButton>
             </Badge>
           </Box>
         </Box>

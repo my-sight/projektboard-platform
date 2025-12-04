@@ -779,26 +779,26 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         <Box sx={{ p: 2, bgcolor: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Chip icon={<FilterList />} label="Meine" clickable onClick={() => setFilters(p => ({ ...p, mine: !p.mine }))} color={filters.mine ? "primary" : "default"} />
-                    <Chip icon={<Warning />} label="Überfällig" clickable onClick={() => setFilters(p => ({ ...p, overdue: !p.overdue }))} color={filters.overdue ? "error" : "default"} />
-                    <Chip icon={<PriorityHigh />} label="Wichtig" clickable onClick={() => setFilters(p => ({ ...p, important: !p.important }))} color={filters.important ? "warning" : "default"} />
-                    <Chip icon={<AccessTime />} label="Watch" clickable onClick={() => setFilters(p => ({ ...p, watch: !p.watch }))} color={filters.watch ? "info" : "default"} />
+                    <Chip icon={<FilterList />} label={t('teamBoard.mine')} clickable onClick={() => setFilters(p => ({ ...p, mine: !p.mine }))} color={filters.mine ? "primary" : "default"} />
+                    <Chip icon={<Warning />} label={t('teamBoard.overdue')} clickable onClick={() => setFilters(p => ({ ...p, overdue: !p.overdue }))} color={filters.overdue ? "error" : "default"} />
+                    <Chip icon={<PriorityHigh />} label={t('teamBoard.important')} clickable onClick={() => setFilters(p => ({ ...p, important: !p.important }))} color={filters.important ? "warning" : "default"} />
+                    <Chip icon={<AccessTime />} label={t('teamBoard.watch')} clickable onClick={() => setFilters(p => ({ ...p, watch: !p.watch }))} color={filters.watch ? "info" : "default"} />
                 </Box>
 
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Tooltip title="Top Themen"><IconButton onClick={() => { setTopTopicsOpen(true); }}><Star color="warning" /></IconButton></Tooltip>
-                    <Tooltip title="KPIs"><IconButton onClick={() => setKpiOpen(true)}><Assessment color="primary" /></IconButton></Tooltip>
-                    {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title="Einstellungen"><Settings /></IconButton>}
+                    <Tooltip title={t('teamBoard.topTopics')}><IconButton onClick={() => { setTopTopicsOpen(true); }}><Star color="warning" /></IconButton></Tooltip>
+                    <Tooltip title={t('teamBoard.kpis')}><IconButton onClick={() => setKpiOpen(true)}><Assessment color="primary" /></IconButton></Tooltip>
+                    {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title={t('teamBoard.boardSettings')}><Settings /></IconButton>}
                 </Box>
             </Box>
 
-            {isHomeBoard && <Alert severity="info" sx={{ py: 0 }}>🏠 <strong>Heimatboard:</strong> Zeigt alle Aufgaben der Mitglieder.</Alert>}
+            {isHomeBoard && <Alert severity="info" sx={{ py: 0 }}>{t('teamBoard.homeBoardInfo')}</Alert>}
 
             <Box sx={{ flex: 1, display: 'flex', gap: 2, overflow: 'hidden' }}>
                 <DragDropContext onDragEnd={handleDragEnd}>
                     {/* BACKLOG */}
                     <Box sx={{ width: BACKLOG_WIDTH, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', borderRadius: 1, border: '1px solid var(--line)' }}>
-                        <Box sx={{ p: 2, borderBottom: '1px solid var(--line)' }}><Typography variant="subtitle2">SPEICHER ({backlogCards.length})</Typography></Box>
+                        <Box sx={{ p: 2, borderBottom: '1px solid var(--line)' }}><Typography variant="subtitle2">{t('teamBoard.backlog')} ({backlogCards.length})</Typography></Box>
                         <Droppable droppableId={droppableKey(null, 'backlog')}>
                             {(prov) => (
                                 <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
@@ -819,10 +819,10 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                             bgcolor: 'rgba(0,0,0,0.02)',
                             minWidth: 'fit-content' // Verhindert Quetschen
                         }}>
-                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary' }}>MITARBEITER</Box>
-                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>FLOW 1</Box>
-                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>FLOW</Box>
-                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>FERTIG</Box>
+                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary' }}>{t('teamBoard.employees')}</Box>
+                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>{t('teamBoard.flow1')}</Box>
+                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>{t('teamBoard.flow')}</Box>
+                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>{t('teamBoard.finished')}</Box>
                         </Box>
 
                         <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
@@ -879,7 +879,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                     </Box>
                                                 </>
                                             )}
-                                            {isCollapsed && <Box sx={{ gridColumn: '2 / span 3', display: 'flex', alignItems: 'center', px: 2, color: 'text.disabled', fontStyle: 'italic' }}>Eingeklappt ({flow1.length + flow.length + done.length} Aufgaben)</Box>}
+                                            {isCollapsed && <Box sx={{ gridColumn: '2 / span 3', display: 'flex', alignItems: 'center', px: 2, color: 'text.disabled', fontStyle: 'italic' }}>{t('teamBoard.collapsed')} ({flow1.length + flow.length + done.length} {t('teamBoard.tasks')})</Box>}
                                         </Box>
                                     );
                                 })}
@@ -890,38 +890,38 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             </Box>
 
             <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-                <DialogTitle>{editingCard ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}</DialogTitle>
+                <DialogTitle>{editingCard ? t('teamBoard.editTask') : t('teamBoard.newTask')}</DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={2} sx={{ mt: 1 }}>
-                        <TextField fullWidth label="Beschreibung" value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} multiline minRows={2} />
+                        <TextField fullWidth label={t('teamBoard.description')} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} multiline minRows={2} />
                         <StandardDatePicker
-                            label="Fällig"
+                            label={t('teamBoard.due')}
                             value={draft.dueDate ? dayjs(draft.dueDate) : null}
                             onChange={(newValue) => setDraft({ ...draft, dueDate: newValue ? newValue.format('YYYY-MM-DD') : '' })}
                         />
-                        <FormControlLabel control={<Checkbox checked={draft.important} onChange={e => setDraft({ ...draft, important: e.target.checked })} />} label="Wichtige Aufgabe markieren" />
-                        <FormControlLabel control={<Checkbox checked={draft.watch} onChange={e => setDraft({ ...draft, watch: e.target.checked })} />} label="Auf Wiedervorlage setzen" />
+                        <FormControlLabel control={<Checkbox checked={draft.important} onChange={e => setDraft({ ...draft, important: e.target.checked })} />} label={t('teamBoard.markImportant')} />
+                        <FormControlLabel control={<Checkbox checked={draft.watch} onChange={e => setDraft({ ...draft, watch: e.target.checked })} />} label={t('teamBoard.setResubmission')} />
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    {editingCard && <Button color="error" onClick={deleteTask}>Löschen</Button>}
-                    <Button onClick={closeDialog}>Abbrechen</Button>
-                    <Button onClick={saveTask} variant="contained">Speichern</Button>
+                    {editingCard && <Button color="error" onClick={deleteTask}>{t('teamBoard.delete')}</Button>}
+                    <Button onClick={closeDialog}>{t('teamBoard.cancel')}</Button>
+                    <Button onClick={saveTask} variant="contained">{t('teamBoard.save')}</Button>
                 </DialogActions>
             </Dialog>
 
             <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)}>
-                <DialogTitle>Board Einstellungen</DialogTitle>
+                <DialogTitle>{t('teamBoard.boardSettings')}</DialogTitle>
                 <DialogContent>
                     <FormControlLabel
                         control={<Switch checked={isHomeBoard} onChange={(e) => setIsHomeBoard(e.target.checked)} />}
-                        label={<Box><Typography variant="body1" fontWeight="bold">Als Heimatboard nutzen</Typography><Typography variant="caption" color="text.secondary">Zeigt automatisch alle Aufgaben der Mitglieder aus anderen Projekten an.</Typography></Box>}
+                        label={<Box><Typography variant="body1" fontWeight="bold">{t('teamBoard.useAsHomeBoard')}</Typography><Typography variant="caption" color="text.secondary">{t('teamBoard.homeBoardDesc')}</Typography></Box>}
                         sx={{ mt: 2 }}
                     />
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setSettingsOpen(false)}>Abbrechen</Button>
-                    <Button variant="contained" onClick={saveBoardSettings}>Speichern</Button>
+                    <Button onClick={() => setSettingsOpen(false)}>{t('teamBoard.cancel')}</Button>
+                    <Button variant="contained" onClick={saveBoardSettings}>{t('teamBoard.save')}</Button>
                 </DialogActions>
             </Dialog>
 
