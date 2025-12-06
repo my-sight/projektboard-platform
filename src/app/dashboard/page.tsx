@@ -36,6 +36,30 @@ export default function HomePage() {
     setKpiCount(0);
   }, [selectedBoard]);
 
+  const [favoriteBoardIds, setFavoriteBoardIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('favoriteBoardIds');
+    if (stored) {
+      try {
+        setFavoriteBoardIds(JSON.parse(stored));
+      } catch (e) {
+        console.error('Failed to parse favorites', e);
+      }
+    }
+  }, []);
+
+  const toggleFavorite = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavoriteBoardIds(prev => {
+      const newFavorites = prev.includes(id)
+        ? prev.filter(fid => fid !== id)
+        : [...prev, id];
+      localStorage.setItem('favoriteBoardIds', JSON.stringify(newFavorites));
+      return newFavorites;
+    });
+  };
+
   // ✅ Explizit typisiertes Array
   const boards: BoardInfo[] = [
     {
@@ -46,7 +70,7 @@ export default function HomePage() {
       lastUpdated: '2024-01-25'
     },
     {
-      id: 'prototyp-board', 
+      id: 'prototyp-board',
       name: 'Prototyping Board',
       description: 'Board für Prototyp-Entwicklung',
       cardCount: 8,
@@ -54,12 +78,20 @@ export default function HomePage() {
     },
     {
       id: 'produktion-board',
-      name: 'Produktions-Board', 
+      name: 'Produktions-Board',
       description: 'Board für Produktionsplanung',
       cardCount: 23,
       lastUpdated: '2024-01-23'
     }
   ];
+
+  const sortedBoards = [...boards].sort((a, b) => {
+    const aFav = favoriteBoardIds.includes(a.id);
+    const bFav = favoriteBoardIds.includes(b.id);
+    if (aFav && !bFav) return -1;
+    if (!aFav && bFav) return 1;
+    return 0;
+  });
 
   if (selectedBoard) {
     return (
@@ -154,64 +186,83 @@ export default function HomePage() {
       {/* Board Auswahl */}
       <Grid container spacing={3}>
         {/* ✅ Typisiertes Map */}
-        {boards.map((board: BoardInfo) => (
-          <Grid item xs={12} md={6} lg={4} key={board.id}>
-            <Card 
-              sx={{ 
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                backgroundColor: 'var(--panel)',
-                border: '1px solid var(--line)',
-                transition: 'all 0.2s ease',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
-                }
-              }}
-            >
-              <CardContent sx={{ flex: 1 }}>
-                <Typography variant="h6" component="h2" sx={{ mb: 1, fontWeight: 600 }}>
-                  {board.name}
-                </Typography>
-                <Typography variant="body2" sx={{ color: 'var(--muted)', mb: 2 }}>
-                  {board.description}
-                </Typography>
-                
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
-                    {board.cardCount} Karten
-                  </Typography>
-                  <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
-                    {board.lastUpdated}
-                  </Typography>
-                </Box>
-              </CardContent>
-              
-              <CardActions sx={{ p: 2, pt: 0 }}>
-                <Button 
-                  variant="contained" 
-                  fullWidth
-                  onClick={() => setSelectedBoard(board.id)}
-                  sx={{ 
-                    backgroundColor: 'var(--accent)',
+        {sortedBoards.map((board: BoardInfo) => {
+          const isFavorite = favoriteBoardIds.includes(board.id);
+          return (
+            <Grid item xs={12} md={6} lg={4} key={board.id}>
+              <Card
+                sx={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  backgroundColor: 'var(--panel)',
+                  border: '1px solid var(--line)',
+                  transition: 'all 0.2s ease',
+                  position: 'relative',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
+                  }
+                }}
+              >
+                <IconButton
+                  onClick={(e) => toggleFavorite(board.id, e)}
+                  sx={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    color: isFavorite ? '#fbbf24' : 'var(--muted)',
                     '&:hover': {
-                      backgroundColor: 'var(--accent)',
-                      filter: 'brightness(1.1)'
+                      color: isFavorite ? '#f59e0b' : 'var(--ink)',
+                      backgroundColor: 'rgba(251, 191, 36, 0.1)'
                     }
                   }}
                 >
-                  Board öffnen
-                </Button>
-              </CardActions>
-            </Card>
-          </Grid>
-        ))}
+                  {isFavorite ? '★' : '☆'}
+                </IconButton>
+                <CardContent sx={{ flex: 1 }}>
+                  <Typography variant="h6" component="h2" sx={{ mb: 1, fontWeight: 600, pr: 4 }}>
+                    {board.name}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--muted)', mb: 2 }}>
+                    {board.description}
+                  </Typography>
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
+                      {board.cardCount} Karten
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
+                      {board.lastUpdated}
+                    </Typography>
+                  </Box>
+                </CardContent>
+
+                <CardActions sx={{ p: 2, pt: 0 }}>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    onClick={() => setSelectedBoard(board.id)}
+                    sx={{
+                      backgroundColor: 'var(--accent)',
+                      '&:hover': {
+                        backgroundColor: 'var(--accent)',
+                        filter: 'brightness(1.1)'
+                      }
+                    }}
+                  >
+                    Board öffnen
+                  </Button>
+                </CardActions>
+              </Card>
+            </Grid>
+          );
+        })}
 
         {/* Neues Board erstellen */}
         <Grid item xs={12} md={6} lg={4}>
-          <Card 
-            sx={{ 
+          <Card
+            sx={{
               height: '100%',
               display: 'flex',
               flexDirection: 'column',
@@ -225,9 +276,9 @@ export default function HomePage() {
               }
             }}
           >
-            <CardContent sx={{ 
-              flex: 1, 
-              display: 'flex', 
+            <CardContent sx={{
+              flex: 1,
+              display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
@@ -252,7 +303,7 @@ export default function HomePage() {
         <Typography variant="h4" sx={{ mb: 3, fontWeight: 600 }}>
           Features
         </Typography>
-        
+
         <Grid container spacing={3}>
           <Grid item xs={12} md={4}>
             <Box sx={{ p: 3 }}>
@@ -267,7 +318,7 @@ export default function HomePage() {
               </Typography>
             </Box>
           </Grid>
-          
+
           <Grid item xs={12} md={4}>
             <Box sx={{ p: 3 }}>
               <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>
@@ -281,7 +332,7 @@ export default function HomePage() {
               </Typography>
             </Box>
           </Grid>
-          
+
           <Grid item xs={12} md={4}>
             <Box sx={{ p: 3 }}>
               <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>
@@ -295,7 +346,7 @@ export default function HomePage() {
               </Typography>
             </Box>
           </Grid>
-          
+
           <Grid item xs={12} md={4}>
             <Box sx={{ p: 3 }}>
               <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>
@@ -309,7 +360,7 @@ export default function HomePage() {
               </Typography>
             </Box>
           </Grid>
-          
+
           <Grid item xs={12} md={4}>
             <Box sx={{ p: 3 }}>
               <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>
@@ -323,7 +374,7 @@ export default function HomePage() {
               </Typography>
             </Box>
           </Grid>
-          
+
           <Grid item xs={12} md={4}>
             <Box sx={{ p: 3 }}>
               <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>

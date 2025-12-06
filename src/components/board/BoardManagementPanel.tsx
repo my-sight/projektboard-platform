@@ -499,7 +499,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const availableProfiles = useMemo(() => {
     const memberIds = new Set(members.map(member => member.profile_id));
-    return profiles.filter(profile => {
+    const filtered = profiles.filter(profile => {
       if (isSuperuserEmail(profile.email)) {
         return false;
       }
@@ -507,7 +507,19 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       const isActive = profile.is_active ?? true;
       return isActive && !memberIds.has(profile.id);
     });
-  }, [members, profiles]);
+
+    // Sort by Department/Company then Name
+    return filtered.sort((a, b) => {
+      const deptA = (a.department || a.company || t('boardManagement.noDepartment')).toLowerCase();
+      const deptB = (b.department || b.company || t('boardManagement.noDepartment')).toLowerCase();
+      if (deptA < deptB) return -1;
+      if (deptA > deptB) return 1;
+
+      const nameA = (a.full_name || a.name || a.email || '').toLowerCase();
+      const nameB = (b.full_name || b.name || b.email || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }, [members, profiles, t]);
 
   // ✅ UPDATE: Gruppierung - LK/Y in "Y" und SK/R in "R"
   const filteredEscalations = useMemo(
@@ -1071,7 +1083,16 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                     </MenuItem>
                     {availableProfiles.map(profile => (
                       <MenuItem key={profile.id} value={profile.id}>
-                        {(profile.full_name || profile.email) + (profile.company ? ` • ${profile.company}` : '')}
+                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {profile.full_name || profile.name || profile.email}
+                          </Typography>
+                          {(profile.department || profile.company) && (
+                            <Typography variant="caption" color="text.secondary">
+                              {profile.department || profile.company}
+                            </Typography>
+                          )}
+                        </Box>
                       </MenuItem>
                     ))}
                   </Select>

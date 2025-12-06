@@ -3,7 +3,7 @@
 import { ReactNode, useEffect, useMemo, useRef } from 'react';
 import { Box, Chip, IconButton, Typography, Card, CardContent, Avatar, Tooltip } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
-import { CheckCircle, AccessTime, Warning, PriorityHigh, UnfoldMore, UnfoldLess } from '@mui/icons-material';
+import { CheckCircle, AccessTime, Warning, PriorityHigh, UnfoldMore, UnfoldLess, ArrowCircleRight } from '@mui/icons-material';
 import { keyframes } from '@mui/system';
 import { alpha, useTheme } from '@mui/material/styles';
 
@@ -248,6 +248,21 @@ export function KanbanCard({
                   </Box>
 
                   <Box className="controls" sx={{ display: 'flex', gap: 0.5, alignItems: 'center', opacity: 0.6, transition: 'opacity 0.2s', '&:hover': { opacity: 1 } }}>
+                    <IconButton
+                      size="small"
+                      sx={{
+                        p: 0.25,
+                        color: toBoolean(card.PhaseTransition) ? 'primary.main' : 'action.disabled',
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleUpdateCard({ PhaseTransition: !toBoolean(card.PhaseTransition) });
+                      }}
+                      title={t('kanban.phaseTransition')}
+                    >
+                      <ArrowCircleRight fontSize="small" />
+                    </IconButton>
+
                     {sopDate && (
                       <Chip
                         label={`SOP: ${sopDate.toLocaleDateString('de-DE')}`}
@@ -275,6 +290,8 @@ export function KanbanCard({
                 <Typography variant="body2" fontWeight={500} sx={{ mb: 0.5, lineHeight: 1.2, fontSize: '0.85rem' }}>
                   {card.Teil || t('kanban.noTitle')}
                 </Typography>
+
+
 
                 {statusKurz && (
                   <Tooltip title={statusKurz}>

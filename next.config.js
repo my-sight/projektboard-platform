@@ -2,13 +2,12 @@
 const nextConfig = {
   // App Router ist seit 13 stabil – kein experimental.appDir mehr nötig
   reactStrictMode: true,
-  swcMinify: true,
+  turbopack: {}, // Next.js 16 default
   images: {
     domains: [], // trage hier Domains ein, wenn du externe Bilder nutzt
     formats: ['image/avif', 'image/webp'],
   },
   typescript: { ignoreBuildErrors: false },
-  eslint: { ignoreDuringBuilds: false },
   compiler: {
     emotion: true, // für MUI + emotion
   },

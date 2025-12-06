@@ -64,7 +64,7 @@ async function createSessionClientFromCookies(tokens: SessionTokens = {}): Promi
       const projectRef = getProjectRef(supabaseUrl);
 
       if (projectRef) {
-        const authCookie = cookies().get(`sb-${projectRef}-auth-token`);
+        const authCookie = (await cookies()).get(`sb-${projectRef}-auth-token`);
 
         if (authCookie?.value) {
           const parsed = JSON.parse(authCookie.value) as {

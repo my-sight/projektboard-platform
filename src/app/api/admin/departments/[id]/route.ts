@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveAdminSupabaseClient } from '@/lib/supabaseServer';
 
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { client: supabase, isService } = await resolveAdminSupabaseClient();
 
   if (!isService) {
@@ -15,7 +16,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
   }
 
   try {
-    const { error } = await supabase.from('departments').delete().eq('id', params.id);
+    const { error } = await supabase.from('departments').delete().eq('id', id);
 
     if (error) {
       console.error('Delete department error:', error);

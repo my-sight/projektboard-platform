@@ -14,8 +14,8 @@ interface PersistedCard {
 }
 
 // POST: Bulk-Upsert (für Drag & Drop / Initialisierung)
-export async function POST(request: NextRequest, { params }: { params: { boardId: string } }) {
-  const boardId = params.boardId;
+export async function POST(request: NextRequest, { params }: { params: Promise<{ boardId: string }> }) {
+  const { boardId } = await params;
   if (!boardId) return NextResponse.json({ error: 'Board-ID fehlt.' }, { status: 400 });
 
   const tokens = readSessionTokens(request);
@@ -57,8 +57,8 @@ export async function POST(request: NextRequest, { params }: { params: { boardId
 }
 
 // PATCH: Einzelne oder partielle Updates (für Statusänderungen, Text-Edits)
-export async function PATCH(request: NextRequest, { params }: { params: { boardId: string } }) {
-  const boardId = params.boardId;
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ boardId: string }> }) {
+  const { boardId } = await params;
   if (!boardId) return NextResponse.json({ error: 'Board-ID fehlt.' }, { status: 400 });
 
   const tokens = readSessionTokens(request);
@@ -77,19 +77,19 @@ export async function PATCH(request: NextRequest, { params }: { params: { boardI
   }
 
   const { client } = auth;
-  
+
   // Wir müssen unterscheiden: Ist es ein Update der SQL-Spalten oder des JSONB?
   // Supabase merged JSONB bei update() leider nicht automatisch tief, 
   // aber wir können das card_data komplett ersetzen, da der Client den aktuellen Stand hat.
-  
-  const updateData: any = { 
-    updated_at: new Date().toISOString() 
+
+  const updateData: any = {
+    updated_at: new Date().toISOString()
   };
 
   // Mapping: Wenn Top-Level Felder wie 'stage' geändert werden, update die Spalte
   if (payload.updates.stage !== undefined) updateData.stage = payload.updates.stage;
   if (payload.updates.position !== undefined) updateData.position = payload.updates.position;
-  
+
   // Alles andere geht in card_data
   // HINWEIS: Wir gehen davon aus, dass der Client das VOLLE card_data Objekt sendet,
   // wenn er JSON-Inhalte ändert.
@@ -110,8 +110,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { boardI
   return NextResponse.json({ success: true });
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { boardId: string } }) {
-  const boardId = params.boardId;
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ boardId: string }> }) {
+  const { boardId } = await params;
   if (!boardId) return NextResponse.json({ error: 'Board-ID fehlt.' }, { status: 400 });
 
   const searchParams = request.nextUrl.searchParams;

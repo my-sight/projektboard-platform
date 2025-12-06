@@ -24,11 +24,12 @@ async function isTargetSuperuser(
   return isSuperuserEmail(data.email);
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { client: supabase } = await resolveAdminSupabaseClient();
 
   try {
-    if (await isTargetSuperuser(supabase, params.id)) {
+    if (await isTargetSuperuser(supabase, id)) {
       return NextResponse.json(
         { error: 'Der Superuser kann nicht bearbeitet werden.' },
         { status: 403 },
@@ -62,7 +63,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     const { data, error } = await supabase
       .from('profiles')
       .update(updates)
-      .eq('id', params.id)
+
+      .eq('id', id)
       .select('*')
       .single();
 
@@ -91,7 +93,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const { client: supabase, isService } = await resolveAdminSupabaseClient();
 
   if (!isService) {
@@ -101,7 +104,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
     );
   }
 
-  const userId = params.id;
+  const userId = id;
 
   try {
     if (await isTargetSuperuser(supabase, userId)) {

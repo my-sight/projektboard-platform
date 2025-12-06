@@ -400,7 +400,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
 
   const availableProfiles = useMemo(() => {
     const selected = new Set(members.map((entry) => entry.profile_id));
-    return profiles.filter((profile) => {
+    const filtered = profiles.filter((profile) => {
       if (selected.has(profile.id)) {
         return false;
       }
@@ -412,7 +412,19 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
       }
       return true;
     });
-  }, [members, profiles]);
+
+    // Sort by Department/Company then Name
+    return filtered.sort((a, b) => {
+      const deptA = (a.department || a.company || t('boardManagement.noDepartment')).toLowerCase();
+      const deptB = (b.department || b.company || t('boardManagement.noDepartment')).toLowerCase();
+      if (deptA < deptB) return -1;
+      if (deptA > deptB) return 1;
+
+      const nameA = (a.full_name || a.name || a.email || '').toLowerCase();
+      const nameB = (b.full_name || b.name || b.email || '').toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+  }, [members, profiles, t]);
 
   const selectWeek = (week: string) => {
     if (!week) return;
@@ -706,7 +718,16 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                     </MenuItem>
                     {availableProfiles.map((profile) => (
                       <MenuItem key={profile.id} value={profile.id}>
-                        {(profile.full_name || profile.email) + (profile.company ? ` • ${profile.company}` : '')}
+                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {profile.full_name || profile.name || profile.email}
+                          </Typography>
+                          {(profile.department || profile.company) && (
+                            <Typography variant="caption" color="text.secondary">
+                              {profile.department || profile.company}
+                            </Typography>
+                          )}
+                        </Box>
                       </MenuItem>
                     ))}
                   </Select>

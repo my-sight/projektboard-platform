@@ -2,7 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import {
-  Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
+  Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem,
   Typography, TextField, IconButton, Chip, Tabs, Tab, Grid, Card,
   CardContent, Badge, List, ListItem, Tooltip, Stack
 } from '@mui/material';
@@ -10,7 +10,7 @@ import { DropResult } from '@hello-pangea/dnd';
 import {
   Assessment, Close, Delete, Add, Settings, ViewHeadline, ViewModule,
   AddCircle, FilterList, Warning, PriorityHigh, ErrorOutline, Star, DeleteOutline,
-  ArrowUpward, ArrowDownward
+  ArrowUpward, ArrowDownward, ArrowCircleRight
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 
@@ -92,6 +92,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
     const [viewMode, setViewMode] = useState<ViewMode>('columns');
     const [density, setDensity] = useState<LayoutDensity>('compact');
     const [searchTerm, setSearchTerm] = useState('');
+
     const [rows, setRows] = useState<ProjectBoardCard[]>([]);
     const [cols, setCols] = useState(DEFAULT_COLS);
     const [lanes, setLanes] = useState<string[]>(['Projekt A', 'Projekt B', 'Projekt C']);
@@ -107,7 +108,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       mine: false,
       overdue: false,
       priority: false,
-      critical: false
+      critical: false,
+      phaseTransition: false
     });
 
     const [permissions, setPermissions] = useState({
@@ -204,6 +206,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
         ampelRed: 0,
         ampelYellow: 0,
+        ampelNeutral: 0,
         yEscalations: [],
         rEscalations: [],
         columnDistribution: {},
@@ -220,9 +223,10 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
       activeCards.forEach(card => {
         const ampel = String(card.Ampel || '').toLowerCase();
-        kpis.totalCards++;
+        // kpis.totalCards is already set to activeCards.length
         if (ampel === 'rot') kpis.ampelRed++;
         else if (ampel === 'gelb') kpis.ampelYellow++;
+        else if (ampel !== 'grün') kpis.ampelNeutral++;
 
         const eskalation = String(card.Eskalation || '').toUpperCase();
 
@@ -317,12 +321,18 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         result = result.filter(r => toBoolean(r.Priorität));
       }
 
+
+
       if (filters.critical) {
         result = result.filter(r => {
           const esc = String(r.Eskalation || '').toUpperCase();
           return String(r.Ampel || '').toLowerCase().includes('rot') ||
             ['LK', 'SK', 'Y', 'R'].includes(esc);
         });
+      }
+
+      if (filters.phaseTransition) {
+        result = result.filter(r => toBoolean(r.PhaseTransition));
       }
 
       return result;
@@ -739,6 +749,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       }
     }, [boardId, supabase]);
 
+
+
     useEffect(() => {
       let isMounted = true;
       const initializeBoard = async () => {
@@ -746,6 +758,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         await loadBoardMeta();
         const loadedUsers = await loadUsers();
         await loadBoardMembers(loadedUsers);
+
         await resolvePermissions(loadedUsers);
         await loadSettings();
         await loadCards();
@@ -1291,13 +1304,23 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg)', color: 'var(--ink)', '&': { '--colw': '300px', '--rowheadw': '260px' } as any }}>
         <Box sx={{ position: 'sticky', top: 0, zIndex: 5, background: 'linear-gradient(180deg,rgba(0,0,0,.05),transparent),var(--panel)', borderBottom: '1px solid var(--line)', p: 2 }}>
           <Box sx={{ display: 'grid', gridTemplateColumns: '1fr repeat(2, auto) repeat(3, auto) repeat(3, auto)', gap: 1.5, alignItems: 'center', mt: 0 }}>
-            <TextField size="small" placeholder={t('kanban.search')} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} sx={{ minWidth: 220 }} />
+            <TextField
+              size="small"
+              placeholder={t('kanban.searchPlaceholder')}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              InputProps={{ startAdornment: <FilterList fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} /> }}
+              sx={{ width: 200 }}
+            />
+
+
 
             <Box sx={{ display: 'flex', gap: 1, overflowX: 'auto', pb: 0.5 }}>
               <Chip icon={<FilterList />} label={t('kanban.myCards')} clickable color={filters.mine ? "primary" : "default"} onClick={() => setFilters(prev => ({ ...prev, mine: !prev.mine }))} />
               <Chip icon={<Warning />} label={t('kanban.overdue')} clickable color={filters.overdue ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, overdue: !prev.overdue }))} />
               <Chip icon={<PriorityHigh />} label={t('kanban.important')} clickable color={filters.priority ? "warning" : "default"} onClick={() => setFilters(prev => ({ ...prev, priority: !prev.priority }))} />
               <Chip icon={<ErrorOutline />} label={t('kanban.critical')} clickable color={filters.critical ? "error" : "default"} onClick={() => setFilters(prev => ({ ...prev, critical: !prev.critical }))} />
+              <Chip icon={<ArrowCircleRight />} label={t('kanban.phaseTransition')} clickable color={filters.phaseTransition ? "primary" : "default"} onClick={() => setFilters(prev => ({ ...prev, phaseTransition: !prev.phaseTransition }))} />
             </Box>
 
             <Button variant={density === 'compact' ? 'contained' : 'outlined'} onClick={() => setDensity('compact')} sx={{ minWidth: 'auto', p: 1 }} title={t('kanban.layoutCompact')}><ViewHeadline fontSize="small" /></Button>
@@ -1318,6 +1341,20 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
             <Badge badgeContent={kpiBadgeCount} color="error" overlap="circular">
               <IconButton onClick={() => setKpiPopupOpen(true)} title={t('kanban.kpiTitle')}><Assessment fontSize="small" /></IconButton>
             </Badge>
+            {kpis.ampelNeutral > 0 && (
+              <Chip
+                label={kpis.ampelNeutral}
+                size="small"
+                sx={{
+                  bgcolor: '#90ee90',
+                  color: '#000',
+                  fontWeight: 'bold',
+                  height: 24,
+                  minWidth: 24
+                }}
+                title={t('kanban.neutralCards')}
+              />
+            )}
           </Box>
         </Box>
 
@@ -1355,7 +1392,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         <TRKPIPopup open={kpiPopupOpen} onClose={() => setKpiPopupOpen(false)} />
         <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
         <ArchiveDialog archiveOpen={archiveOpen} setArchiveOpen={setArchiveOpen} archivedCards={archivedCards} restoreCard={restoreCard} deleteCardPermanently={deleteCardPermanently} />
-      </Box>
+      </Box >
     );
   });
 

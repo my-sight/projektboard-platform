@@ -3,6 +3,8 @@ export interface ClientProfile {
   email: string;
   full_name: string | null;
   company: string | null;
+  department?: string | null; // Added
+  name?: string | null; // Added
   role: string | null;
   is_active: boolean;
   created_at?: string | null;
@@ -23,6 +25,7 @@ function mapProfiles(rows: RawClientProfile[] | null | undefined): ClientProfile
   return (rows ?? []).map(profile => ({
     ...profile,
     is_active: profile.is_active ?? true,
+    name: profile.full_name || profile.email // Polyfill name if needed
   }));
 }
 
@@ -33,7 +36,7 @@ export async function fetchClientProfiles(): Promise<ClientProfile[]> {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, email, full_name, company, role, is_active, created_at')
+        .select('id, email, full_name, company, department, role, is_active, created_at')
         .order('full_name', { ascending: true })
         .order('email', { ascending: true });
 

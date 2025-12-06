@@ -12,8 +12,8 @@ interface SettingsPayload {
   userId?: string | null;
 }
 
-export async function GET(request: NextRequest, { params }: { params: { boardId: string } }) {
-  const boardId = params.boardId;
+export async function GET(request: NextRequest, { params }: { params: Promise<{ boardId: string }> }) {
+  const { boardId } = await params;
 
   if (!boardId) {
     return NextResponse.json({ error: 'Board-ID fehlt.' }, { status: 400 });
@@ -55,8 +55,8 @@ export async function GET(request: NextRequest, { params }: { params: { boardId:
   });
 }
 
-export async function POST(request: NextRequest, { params }: { params: { boardId: string } }) {
-  const boardId = params.boardId;
+export async function POST(request: NextRequest, { params }: { params: Promise<{ boardId: string }> }) {
+  const { boardId } = await params;
 
   if (!boardId) {
     return NextResponse.json({ error: 'Board-ID fehlt.' }, { status: 400 });

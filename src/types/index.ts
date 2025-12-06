@@ -83,12 +83,12 @@ export interface ProjectBoardCard {
   "Board Stage": string;
   "Status Kurz"?: string;
   Beschreibung?: string;
-  
+
   // Zuweisung & Termine
   Verantwortlich?: string;
   "Due Date"?: string;
   Swimlane?: string;
-  
+
   // Status & Flags
   Ampel?: string;         // "rot", "gelb", "grün"
   Eskalation?: string;    // "LK", "SK", ""
@@ -112,10 +112,13 @@ export interface ProjectBoardCard {
 
   // Start of Production
   SOP_Datum?: string;
-  
+
+  // Phase Transition
+  PhaseTransition?: boolean | string;
+
   // Medien & Anhänge
   Bild?: string;
-  
+
   // Team & Verlauf
   Team?: Array<{
     userId?: string;
@@ -125,12 +128,12 @@ export interface ProjectBoardCard {
     company?: string;
     role?: string;
   }>;
-  
+
   StatusHistory?: StatusEntry[];
-  
+
   // Checklisten: Stage -> Item -> Boolean
-  ChecklistDone?: Record<string, Record<string, boolean>>; 
-  
+  ChecklistDone?: Record<string, Record<string, boolean>>;
+
   // Frontend-Only (wird zur Laufzeit berechnet)
   position?: number;
   order?: number;

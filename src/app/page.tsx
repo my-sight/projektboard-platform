@@ -20,8 +20,11 @@ import {
   TextField,
   Typography,
   Divider,
-  useTheme
+  useTheme,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
+import { Star, StarBorder } from '@mui/icons-material';
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
 import { useAuth } from '../contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -68,6 +71,7 @@ export default function HomePage() {
   const [message, setMessage] = useState('');
   const [archivedCount, setArchivedCount] = useState<number | null>(null);
   const [kpiCount, setKpiCount] = useState(0);
+  const [favoriteBoardIds, setFavoriteBoardIds] = useState<Set<string>>(new Set());
 
   useEffect(() => { setArchivedCount(null); setKpiCount(0); }, [selectedBoard]);
 
@@ -116,11 +120,20 @@ export default function HomePage() {
     } catch (error) { setMessage(`❌ ${t('home.loadError')}`); }
   }, [isAdmin, supabase, user, t]);
 
+  const loadFavorites = useCallback(async () => {
+    if (!supabase || !user) return;
+    const { data } = await supabase.from('board_favorites').select('board_id').eq('user_id', user.id);
+    if (data) {
+      setFavoriteBoardIds(new Set(data.map(f => f.board_id)));
+    }
+  }, [supabase, user]);
+
   useEffect(() => {
     if (!user) { setIsAdmin(false); setIsSuperuser(false); setSelectedBoard(null); setViewMode('list'); return; }
     loadProfile();
     loadBoards();
-  }, [user, loadProfile, loadBoards]);
+    loadFavorites();
+  }, [user, loadProfile, loadBoards, loadFavorites]);
 
   const currentUserId = user?.id ?? null;
   const isSelectedBoardAdmin = selectedBoard?.boardAdminId === currentUserId;
@@ -156,6 +169,23 @@ export default function HomePage() {
       setBoards((prev) => prev.filter(b => b.id !== boardToDelete.id));
       setDeleteDialogOpen(false); setBoardToDelete(null); setMessage(`✅ ${t('home.boardDeleted')}`); setTimeout(() => setMessage(''), 3000);
     } catch (error) { setMessage(`❌ ${t('home.boardDeleteError')}`); }
+  };
+
+  const toggleFavorite = async (e: React.MouseEvent, boardId: string) => {
+    e.stopPropagation();
+    if (!supabase || !user) return;
+
+    const isFav = favoriteBoardIds.has(boardId);
+    const newFavs = new Set(favoriteBoardIds);
+    if (isFav) {
+      newFavs.delete(boardId);
+      setFavoriteBoardIds(newFavs);
+      await supabase.from('board_favorites').delete().eq('user_id', user.id).eq('board_id', boardId);
+    } else {
+      newFavs.add(boardId);
+      setFavoriteBoardIds(newFavs);
+      await supabase.from('board_favorites').insert({ user_id: user.id, board_id: boardId });
+    }
   };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 {t('home.loading')}</Typography></Box>;
@@ -266,6 +296,39 @@ export default function HomePage() {
 
       <Divider sx={{ my: 6 }} />
 
+      {/* --- FAVORITE BOARDS --- */}
+      {favoriteBoardIds.size > 0 && (
+        <>
+          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Star color="warning" /> {t('home.favorites')}
+          </Typography>
+          <Box sx={scrollContainerSx}>
+            {boards.filter(b => favoriteBoardIds.has(b.id)).map((board) => (
+              <Box key={board.id} sx={itemSx}>
+                <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 3 } }}>
+                  <CardContent sx={{ position: 'relative' }}>
+                    <IconButton
+                      onClick={(e) => toggleFavorite(e, board.id)}
+                      sx={{ position: 'absolute', top: 8, right: 8, color: 'warning.main' }}
+                    >
+                      <Star />
+                    </IconButton>
+                    <Typography variant="h6" noWrap title={board.name} sx={{ pr: 4 }}>{board.name}</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                      {board.description || t('home.noDescription')}
+                    </Typography>
+                  </CardContent>
+                  <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
+                    <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode(board.boardType === 'team' ? 'team-management' : 'management'); }}>{t('home.open')}</Button>
+                  </CardActions>
+                </Card>
+              </Box>
+            ))}
+          </Box>
+          <Divider sx={{ my: 6 }} />
+        </>
+      )}
+
       {/* --- PROJEKTBOARDS --- */}
       <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>{t('home.projectBoards')}</Typography>
       <Box sx={scrollContainerSx}>
@@ -281,11 +344,17 @@ export default function HomePage() {
         {standardBoards.map((board) => (
           <Box key={board.id} sx={itemSx}>
             <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 3 } }}>
-              <CardContent>
-                <Typography variant="h6" noWrap title={board.name}>{board.name}</Typography>
+              <CardContent sx={{ position: 'relative' }}>
+                <Typography variant="h6" noWrap title={board.name} sx={{ pr: 4 }}>{board.name}</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                   {board.description || t('home.noDescription')}
                 </Typography>
+                <IconButton
+                  onClick={(e) => toggleFavorite(e, board.id)}
+                  sx={{ position: 'absolute', top: 8, right: 8, color: favoriteBoardIds.has(board.id) ? 'warning.main' : 'action.disabled' }}
+                >
+                  {favoriteBoardIds.has(board.id) ? <Star /> : <StarBorder />}
+                </IconButton>
               </CardContent>
               <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
                 <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode('management'); }}>{t('home.open')}</Button>
@@ -311,11 +380,17 @@ export default function HomePage() {
         {teamBoards.map((board) => (
           <Box key={board.id} sx={itemSx}>
             <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 3 } }}>
-              <CardContent>
-                <Typography variant="h6" noWrap title={board.name}>{board.name}</Typography>
+              <CardContent sx={{ position: 'relative' }}>
+                <Typography variant="h6" noWrap title={board.name} sx={{ pr: 4 }}>{board.name}</Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                   {board.description || t('home.noDescription')}
                 </Typography>
+                <IconButton
+                  onClick={(e) => toggleFavorite(e, board.id)}
+                  sx={{ position: 'absolute', top: 8, right: 8, color: favoriteBoardIds.has(board.id) ? 'warning.main' : 'action.disabled' }}
+                >
+                  {favoriteBoardIds.has(board.id) ? <Star /> : <StarBorder />}
+                </IconButton>
               </CardContent>
               <CardActions sx={{ justifyContent: 'space-between', px: 2, pb: 2 }}>
                 <Button size="small" variant="contained" onClick={() => { setSelectedBoard(board); setViewMode('team-management'); }}>{t('home.open')}</Button>
