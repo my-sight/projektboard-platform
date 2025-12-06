@@ -455,7 +455,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       }
     }, [permissions.canEditContent, rows, idFor, boardId, supabase, enqueueSnackbar, selectedCard, t]);
 
-    const saveSettings = useCallback(async (options?: { skipMeta?: boolean }) => {
+    const saveSettings = useCallback(async (options?: { skipMeta?: boolean; settingsOverrides?: any }) => {
       if (!permissions.canManageSettings) return false;
 
       try {
@@ -465,7 +465,10 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           checklistTemplates,
           viewMode,
           density,
+          trLabel: customLabels.tr,
+          sopLabel: customLabels.sop,
           lastUpdated: new Date().toISOString(),
+          ...(options?.settingsOverrides || {})
         };
 
         const requestBody: any = { settings };
@@ -1255,6 +1258,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
     const SettingsDialog = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
       const [currentCols, setCurrentCols] = useState(cols);
       const [currentTemplates, setCurrentTemplates] = useState(checklistTemplates);
+      const [localCustomLabels, setLocalCustomLabels] = useState(customLabels);
       const [tab, setTab] = useState(0);
       const [newColName, setNewColName] = useState('');
 
@@ -1262,13 +1266,22 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         if (open) {
           setCurrentCols(cols);
           setCurrentTemplates(checklistTemplates);
+          setLocalCustomLabels(customLabels);
         }
-      }, [open, cols, checklistTemplates]);
+      }, [open, cols, checklistTemplates, customLabels]);
 
       const handleSave = async () => {
         setCols(currentCols);
         setChecklistTemplates(currentTemplates);
-        const success = await saveSettings();
+        setCustomLabels(localCustomLabels);
+        const success = await saveSettings({
+          settingsOverrides: {
+            cols: currentCols,
+            checklistTemplates: currentTemplates,
+            trLabel: localCustomLabels.tr,
+            sopLabel: localCustomLabels.sop
+          }
+        });
         if (success) {
           onClose();
           loadCards();
@@ -1314,6 +1327,10 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
               <Box sx={{ pt: 1 }}>
                 <TextField label={t('kanban.boardName')} value={boardName} onChange={(e) => setBoardName(e.target.value)} fullWidth sx={{ mt: 2 }} disabled={!permissions.canManageSettings} />
                 <TextField label={t('kanban.description')} value={boardDescription} onChange={(e) => setBoardDescription(e.target.value)} fullWidth multiline rows={2} sx={{ mt: 2 }} disabled={!permissions.canManageSettings} />
+                <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                  <TextField label="TR Label" value={localCustomLabels.tr} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, tr: e.target.value }))} fullWidth size="small" disabled={!permissions.canManageSettings} />
+                  <TextField label="SOP Label" value={localCustomLabels.sop} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, sop: e.target.value }))} fullWidth size="small" disabled={!permissions.canManageSettings} />
+                </Box>
               </Box>
             )}
 
@@ -1362,7 +1379,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
               </Box>
             )}
           </DialogContent>
-          <DialogActions><Button onClick={onClose}>{t('kanban.cancel')}</Button><Button onClick={handleSave} variant="contained" disabled={!permissions.canManageSettings}>{t('kanban.save')}</Button></DialogActions>
+          <DialogActions><Button onClick={onClose}>{t('kanban.cancel')}</Button><Button onClick={handleSave} variant="contained" disabled={!permissions.canManageSettings}>{t('kanban.saveAndClose')}</Button></DialogActions>
         </Dialog>
       );
     };

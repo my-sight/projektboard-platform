@@ -356,7 +356,7 @@ export function KanbanCard({
 
                 {(card.TR_Datum || card.TR_Neu) && (
                   <Box sx={{ mt: 1, pt: 0.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {renderTRChip('TR', trOriginalDate || undefined, 'original')}
+                    {renderTRChip(trLabel, trOriginalDate || undefined, 'original')}
                     {renderTRChip(t('kanban.currentNew'), trNeuDate || undefined, 'new')}
                     {trDiff !== null && trDiff !== 0 && (
                       <Chip
