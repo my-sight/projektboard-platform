@@ -79,6 +79,11 @@ const DEFAULT_COLS = [
   { id: "c8", name: "P8", done: true }
 ];
 
+const DEFAULT_TEMPLATES: Record<string, string[]> = {};
+DEFAULT_COLS.forEach(col => {
+  DEFAULT_TEMPLATES[col.name] = ["Anforderungen prüfen", "Dokumentation erstellen", "Qualitätskontrolle"];
+});
+
 const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanbanBoardProps>(
   function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, highlightCardId, onExit }: OriginalKanbanBoardProps, ref) {
     const supabase = useMemo(() => getSupabaseBrowserClient(), []);
@@ -132,13 +137,9 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
     const [boardName, setBoardName] = useState('');
     const [boardDescription, setBoardDescription] = useState('');
 
-    const [checklistTemplates, setChecklistTemplates] = useState<Record<string, string[]>>(() => {
-      const templates: Record<string, string[]> = {};
-      DEFAULT_COLS.forEach(col => {
-        templates[col.name] = ["Anforderungen prüfen", "Dokumentation erstellen", "Qualitätskontrolle"];
-      });
-      return templates;
-    });
+    const [checklistTemplates, setChecklistTemplates] = useState<Record<string, string[]>>(DEFAULT_TEMPLATES);
+
+    const [customLabels, setCustomLabels] = useState({ tr: 'TR', sop: 'SOP' });
 
     const inferStage = useCallback((r: ProjectBoardCard) => {
       const s = (r["Board Stage"] || "").trim();
@@ -262,6 +263,24 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         const stage = inferStage(card);
         kpis.columnDistribution[stage] = (kpis.columnDistribution[stage] || 0) + 1;
       });
+
+      // Calculate Next 3 TRs
+      kpis.nextTrs = activeCards
+        .map(card => {
+          const original = nullableDate(card["TR_Datum"]);
+          const current = nullableDate(card["TR_Neu"]);
+          const effectiveDate = current || original;
+          return { card, original, current, effectiveDate };
+        })
+        .filter(item => item.effectiveDate && item.effectiveDate >= now)
+        .sort((a, b) => (a.effectiveDate!.getTime() - b.effectiveDate!.getTime()))
+        .slice(0, 3)
+        .map(item => ({
+          ...item.card,
+          _originalDate: item.original,
+          _currentDate: item.current, // Helper props for UI
+          _effectiveDate: item.effectiveDate
+        }));
 
       return kpis;
     }, [rows, inferStage]);
@@ -561,6 +580,12 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           if (s.checklistTemplates) setChecklistTemplates(s.checklistTemplates);
           if (s.viewMode) setViewMode(s.viewMode);
           if (s.density) setDensity(s.density);
+          if (s.trLabel || s.sopLabel) {
+            setCustomLabels({
+              tr: s.trLabel || 'TR',
+              sop: s.sopLabel || 'SOP'
+            });
+          }
           return true;
         }
         return false;
@@ -1004,12 +1029,16 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           canModify={permissions.canEditContent}
           highlighted={highlightCardId === idFor(card) || highlightCardId === card.card_id || highlightCardId === card.id}
           checklistTemplates={checklistTemplates}
+          trLabel={customLabels.tr}
+          sopLabel={customLabels.sop}
         />
       ),
-      [filteredRows, permissions.canEditContent, density, idFor, inferStage, saveCards, patchCard, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users, highlightCardId, checklistTemplates]
+      [filteredRows, permissions.canEditContent, density, idFor, inferStage, saveCards, patchCard, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users, highlightCardId, checklistTemplates, customLabels]
     );
 
-    const TRKPIPopup = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+    function TRKPIPopup({ open, onClose, trLabel = 'TR' }: { open: boolean; onClose: () => void; trLabel?: string }) {
+      const kpis = calculateKPIs();
+      const { t } = useLanguage();
       const distribution = Object.entries(kpis.columnDistribution).map(([name, count]) => ({ name, count: count as number }));
       distribution.sort((a, b) => {
         const pos = (name: string) => DEFAULT_COLS.findIndex((c) => c.name === name);
@@ -1073,7 +1102,45 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
                   </Typography>
                 </Box>
 
-                <Typography variant="h6" gutterBottom sx={{ mt: 2, color: 'text.secondary' }}>{t('kanban.cardDistribution')}</Typography>
+                {/* Next 3 TRs */}
+                {/* Custom Label in Heading */}
+                <Typography variant="h6" gutterBottom sx={{ mt: 3, color: 'text.secondary' }}>
+                  {t('kanban.upcoming')} {trLabel}
+                </Typography>
+                <Grid container spacing={2}>
+                  {(kpis.nextTrs || []).map((card: any) => (
+                    <Grid item xs={12} md={4} key={idFor(card)}>
+                      <Card variant="outlined" sx={{ height: '100%', p: 1 }}>
+                        <CardContent sx={{ p: '16px !important' }}>
+                          <Typography variant="subtitle2" noWrap title={card.Teil} sx={{ fontWeight: 'bold' }}>
+                            {card.Teil || 'Kein Titel'}
+                          </Typography>
+                          <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
+                            #{card.Nummer || '-'}
+                          </Typography>
+
+                          <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <Typography variant="caption">Original:</Typography>
+                              <Typography variant="caption">{card._originalDate ? card._originalDate.toLocaleDateString('de-DE') : '-'}</Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <Typography variant="caption" sx={{ fontWeight: card._currentDate ? 'bold' : 'normal' }}>Aktuell (Neu):</Typography>
+                              <Typography variant="caption" sx={{ fontWeight: 'bold', color: card._currentDate ? 'primary.main' : 'text.primary' }}>
+                                {card._effectiveDate ? card._effectiveDate.toLocaleDateString('de-DE') : '-'}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                  {(!kpis.nextTrs || kpis.nextTrs.length === 0) && (
+                    <Grid item xs={12}><Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>Keine anstehenden TRs gefunden.</Typography></Grid>
+                  )}
+                </Grid>
+
+                <Typography variant="h6" gutterBottom sx={{ mt: 3, color: 'text.secondary' }}>{t('kanban.cardDistribution')}</Typography>
                 <Card variant="outlined">
                   <CardContent>
                     <List dense>
@@ -1360,7 +1427,17 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
         <Box sx={{ flex: 1, overflow: 'hidden' }}>
           {viewMode === 'columns' && (
-            <KanbanColumnsView rows={filteredRows} cols={cols} density={density} searchTerm={searchTerm} onDragEnd={onDragEnd} inferStage={inferStage} archiveColumn={() => { }} renderCard={renderCard} allowDrag={permissions.canEditContent} />
+            <KanbanColumnsView
+              rows={filteredRows}
+              cols={cols}
+              density={density}
+              searchTerm={searchTerm}
+              onDragEnd={onDragEnd}
+              inferStage={inferStage}
+              archiveColumn={() => { }}
+              renderCard={renderCard}
+              allowDrag={permissions.canEditContent}
+            />
           )}
         </Box>
 
@@ -1387,13 +1464,31 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           setSelectedCard={setSelectedCard}
           canEdit={permissions.canEditContent}
           onDelete={deleteCardPermanently}
+          trLabel={customLabels.tr}
+          sopLabel={customLabels.sop}
         />
-        <NewCardDialog newCardOpen={newCardOpen} setNewCardOpen={setNewCardOpen} cols={cols} lanes={lanes} rows={rows} setRows={setRows} users={users} boardMembers={boardMembers} />
-        <TRKPIPopup open={kpiPopupOpen} onClose={() => setKpiPopupOpen(false)} />
+        <NewCardDialog
+          newCardOpen={newCardOpen}
+          setNewCardOpen={setNewCardOpen}
+          cols={cols}
+          lanes={lanes}
+          rows={rows}
+          setRows={setRows}
+          users={users}
+          boardMembers={boardMembers}
+          trLabel={customLabels.tr}
+          sopLabel={customLabels.sop}
+        />
+        <TRKPIPopup
+          open={kpiPopupOpen}
+          onClose={() => setKpiPopupOpen(false)}
+          trLabel={customLabels.tr}
+        />
         <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
         <ArchiveDialog archiveOpen={archiveOpen} setArchiveOpen={setArchiveOpen} archivedCards={archivedCards} restoreCard={restoreCard} deleteCardPermanently={deleteCardPermanently} />
       </Box >
     );
   });
+
 
 export default OriginalKanbanBoard;

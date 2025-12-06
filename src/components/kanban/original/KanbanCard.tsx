@@ -37,6 +37,8 @@ export interface KanbanCardProps {
   highlighted?: boolean;
   checklistTemplates: Record<string, string[]>;
   onClick?: () => void;
+  trLabel?: string;
+  sopLabel?: string;
 }
 
 const statusKeys = ['message', 'qualitaet', 'kosten', 'termine'] as const;
@@ -58,7 +60,9 @@ export function KanbanCard({
   canModify,
   highlighted,
   checklistTemplates,
-  onClick
+  onClick,
+  trLabel = 'TR',
+  sopLabel = 'SOP',
 }: KanbanCardProps) {
   const { t } = useLanguage();
   const theme = useTheme();
@@ -263,9 +267,11 @@ export function KanbanCard({
                       <ArrowCircleRight fontSize="small" />
                     </IconButton>
 
+                    {/* SOP-Datum */}
                     {sopDate && (
                       <Chip
-                        label={`SOP: ${sopDate.toLocaleDateString('de-DE')}`}
+                        icon={<AccessTime sx={{ fontSize: '0.9rem' }} />}
+                        label={`${sopLabel}: ${sopDate.toLocaleDateString('de-DE')}`}
                         size="small"
                         sx={{
                           height: 18,
@@ -315,7 +321,7 @@ export function KanbanCard({
 
                 {currentSize === 'large' && card.Bild && (
                   <Box sx={{ mb: 1, borderRadius: 1, overflow: 'hidden' }}>
-                    <img src={card.Bild} alt={t('kanban.preview')} style={{ width: '100%', height: 'auto', maxHeight: 120, objectFit: 'cover' }} />
+                    <img src={card.Bild} alt={t('kanban.preview')} style={{ width: '100%', height: 'auto', maxHeight: 180, objectFit: 'contain' }} />
                   </Box>
                 )}
 

@@ -71,7 +71,9 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
       show_assignee: true,
       show_due_dates: true,
       auto_archive: false,
-      card_limit_per_column: null as number | null
+      card_limit_per_column: null as number | null,
+      trLabel: '',
+      sopLabel: ''
     }
   });
   const [saving, setSaving] = useState(false);
@@ -88,7 +90,9 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
           show_assignee: board.settings?.show_assignee ?? true,
           show_due_dates: board.settings?.show_due_dates ?? true,
           auto_archive: board.settings?.auto_archive ?? false,
-          card_limit_per_column: board.settings?.card_limit_per_column || null
+          card_limit_per_column: board.settings?.card_limit_per_column || null,
+          trLabel: board.settings?.trLabel || '',
+          sopLabel: board.settings?.sopLabel || ''
         }
       });
     }
@@ -206,6 +210,38 @@ export default function BoardSettings({ open, board, onClose, onSave }: BoardSet
                 <Typography variant="body2" color="text.secondary">
                   {t('boardSettings.cardsCount')}: {(board.columns ?? []).reduce((total, col) => total + (col.cards?.length || 0), 0)}
                 </Typography>
+              </Box>
+
+              <Divider />
+
+              <Box>
+                <Typography variant="subtitle2" gutterBottom>
+                  {t('boardSettings.customLabels')}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <TextField
+                    label="TR Label"
+                    size="small"
+                    fullWidth
+                    value={formData.settings.trLabel || ''}
+                    placeholder="TR"
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      settings: { ...prev.settings, trLabel: e.target.value }
+                    }))}
+                  />
+                  <TextField
+                    label="SOP Label"
+                    size="small"
+                    fullWidth
+                    value={formData.settings.sopLabel || ''}
+                    placeholder="SOP"
+                    onChange={(e) => setFormData(prev => ({
+                      ...prev,
+                      settings: { ...prev.settings, sopLabel: e.target.value }
+                    }))}
+                  />
+                </Box>
               </Box>
             </Box>
           </TabPanel>

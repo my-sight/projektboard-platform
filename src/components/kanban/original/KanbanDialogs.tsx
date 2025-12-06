@@ -106,6 +106,8 @@ export interface EditCardDialogProps {
   setSelectedCard: (card: ProjectBoardCard) => void;
   canEdit?: boolean;
   onDelete: (card: ProjectBoardCard) => void;
+  trLabel?: string;
+  sopLabel?: string;
 }
 
 export function EditCardDialog({
@@ -130,6 +132,8 @@ export function EditCardDialog({
   setSelectedCard,
   canEdit = true,
   onDelete,
+  trLabel = 'TR',
+  sopLabel = 'SOP',
 }: EditCardDialogProps) {
   const { t } = useLanguage();
   const [uploading, setUploading] = useState(false);
@@ -221,7 +225,7 @@ export function EditCardDialog({
           alignItems: 'center',
         }}
       >
-        <Typography variant="h6">
+        <Typography variant="h6" component="span">
           {canEdit ? t('kanban.editCard') : t('kanban.viewCard')}: {selectedCard.Nummer} - {selectedCard.Teil}
         </Typography>
         <IconButton onClick={handleClose}>×</IconButton>
@@ -366,10 +370,10 @@ export function EditCardDialog({
             </Box>
 
             <Box sx={{ mt: 3 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('kanban.trDate')}</Typography>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>{trLabel}-Datum</Typography>
               <Box sx={{ display: 'flex', gap: 2 }}>
                 <StandardDatePicker
-                  label={t('kanban.original')}
+                  label={`${trLabel} Original`}
                   value={selectedCard.TR_Datum ? dayjs(selectedCard.TR_Datum) : null}
                   onChange={(val) => handleDateChangeLocal('TR_Datum', val)}
                   onAccept={(val) => handleDateAccept('TR_Datum', val)}
@@ -377,7 +381,7 @@ export function EditCardDialog({
                 />
 
                 <StandardDatePicker
-                  label={t('kanban.currentNew')}
+                  label={`${trLabel} ${t('kanban.currentNew')}`}
                   value={selectedCard.TR_Neu ? dayjs(selectedCard.TR_Neu) : null}
                   onChange={(val) => handleDateChangeLocal('TR_Neu', val)}
                   onAccept={(val) => {
@@ -433,7 +437,7 @@ export function EditCardDialog({
                       }}
                     />
                   }
-                  label={t('kanban.trCompleted')}
+                  label={`${trLabel} erledigt`}
                   sx={{ mt: 1, ml: 2 }}
                 />
               )}
@@ -621,7 +625,7 @@ export function EditCardDialog({
             </Box>
 
             <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('kanban.sopDate')}</Typography>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>{sopLabel}-Datum</Typography>
               <StandardDatePicker
                 value={selectedCard.SOP_Datum ? dayjs(selectedCard.SOP_Datum) : null}
                 onChange={(val) => handleDateChangeLocal('SOP_Datum', val)}
@@ -659,7 +663,8 @@ export function EditCardDialog({
                 <img
                   src={selectedCard.Bild}
                   alt="Karten-Bild"
-                  style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  style={{ maxWidth: '100%', maxHeight: '500px', width: 'auto', height: 'auto', objectFit: 'contain', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+
                 />
               </Box>
             )}
@@ -752,7 +757,7 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
   );
 }
 
-export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users, boardMembers, saveCards }: any) {
+export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users, boardMembers, saveCards, trLabel = 'TR', sopLabel = 'SOP' }: any) {
   const { t } = useLanguage();
   const [newCard, setNewCard] = useState<any>({
     Nummer: '',
@@ -813,24 +818,24 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
         sx: { backgroundImage: 'none' }
       }}
     >
-      <DialogTitle>➕ Neue Karte erstellen</DialogTitle>
+      <DialogTitle>➕ {t('kanban.createCard')}</DialogTitle>
       <DialogContent sx={{ pt: 2 }}>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <TextField
-            label="Nummer *"
+            label={t('kanban.number') + " *"}
             value={newCard.Nummer}
             onChange={(e) => setNewCard({ ...newCard, Nummer: e.target.value })}
           />
           <TextField
-            label="Teil *"
+            label={t('kanban.title') + " *"}
             value={newCard.Teil}
             onChange={(e) => setNewCard({ ...newCard, Teil: e.target.value })}
           />
           <FormControl fullWidth>
-            <InputLabel>Verantwortlich</InputLabel>
+            <InputLabel>{t('kanban.responsible')}</InputLabel>
             <Select
               value={newCard.Verantwortlich}
-              label="Verantwortlich"
+              label={t('kanban.responsible')}
               onChange={(e) => {
                 const selectedName = e.target.value;
                 const selectedUser = boardMembers.find((u: any) => (u.full_name || u.name || u.email) === selectedName);
@@ -841,9 +846,9 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
                 });
               }}
             >
-              <MenuItem value=""><em>Nicht zugewiesen</em></MenuItem>
-              {boardMembers?.map((user: any) => (
-                <MenuItem key={user.id} value={user.full_name || user.name || user.email}>
+              <MenuItem value=""><em>{t('kanban.notAssigned')}</em></MenuItem>
+              {boardMembers.map((user: any) => (
+                <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
                   {user.full_name || user.name || user.email}
                 </MenuItem>
               ))}
@@ -851,9 +856,14 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
           </FormControl>
 
           <StandardDatePicker
-            label="Fälligkeitsdatum"
+            label={t('kanban.dueDate')}
             value={newCard['Due Date'] ? dayjs(newCard['Due Date']) : null}
-            onChange={(val) => setNewCard({ ...newCard, 'Due Date': val ? val.format('YYYY-MM-DD') : '' })}
+            onChange={(val) => {
+              setNewCard({
+                ...newCard,
+                'Due Date': val ? val.format('YYYY-MM-DD') : ''
+              });
+            }}
             slotProps={{ textField: { fullWidth: true } }}
           />
 
@@ -869,15 +879,33 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
             label="Priorität"
           />
 
-          <StandardDatePicker
-            label="SOP Datum"
-            value={newCard.SOP_Datum ? dayjs(newCard.SOP_Datum) : null}
-            onChange={(val) => setNewCard({ ...newCard, SOP_Datum: val ? val.format('YYYY-MM-DD') : '' })}
-            slotProps={{ textField: { fullWidth: true } }}
-          />
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <StandardDatePicker
+              label={`${trLabel} ${t('kanban.original')}`}
+              value={newCard.TR_Datum ? dayjs(newCard.TR_Datum) : null}
+              onChange={(val) => {
+                setNewCard({
+                  ...newCard,
+                  TR_Datum: val ? val.format('YYYY-MM-DD') : ''
+                });
+              }}
+              slotProps={{ textField: { fullWidth: true } }}
+            />
+            <StandardDatePicker
+              label={`${sopLabel} ${t('kanban.date')}`}
+              value={newCard.SOP_Datum ? dayjs(newCard.SOP_Datum) : null}
+              onChange={(val) => {
+                setNewCard({
+                  ...newCard,
+                  SOP_Datum: val ? val.format('YYYY-MM-DD') : ''
+                });
+              }}
+              slotProps={{ textField: { fullWidth: true } }}
+            />
+          </Box>
 
           <TextField
-            label="Status"
+            label={t('kanban.status')}
             value={newCard['Status Kurz']}
             onChange={(e) => setNewCard({ ...newCard, 'Status Kurz': e.target.value })}
             fullWidth
