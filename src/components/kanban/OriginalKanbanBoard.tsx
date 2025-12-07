@@ -1098,7 +1098,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
               <Grid item xs={12}>
                 <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: kpis.totalTrDeviation > 0 ? 'error.light' : 'success.light', borderRadius: 1, bgcolor: kpis.totalTrDeviation > 0 ? 'error.50' : 'success.50' }}>
                   <Typography variant="subtitle2" sx={{ color: kpis.totalTrDeviation > 0 ? 'error.main' : 'success.main', fontWeight: 'bold' }}>
-                    {t('kanban.totalTrDeviation').replace('{sign}', kpis.totalTrDeviation > 0 ? '+' : '').replace('{days}', String(kpis.totalTrDeviation))}
+                    {t('kanban.totalTrDeviation').replace('{label}', trLabel).replace('{sign}', kpis.totalTrDeviation > 0 ? '+' : '').replace('{days}', String(kpis.totalTrDeviation))}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     {t('kanban.trDeviationDesc')}
@@ -1128,7 +1128,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
                               <Typography variant="caption">{card._originalDate ? card._originalDate.toLocaleDateString('de-DE') : '-'}</Typography>
                             </Box>
                             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Typography variant="caption" sx={{ fontWeight: card._currentDate ? 'bold' : 'normal' }}>Aktuell (Neu):</Typography>
+                              <Typography variant="caption">Aktuell (Neu):</Typography>
                               <Typography variant="caption" sx={{ fontWeight: 'bold', color: card._currentDate ? 'primary.main' : 'text.primary' }}>
                                 {card._effectiveDate ? card._effectiveDate.toLocaleDateString('de-DE') : '-'}
                               </Typography>
