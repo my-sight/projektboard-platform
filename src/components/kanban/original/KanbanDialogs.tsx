@@ -140,6 +140,16 @@ export function EditCardDialog({
 
   if (!selectedCard) return null;
 
+  const updateStatusHistory = (newHistory: any[]) => {
+    const updatedCard = { ...selectedCard, StatusHistory: newHistory };
+    updateStatusSummary(updatedCard);
+    setSelectedCard(updatedCard as ProjectBoardCard);
+
+    // Important: Update the row in the main list so saveCards() sees the change
+    const newRows = rows.map(r => idFor(r) === idFor(updatedCard) ? updatedCard : r);
+    setRows(newRows as ProjectBoardCard[]);
+  };
+
   const stage = inferStage(selectedCard);
   const tasks = checklistTemplates[stage] || [];
   const stageChecklist = (selectedCard.ChecklistDone && selectedCard.ChecklistDone[stage]) || {};
@@ -189,8 +199,7 @@ export function EditCardDialog({
     const newHistory = [...selectedCard.StatusHistory];
     newHistory.splice(index, 1);
 
-    handlePatch('StatusHistory', newHistory);
-    updateStatusSummary({ ...selectedCard, StatusHistory: newHistory });
+    updateStatusHistory(newHistory);
   };
 
   const handleClose = () => {
@@ -280,10 +289,10 @@ export function EditCardDialog({
                               value={entry.message?.text || ''}
                               disabled={!canEdit}
                               onChange={(e) => {
-                                if (!entry.message) entry.message = { text: '', escalation: false };
-                                entry.message.text = e.target.value;
-                                updateStatusSummary(selectedCard);
-                                setRows([...rows]);
+                                const newHistory = JSON.parse(JSON.stringify(selectedCard.StatusHistory || []));
+                                if (!newHistory[idx].message) newHistory[idx].message = { text: '', escalation: false };
+                                newHistory[idx].message.text = e.target.value;
+                                updateStatusHistory(newHistory);
                               }}
                               onBlur={() => saveCards()}
                             />
@@ -307,10 +316,10 @@ export function EditCardDialog({
                                   value={val.text || ''}
                                   disabled={!canEdit}
                                   onChange={(e) => {
-                                    if (!entry[key]) entry[key] = { text: '', escalation: false };
-                                    entry[key].text = e.target.value;
-                                    updateStatusSummary(selectedCard);
-                                    setRows([...rows]);
+                                    const newHistory = JSON.parse(JSON.stringify(selectedCard.StatusHistory || []));
+                                    if (!newHistory[idx][key]) newHistory[idx][key] = { text: '', escalation: false };
+                                    newHistory[idx][key].text = e.target.value;
+                                    updateStatusHistory(newHistory);
                                   }}
                                   onBlur={() => saveCards()}
                                 />
@@ -323,11 +332,17 @@ export function EditCardDialog({
                                       checked={val.escalation || false}
                                       disabled={!canEdit}
                                       onChange={(e) => {
-                                        if (!entry[key]) entry[key] = { text: '', escalation: false };
-                                        entry[key].escalation = e.target.checked;
-                                        updateStatusSummary(selectedCard);
-                                        setRows([...rows]);
-                                        saveCards();
+                                        const newHistory = JSON.parse(JSON.stringify(selectedCard.StatusHistory || []));
+                                        if (!newHistory[idx][key]) newHistory[idx][key] = { text: '', escalation: false };
+                                        newHistory[idx][key].escalation = e.target.checked;
+                                        // Update state
+                                        const updatedCard = { ...selectedCard, StatusHistory: newHistory };
+                                        updateStatusSummary(updatedCard);
+                                        setSelectedCard(updatedCard as ProjectBoardCard);
+                                        const newRows = rows.map(r => idFor(r) === idFor(updatedCard) ? updatedCard : r);
+                                        setRows(newRows as ProjectBoardCard[]);
+                                        // Save immediately for checkboxes as there is no blur event
+                                        setTimeout(() => saveCards(), 0);
                                       }}
                                     />
                                   }
