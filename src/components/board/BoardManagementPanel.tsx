@@ -965,15 +965,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     try {
       const currentEscalation = editingEscalation;
 
-      // ✅ FIX: Mapping für DB (Y -> LK, R -> SK)
-      let categoryToSave = currentEscalation.category;
-      if (categoryToSave === 'Y') categoryToSave = 'LK';
-      if (categoryToSave === 'R') categoryToSave = 'SK';
-
       const payload = {
         board_id: boardId,
         card_id: currentEscalation.card_id,
-        category: categoryToSave,
+        category: currentEscalation.category,
         project_code: currentEscalation.project_code,
         project_name: currentEscalation.project_name,
         reason: stringOrNull(escalationDraft.reason),
