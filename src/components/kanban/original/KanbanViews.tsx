@@ -19,6 +19,8 @@ export interface KanbanColumnsViewProps {
   allowDrag: boolean;
 }
 
+import { useKanbanAutoScroll } from '@/hooks/useKanbanAutoScroll';
+
 export function KanbanColumnsView({
   rows,
   cols,
@@ -31,6 +33,8 @@ export function KanbanColumnsView({
   allowDrag,
 }: KanbanColumnsViewProps) {
   const { t } = useLanguage();
+  const { scrollContainerRef, onDragStart: onAutoScrollStart, onDragEnd: onAutoScrollEnd } = useKanbanAutoScroll();
+
   const filtered = rows.filter(
     (row) =>
       !row['Archived'] &&
@@ -42,11 +46,19 @@ export function KanbanColumnsView({
         )),
   );
 
-  const handleDragEnd = allowDrag ? onDragEnd : () => { };
+  const handleDragStart = () => {
+    onAutoScrollStart();
+  };
+
+  const handleDragEnd = (result: DropResult) => {
+    onAutoScrollEnd();
+    if (allowDrag) onDragEnd(result);
+  };
 
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
+    <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <Box
+        ref={scrollContainerRef}
         sx={{
           display: 'flex',
           gap: 2,
@@ -54,7 +66,6 @@ export function KanbanColumnsView({
           overflowX: 'auto',
           alignItems: 'flex-start',
           height: '100%',
-          minHeight: 'calc(100vh - 100px)',
         }}
       >
         {cols.map((col) => {
@@ -196,6 +207,8 @@ export interface KanbanSwimlaneViewProps {
 
 export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferStage, renderCard, allowDrag }: KanbanSwimlaneViewProps) {
   const { t } = useLanguage();
+  const { scrollContainerRef, onDragStart: onAutoScrollStart, onDragEnd: onAutoScrollEnd } = useKanbanAutoScroll();
+
   const filtered = rows.filter(
     (row) =>
       !row['Archived'] &&
@@ -216,11 +229,19 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
     ),
   );
 
-  const handleDragEnd = allowDrag ? onDragEnd : () => { };
+  const handleDragStart = () => {
+    onAutoScrollStart();
+  };
+
+  const handleDragEnd = (result: DropResult) => {
+    onAutoScrollEnd();
+    if (allowDrag) onDragEnd(result);
+  };
 
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
+    <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <Box
+        ref={scrollContainerRef}
         sx={{
           display: 'grid',
           gridTemplateColumns: `200px ${stages.map(() => '320px').join(' ')}`,
@@ -329,6 +350,8 @@ export interface KanbanLaneViewProps {
 
 export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, inferStage, renderCard, allowDrag }: KanbanLaneViewProps) {
   const { t } = useLanguage();
+  const { scrollContainerRef, onDragStart: onAutoScrollStart, onDragEnd: onAutoScrollEnd } = useKanbanAutoScroll();
+
   const filtered = rows.filter(
     (row) =>
       !row['Archived'] &&
@@ -343,11 +366,19 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
   const stages = cols.map((c) => c.name);
   const laneNames = lanes.length ? lanes : [t('kanban.generalLane')];
 
-  const handleDragEnd = allowDrag ? onDragEnd : () => { };
+  const handleDragStart = () => {
+    onAutoScrollStart();
+  };
+
+  const handleDragEnd = (result: DropResult) => {
+    onAutoScrollEnd();
+    if (allowDrag) onDragEnd(result);
+  };
 
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
+    <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       <Box
+        ref={scrollContainerRef}
         sx={{
           display: 'grid',
           gridTemplateColumns: `200px ${stages.map(() => '320px').join(' ')}`,
