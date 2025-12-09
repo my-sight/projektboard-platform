@@ -26,7 +26,7 @@ async function isTargetSuperuser(
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { client: supabase } = await resolveAdminSupabaseClient();
+  const { client: supabase, isService } = await resolveAdminSupabaseClient();
 
   try {
     if (await isTargetSuperuser(supabase, id)) {
@@ -68,6 +68,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       .select('*')
       .single();
 
+    console.log('PATCH result role:', data?.role);
+
     if (error) {
       console.error('Update user error:', error);
       const errorMessage = error.message ?? '';
@@ -85,7 +87,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       return NextResponse.json({ error: errorMessage }, { status: 400 });
     }
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ data, debug: { isService, updates, returnedRole: data?.role } });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('PATCH /users error:', error);

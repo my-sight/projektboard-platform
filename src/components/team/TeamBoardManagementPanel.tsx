@@ -788,7 +788,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                 <ArrowBackIcon />
               </IconButton>
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="subtitle1">KW {selectedWeek.split('-')[1]}</Typography>
+                <Typography variant="subtitle1">KW {isoWeekNumber(selectedWeekDate)}</Typography>
                 <Typography variant="caption" color="text.secondary">
                   {weekRangeLabel(startOfWeek(new Date(selectedWeek)))}
                 </Typography>
@@ -825,7 +825,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                     <TableCell key={history.week} align="center">
                       <Stack spacing={0.5} alignItems="center">
                         <Button variant="text" size="small" onClick={() => selectWeek(history.week)}>
-                          KW {history.week.split('-')[1]}
+                          KW {isoWeekNumber(startOfWeek(new Date(history.week)))}
                         </Button>
                         <Typography variant="caption" color="text.secondary">
                           {weekRangeLabel(history.date)}

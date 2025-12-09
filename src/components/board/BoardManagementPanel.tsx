@@ -1165,6 +1165,16 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                 <IconButton onClick={() => adjustWeek(1)} aria-label="Nächste Woche">
                   <ArrowForwardIcon />
                 </IconButton>
+                {canEdit && (
+                  <Button
+                    variant="contained"
+                    onClick={saveAttendance}
+                    disabled={attendanceSaving || members.length === 0}
+                    sx={{ ml: 1 }}
+                  >
+                    {t('boardManagement.saveButton') || 'Speichern'}
+                  </Button>
+                )}
               </Stack>
             </Stack>
 

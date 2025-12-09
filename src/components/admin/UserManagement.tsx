@@ -278,9 +278,14 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const mutateUser = async (userId: string, payload: any, successMsg: string) => {
     try {
       const res = await fetch(`/api/admin/users/${userId}`, { method: 'PATCH', headers: postJson, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error((await res.json()).error);
-      const { data } = await res.json();
+      const json = await res.json();
+      console.log('mutateUser response:', json);
+      if (!res.ok) throw new Error(json.error);
+      const { data } = json;
+
+      // Update local state immediately
       setUsers(prev => prev.map(u => u.id === userId ? normalizeUserProfile({ ...u, ...data }) : u));
+
       setMessage(`✅ ${successMsg}`);
       setTimeout(() => setMessage(''), 3000);
     } catch (e: any) { setMessage(`❌ ${e.message}`); }
