@@ -137,6 +137,10 @@ export interface ProjectBoardCard {
   // Frontend-Only (wird zur Laufzeit berechnet)
   position?: number;
   order?: number;
+
+  // Timestamps (PocketBase)
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type ViewMode = 'columns' | 'swim' | 'lane';

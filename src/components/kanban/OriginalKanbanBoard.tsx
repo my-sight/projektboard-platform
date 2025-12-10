@@ -167,6 +167,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         card.position = item.position;
         card.order = item.position;
       }
+      card.created_at = item.created;
+      card.updated_at = item.updated;
       return card;
     }, []);
 
