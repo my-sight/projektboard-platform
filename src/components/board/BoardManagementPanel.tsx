@@ -765,23 +765,36 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       // Sort client-side
       data.sort((a, b) => new Date(b.week_start).getTime() - new Date(a.week_start).getTime());
 
+      console.log('UseEffect Load Attendance', data.length);
       const map: Record<string, Record<string, AttendanceRecord | undefined>> = {};
       data.forEach(entry => {
-        // PB date strings
-        const ws = entry.week_start || entry.date || new Date().toISOString(); // Fallback
-        const weekKey = ws.split('T')[0]; // Simplify date handling
+        // PB date strings can be "YYYY-MM-DD HH:mm:ss.SSSZ" or "YYYY-MM-DD"
+        // Robust way: Parse to Date, then to ISO string
+        let weekKey = '';
+        try {
+          const d = new Date(entry.week_start || entry.date || new Date());
+          weekKey = d.toISOString().split('T')[0];
+        } catch (e) {
+          weekKey = new Date().toISOString().split('T')[0];
+        }
+
         if (!map[weekKey]) {
           map[weekKey] = {};
         }
-        map[weekKey][entry.profile_id] = {
-          id: entry.id,
-          board_id: entry.board_id,
-          profile_id: entry.profile_id,
-          week_start: entry.week_start,
-          status: entry.status
-        } as AttendanceRecord;
+        if (entry.user_id) {
+          // console.log('Mapping entry:', entry.id, 'User:', entry.user_id, 'Week:', weekKey, 'Status:', entry.status);
+          map[weekKey][entry.user_id] = {
+            id: entry.id,
+            board_id: entry.board_id,
+            profile_id: entry.user_id,
+            week_start: entry.week_start,
+            status: entry.status
+          } as AttendanceRecord;
+        } else {
+          console.warn('Entry missing user_id:', entry);
+        }
       });
-
+      console.log('Attendance Map Keys:', Object.keys(map));
       setAttendanceByWeek(map);
       const ordered = expandWeekRange(Object.keys(map), selectedWeek);
       setOrderedWeeks(ordered);
@@ -828,18 +841,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         const existing = attendanceByWeek[weekKey]?.[member.profile_id];
 
         if (existing) {
-          // Update if changed
           if (existing.status !== status) {
             await pb.collection('board_attendance').update(existing.id, { status });
           }
         } else {
-          // Create if not present (only if absent? No, record presence too)
-          // Actually logic usually is: if present is default, maybe we don't store?
-          // But here we urge to store 'present' or 'absent'.
-          // Code shows we store it.
           await pb.collection('board_attendance').create({
             board_id: boardId,
-            profile_id: member.profile_id,
+            user_id: member.profile_id,
             week_start: selectedWeek,
             status
           });

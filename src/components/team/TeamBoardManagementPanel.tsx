@@ -288,34 +288,46 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     const run = async () => {
       setLoading(true);
       setMessage(null);
+      console.log('TeamBoardManagementPanel loading for boardId:', boardId);
       try {
         const profileList = await fetchClientProfiles();
         if (!active) return;
         setProfiles(profileList);
 
         const [memberResult, attendanceResult, topicsResult] = await Promise.all([
-          pb.collection('board_members').getFullList({
-            filter: `board_id="${boardId}"`,
-            sort: 'created'
-          }),
-          pb.collection('board_attendance').getFullList({
-            filter: `board_id="${boardId}"`,
-            sort: 'week_start'
-          }),
-          pb.collection('board_top_topics').getFullList({
-            filter: `board_id="${boardId}"`,
-            sort: 'position'
-          })
+          (async () => {
+            try {
+              console.log('Loading board_members...');
+              return await pb.collection('board_members').getFullList({ filter: `board_id="${boardId}"` });
+            } catch (e: any) { console.error('Failed to load members:', e); throw e; }
+          })(),
+          (async () => {
+            try {
+              console.log('Loading board_attendance...');
+              return await pb.collection('board_attendance').getFullList({ filter: `board_id="${boardId}"` });
+            } catch (e: any) { console.error('Failed to load attendance:', e); throw e; }
+          })(),
+          (async () => {
+            try {
+              console.log('Loading board_top_topics...');
+              return await pb.collection('board_top_topics').getFullList({ filter: `board_id="${boardId}"` });
+            } catch (e: any) { console.error('Failed to load top topics:', e); throw e; }
+          })()
         ]);
 
         const mappedMembers: MemberWithProfile[] = memberResult
           .map((row) => {
-            const profile = profileList.find((entry) => entry.id === row.profile_id) ?? null;
+            const userId = row.user_id || row.profile_id;
+            const profile = profileList.find((entry) => entry.id === userId) ?? null;
+
+            console.log('Mapping member:', { rowId: row.id, userId, profileFound: !!profile, email: profile?.email });
+
             if (profile && !isSuperuserEmail(profile.email) && (profile.is_active ?? true)) {
-              return { id: row.id, profile_id: row.profile_id, profile };
+              return { id: row.id, profile_id: userId, profile };
             }
-            if (!profile) {
-              return { id: row.id, profile_id: row.profile_id, profile: null };
+            if (!profile && userId) {
+              console.warn('Member profile not found for ID:', userId);
+              return { id: row.id, profile_id: userId, profile: null };
             }
             return null;
           })
@@ -326,12 +338,25 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
         const attendanceMap: Record<string, Record<string, AttendanceRecord>> = {};
         (attendanceResult as any[]).forEach((row) => {
           // PB date strings usually iso8601, but row.week_start might be date only depending on schema type 'date' which returns string
+          // Fix: row.user_id is the field in DB, but we might have been looking for profile_id before.
+          // In migration, user_id is the relation to users collection.
+          const userId = row.user_id || row.profile_id;
+
           const dateStr = row.week_start.split('T')[0];
           const weekKey = isoDate(startOfWeek(new Date(dateStr)));
           if (!attendanceMap[weekKey]) {
             attendanceMap[weekKey] = {};
           }
-          attendanceMap[weekKey][row.profile_id] = { id: row.id, board_id: row.board_id, profile_id: row.profile_id, week_start: row.week_start, status: row.status } as AttendanceRecord;
+          // Store using profile_id (userId) as key to match member.profile_id
+          if (userId) {
+            attendanceMap[weekKey][userId] = {
+              id: row.id,
+              board_id: row.board_id,
+              profile_id: userId,
+              week_start: row.week_start,
+              status: row.status
+            } as AttendanceRecord;
+          }
         });
         setAttendanceByWeek(attendanceMap);
 
@@ -363,7 +388,8 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
       } catch (cause: any) {
         if (!active) return;
         console.error('❌ Fehler beim Laden des Team-Managements', cause);
-        setMessage(t('boardManagement.loadError') + ': ' + cause.message);
+        const detail = cause?.response?.message || cause?.message || JSON.stringify(cause);
+        setMessage(t('boardManagement.loadError') + ': ' + detail);
       } finally {
         if (active) {
           setLoading(false);
@@ -454,7 +480,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
           // Since we loaded data, we trust existing. If not found, create.
           const created = await pb.collection('board_attendance').create({
             board_id: boardId,
-            profile_id: member.profile_id,
+            user_id: member.profile_id, // Fix: Use user_id field for DB relation
             week_start: weekDate, // PB accepts date object or string
             status
           });
@@ -496,7 +522,8 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     try {
       const data = await pb.collection('board_members').create({
         board_id: boardId,
-        profile_id: memberSelect
+        user_id: memberSelect,
+        profile_id: memberSelect // Maintain both for compatibility
       });
 
       const profile = profiles.find((entry) => entry.id === memberSelect) ?? null;

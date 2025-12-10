@@ -22,8 +22,8 @@ async function verify() {
         console.log(`\nFound ${users.length} users in 'users' collection:`);
         users.forEach(u => console.log(` - ${u.email} (${u.id})`));
 
-        const collection = await pb.collections.getOne('users');
-        console.log('\nUsers Collection Schema:');
+        const collection = await pb.collections.getOne('board_attendance');
+        console.log('\nAttendance Collection Schema:');
         console.log(JSON.stringify(collection, null, 2));
 
         const boards = await pb.collection('kanban_boards').getFullList();

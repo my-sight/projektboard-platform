@@ -290,6 +290,14 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
     }, [rows, inferStage]);
 
     const kpis = calculateKPIs();
+    const distribution = useMemo(() => {
+      const dist = Object.entries(kpis.columnDistribution).map(([name, count]) => ({ name, count: count as number }));
+      dist.sort((a, b) => {
+        const pos = (name: string) => DEFAULT_COLS.findIndex((c) => c.name === name);
+        return pos(a.name) - pos(b.name);
+      });
+      return dist;
+    }, [kpis.columnDistribution]);
     const kpiBadgeCount = useMemo(() => {
       return kpis.trOverdue.length + kpis.yEscalations.length + kpis.rEscalations.length;
     }, [kpis]);
@@ -992,237 +1000,6 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       [filteredRows, permissions.canEditContent, density, idFor, inferStage, saveCards, patchCard, setEditModalOpen, setEditTabValue, setRows, setSelectedCard, users, highlightCardId, checklistTemplates, customLabels]
     );
 
-    function TRKPIPopup({ open, onClose, trLabel = 'TR' }: { open: boolean; onClose: () => void; trLabel?: string }) {
-      const kpis = calculateKPIs();
-      const { t } = useLanguage();
-      const distribution = Object.entries(kpis.columnDistribution).map(([name, count]) => ({ name, count: count as number }));
-      distribution.sort((a, b) => {
-        const pos = (name: string) => DEFAULT_COLS.findIndex((c) => c.name === name);
-        return pos(a.name) - pos(b.name);
-      });
-
-      const percentage = (count: number) => kpis.totalCards > 0 ? Math.round((count / kpis.totalCards) * 100) : 0;
-      const isOverdue = kpis.trOverdue.length > 0;
-      const hasEscalations = kpis.yEscalations.length > 0 || kpis.rEscalations.length > 0;
-
-      return (
-        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Assessment color="primary" />
-            {t('kanban.kpiTitle')}
-            <IconButton onClick={onClose} sx={{ ml: 'auto' }}><Close /></IconButton>
-          </DialogTitle>
-          <DialogContent dividers>
-            <Grid container spacing={3}>
-              <Grid item xs={12} sm={4}>
-                <Card variant="outlined" sx={{ height: '100%', backgroundColor: isOverdue ? '#ffebee' : '#f0f0f0' }}>
-                  <CardContent>
-                    <Typography variant="subtitle2" color="text.secondary">{t('kanban.overdueTrs')}</Typography>
-                    <Typography variant="h4" color={isOverdue ? 'error.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
-                      {kpis.trOverdue.length}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">{t('kanban.totalCards').replace('{count}', String(kpis.totalCards))}</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Card variant="outlined" sx={{ height: '100%', backgroundColor: hasEscalations ? '#fff3e0' : '#f0f0f0' }}>
-                  <CardContent>
-                    <Typography variant="subtitle2" color="text.secondary">{t('kanban.escalations')}</Typography>
-                    <Typography variant="h4" color={hasEscalations ? 'warning.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
-                      {kpis.yEscalations.length + kpis.rEscalations.length}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">Y: {kpis.yEscalations.length} / R: {kpis.rEscalations.length}</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <Card variant="outlined" sx={{ height: '100%', backgroundColor: kpis.ampelGreen > 0 ? '#e8f5e8' : '#f0f0f0' }}>
-                  <CardContent>
-                    <Typography variant="subtitle2" color="text.secondary">{t('kanban.total')}</Typography>
-                    <Typography variant="h4" color="text.primary" sx={{ fontWeight: 700 }}>
-                      {kpis.totalCards}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">{t('kanban.allCards')}</Typography>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12}>
-                <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: kpis.totalTrDeviation > 0 ? 'error.light' : 'success.light', borderRadius: 1, bgcolor: kpis.totalTrDeviation > 0 ? 'error.50' : 'success.50' }}>
-                  <Typography variant="subtitle2" sx={{ color: kpis.totalTrDeviation > 0 ? 'error.main' : 'success.main', fontWeight: 'bold' }}>
-                    {t('kanban.totalTrDeviation').replace('{label}', trLabel).replace('{sign}', kpis.totalTrDeviation > 0 ? '+' : '').replace('{days}', String(kpis.totalTrDeviation))}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {t('kanban.trDeviationDesc')}
-                  </Typography>
-                </Box>
-
-                {/* Next 3 TRs */}
-                {/* Custom Label in Heading */}
-                <Typography variant="h6" gutterBottom sx={{ mt: 3, color: 'text.secondary' }}>
-                  {t('kanban.upcoming')} {trLabel}
-                </Typography>
-                <Grid container spacing={2}>
-                  {(kpis.nextTrs || []).map((card: any) => (
-                    <Grid item xs={12} md={4} key={idFor(card)}>
-                      <Card variant="outlined" sx={{ height: '100%', p: 1 }}>
-                        <CardContent sx={{ p: '16px !important' }}>
-                          <Typography variant="subtitle2" noWrap title={card.Teil} sx={{ fontWeight: 'bold' }}>
-                            {card.Teil || 'Kein Titel'}
-                          </Typography>
-                          <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
-                            #{card.Nummer || '-'}
-                          </Typography>
-
-                          <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Typography variant="caption">Original:</Typography>
-                              <Typography variant="caption">{card._originalDate ? card._originalDate.toLocaleDateString('de-DE') : '-'}</Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <Typography variant="caption">Aktuell (Neu):</Typography>
-                              <Typography variant="caption" sx={{ fontWeight: 'bold', color: card._currentDate ? 'primary.main' : 'text.primary' }}>
-                                {card._effectiveDate ? card._effectiveDate.toLocaleDateString('de-DE') : '-'}
-                              </Typography>
-                            </Box>
-                          </Box>
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  ))}
-                  {(!kpis.nextTrs || kpis.nextTrs.length === 0) && (
-                    <Grid item xs={12}><Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>Keine anstehenden TRs gefunden.</Typography></Grid>
-                  )}
-                </Grid>
-
-                <Typography variant="h6" gutterBottom sx={{ mt: 3, color: 'text.secondary' }}>{t('kanban.cardDistribution')}</Typography>
-                <Card variant="outlined">
-                  <CardContent>
-                    <List dense>
-                      {distribution.map((item, index) => (
-                        <ListItem key={index} disableGutters sx={{ py: 0.5 }}>
-                          <Grid container alignItems="center" spacing={2}>
-                            <Grid item xs={4}>
-                              <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.name}</Typography>
-                            </Grid>
-                            <Grid item xs={6}>
-                              <Box sx={{ width: '100%', height: '10px', backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: '4px' }}>
-                                <Box sx={{
-                                  width: `${percentage(item.count)}%`,
-                                  height: '100%',
-                                  backgroundColor: DEFAULT_COLS.find(c => c.name === item.name)?.done ? '#4caf50' : '#2196f3',
-                                  borderRadius: '4px',
-                                  transition: 'width 0.5s ease',
-                                }} />
-                              </Box>
-                            </Grid>
-                            <Grid item xs={2} sx={{ textAlign: 'right' }}>
-                              <Typography variant="caption" sx={{ fontWeight: 600 }}>{item.count} ({percentage(item.count)}%)</Typography>
-                            </Grid>
-                          </Grid>
-                        </ListItem>
-                      ))}
-                    </List>
-                  </CardContent>
-                </Card>
-              </Grid>
-            </Grid>
-          </DialogContent>
-          <DialogActions><Button onClick={onClose} variant="outlined">{t('kanban.close')}</Button></DialogActions>
-        </Dialog>
-      );
-    };
-
-    const TopTopicsDialog = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
-      const [localTopics, setLocalTopics] = useState<TopTopic[]>(topTopics);
-      useEffect(() => setLocalTopics(topTopics), [topTopics]);
-
-      const handleSaveTopic = async (index: number, field: keyof TopTopic, value: any) => {
-        const topic = localTopics[index];
-        const updated = { ...topic, [field]: value };
-        const newTopics = [...localTopics];
-        newTopics[index] = updated;
-        setLocalTopics(newTopics);
-        if (!topic.id.startsWith('temp-')) {
-          await pb.collection('board_top_topics').update(topic.id, { [field]: value });
-        }
-      };
-
-      const handleDateAccept = async (index: number, newValue: dayjs.Dayjs | null) => {
-        if (!newValue) return;
-        const d = newValue.format('YYYY-MM-DD');
-        const kw = `${newValue.year()}-W${newValue.isoWeek()}`;
-        const topic = localTopics[index];
-        const updated = { ...topic, due_date: d, calendar_week: kw };
-        const newTopics = [...localTopics];
-        newTopics[index] = updated;
-        setLocalTopics(newTopics);
-        if (!topic.id.startsWith('temp-')) {
-          await pb.collection('board_top_topics').update(topic.id, { due_date: d, calendar_week: kw });
-        }
-      };
-
-      const handleAdd = async () => {
-        if (localTopics.length >= 5) return;
-        try {
-          const data = await pb.collection('board_top_topics').create({
-            board_id: boardId,
-            title: '',
-            position: localTopics.length
-          });
-          // Adapt PB record to TopTopic
-          const newTopic: TopTopic = {
-            id: data.id,
-            title: data.title,
-            position: data.position,
-            due_date: data.due_date,
-            calendar_week: data.calendar_week
-          };
-          setLocalTopics([...localTopics, newTopic]);
-        } catch (e) {
-          console.error(e);
-        }
-      };
-
-      const handleDelete = async (id: string) => {
-        await pb.collection('board_top_topics').delete(id);
-        setLocalTopics(localTopics.filter(t => t.id !== id));
-      };
-
-      return (
-        <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Star color="warning" /> {t('kanban.topTopicsTitle')}
-          </DialogTitle>
-          <DialogContent>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              {localTopics.length === 0 && <Typography variant="body2" color="text.secondary">{t('kanban.noTopTopics')}</Typography>}
-              {localTopics.map((topic, index) => (
-                <Box key={topic.id} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-                  <TextField fullWidth size="small" placeholder={t('kanban.topicPlaceholder')} value={topic.title} onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} />
-
-                  <Box sx={{ width: 200 }}>
-                    <StandardDatePicker
-                      label={t('kanban.dueDate')}
-                      value={topic.due_date ? dayjs(topic.due_date) : null}
-                      onChange={(newValue) => handleDateAccept(index, newValue)}
-                    />             </Box>
-                  <Chip label={topic.calendar_week ? `KW ${topic.calendar_week.split('-W')[1]}` : 'KW -'} />
-                  <IconButton color="error" onClick={() => handleDelete(topic.id)}><DeleteOutline /></IconButton>
-                </Box>
-              ))}
-              {localTopics.length < 5 && <Button startIcon={<AddCircle />} onClick={handleAdd}>{t('kanban.addTopic')}</Button>}
-            </Stack>
-          </DialogContent>
-          <DialogActions><Button onClick={onClose}>{t('kanban.close')}</Button></DialogActions>
-        </Dialog >
-      );
-    };
-
-
-    // SettingsDialog removed and replaced by external component
-
 
     return (
       <Box sx={{ height: 'calc(100vh - 120px)', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg)', color: 'var(--ink)', '&': { '--colw': '300px', '--rowheadw': '260px' } as any }}>
@@ -1357,12 +1134,273 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           open={kpiPopupOpen}
           onClose={() => setKpiPopupOpen(false)}
           trLabel={customLabels.tr}
+          kpis={kpis}
+          distribution={distribution}
+          t={t}
         />
-        <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
+        <TopTopicsDialog
+          open={topTopicsOpen}
+          onClose={() => setTopTopicsOpen(false)}
+          topTopics={topTopics}
+          boardId={boardId}
+          t={t}
+        />
         <ArchiveDialog archiveOpen={archiveOpen} setArchiveOpen={setArchiveOpen} archivedCards={archivedCards} restoreCard={restoreCard} deleteCardPermanently={deleteCardPermanently} />
       </Box >
     );
   });
 
+
+
+function TRKPIPopup({
+  open,
+  onClose,
+  trLabel,
+  kpis,
+  distribution,
+  t
+}: {
+  open: boolean;
+  onClose: () => void;
+  trLabel: string;
+  kpis: any;
+  distribution: any[];
+  t: any;
+}) {
+  const idFor = (r: any) => {
+    if (r["UID"]) return String(r["UID"]);
+    if (r.id) return String(r.id);
+    if (r.card_id) return String(r.card_id);
+    return [r["Nummer"], r["Teil"]].map(x => String(x || "").trim()).join(" | ");
+  };
+
+  const percentage = (count: number) => kpis.totalCards > 0 ? Math.round((count / kpis.totalCards) * 100) : 0;
+  const isOverdue = kpis.trOverdue.length > 0;
+  const hasEscalations = kpis.yEscalations.length > 0 || kpis.rEscalations.length > 0;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Assessment color="primary" />
+        {t('kanban.kpiTitle')}
+        <IconButton onClick={onClose} sx={{ ml: 'auto' }}><Close /></IconButton>
+      </DialogTitle>
+      <DialogContent dividers>
+        <Grid container spacing={3}>
+          <Grid item xs={12} sm={4}>
+            <Card variant="outlined" sx={{ height: '100%', backgroundColor: isOverdue ? '#ffebee' : '#f0f0f0' }}>
+              <CardContent>
+                <Typography variant="subtitle2" color="text.secondary">{t('kanban.overdueTrs')}</Typography>
+                <Typography variant="h4" color={isOverdue ? 'error.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
+                  {kpis.trOverdue.length}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">{t('kanban.totalCards').replace('{count}', String(kpis.totalCards))}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Card variant="outlined" sx={{ height: '100%', backgroundColor: hasEscalations ? '#fff3e0' : '#f0f0f0' }}>
+              <CardContent>
+                <Typography variant="subtitle2" color="text.secondary">{t('kanban.escalations')}</Typography>
+                <Typography variant="h4" color={hasEscalations ? 'warning.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
+                  {kpis.yEscalations.length + kpis.rEscalations.length}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">Y: {kpis.yEscalations.length} / R: {kpis.rEscalations.length}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={4}>
+            <Card variant="outlined" sx={{ height: '100%', backgroundColor: kpis.ampelGreen > 0 ? '#e8f5e8' : '#f0f0f0' }}>
+              <CardContent>
+                <Typography variant="subtitle2" color="text.secondary">{t('kanban.total')}</Typography>
+                <Typography variant="h4" color="text.primary" sx={{ fontWeight: 700 }}>
+                  {kpis.totalCards}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">{t('kanban.allCards')}</Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12}>
+            <Box sx={{ mt: 2, p: 2, border: '1px solid', borderColor: kpis.totalTrDeviation > 0 ? 'error.light' : 'success.light', borderRadius: 1, bgcolor: kpis.totalTrDeviation > 0 ? 'error.50' : 'success.50' }}>
+              <Typography variant="subtitle2" sx={{ color: kpis.totalTrDeviation > 0 ? 'error.main' : 'success.main', fontWeight: 'bold' }}>
+                {t('kanban.totalTrDeviation').replace('{label}', trLabel).replace('{sign}', kpis.totalTrDeviation > 0 ? '+' : '').replace('{days}', String(kpis.totalTrDeviation))}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {t('kanban.trDeviationDesc')}
+              </Typography>
+            </Box>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 3, color: 'text.secondary' }}>
+              {t('kanban.upcoming')} {trLabel}
+            </Typography>
+            <Grid container spacing={2}>
+              {(kpis.nextTrs || []).map((card: any) => (
+                <Grid item xs={12} md={4} key={idFor(card)}>
+                  <Card variant="outlined" sx={{ height: '100%', p: 1 }}>
+                    <CardContent sx={{ p: '16px !important' }}>
+                      <Typography variant="subtitle2" noWrap title={card.Teil} sx={{ fontWeight: 'bold' }}>
+                        {card.Teil || 'Kein Titel'}
+                      </Typography>
+                      <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
+                        #{card.Nummer || '-'}
+                      </Typography>
+
+                      <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="caption">Original:</Typography>
+                          <Typography variant="caption">{card._originalDate ? card._originalDate.toLocaleDateString('de-DE') : '-'}</Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="caption">Aktuell (Neu):</Typography>
+                          <Typography variant="caption" sx={{ fontWeight: 'bold', color: card._currentDate ? 'primary.main' : 'text.primary' }}>
+                            {card._effectiveDate ? card._effectiveDate.toLocaleDateString('de-DE') : '-'}
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+              {(!kpis.nextTrs || kpis.nextTrs.length === 0) && (
+                <Grid item xs={12}><Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>Keine anstehenden TRs gefunden.</Typography></Grid>
+              )}
+            </Grid>
+
+            <Typography variant="h6" gutterBottom sx={{ mt: 3, color: 'text.secondary' }}>{t('kanban.cardDistribution')}</Typography>
+            <Card variant="outlined">
+              <CardContent>
+                <List dense>
+                  {distribution.map((item, index) => (
+                    <ListItem key={index} disableGutters sx={{ py: 0.5 }}>
+                      <Grid container alignItems="center" spacing={2}>
+                        <Grid item xs={4}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.name}</Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Box sx={{ width: '100%', height: '10px', backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: '4px' }}>
+                            <Box sx={{
+                              width: `${percentage(item.count)}%`,
+                              height: '100%',
+                              backgroundColor: DEFAULT_COLS.find(c => c.name === item.name)?.done ? '#4caf50' : '#2196f3',
+                              borderRadius: '4px',
+                              transition: 'width 0.5s ease',
+                            }} />
+                          </Box>
+                        </Grid>
+                        <Grid item xs={2} sx={{ textAlign: 'right' }}>
+                          <Typography variant="caption" sx={{ fontWeight: 600 }}>{item.count} ({percentage(item.count)}%)</Typography>
+                        </Grid>
+                      </Grid>
+                    </ListItem>
+                  ))}
+                </List>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </DialogContent>
+      <DialogActions><Button onClick={onClose} variant="outlined">{t('kanban.close')}</Button></DialogActions>
+    </Dialog>
+  );
+};
+
+function TopTopicsDialog({
+  open,
+  onClose,
+  topTopics,
+  boardId,
+  t
+}: {
+  open: boolean;
+  onClose: () => void;
+  topTopics: TopTopic[];
+  boardId: string;
+  t: any;
+}) {
+  const [localTopics, setLocalTopics] = useState<TopTopic[]>(topTopics);
+  useEffect(() => setLocalTopics(topTopics), [topTopics]);
+
+  const handleSaveTopic = async (index: number, field: keyof TopTopic, value: any) => {
+    const topic = localTopics[index];
+    const updated = { ...topic, [field]: value };
+    const newTopics = [...localTopics];
+    newTopics[index] = updated;
+    setLocalTopics(newTopics);
+    if (!topic.id.startsWith('temp-')) {
+      await pb.collection('board_top_topics').update(topic.id, { [field]: value });
+    }
+  };
+
+  const handleDateAccept = async (index: number, newValue: dayjs.Dayjs | null) => {
+    if (!newValue) return;
+    const d = newValue.format('YYYY-MM-DD');
+    const kw = `${newValue.year()}-W${newValue.isoWeek()}`;
+    const topic = localTopics[index];
+    const updated = { ...topic, due_date: d, calendar_week: kw };
+    const newTopics = [...localTopics];
+    newTopics[index] = updated;
+    setLocalTopics(newTopics);
+    if (!topic.id.startsWith('temp-')) {
+      await pb.collection('board_top_topics').update(topic.id, { due_date: d, calendar_week: kw });
+    }
+  };
+
+  const handleAdd = async () => {
+    if (localTopics.length >= 5) return;
+    try {
+      const data = await pb.collection('board_top_topics').create({
+        board_id: boardId,
+        title: '',
+        position: localTopics.length
+      });
+      // Adapt PB record to TopTopic
+      const newTopic: TopTopic = {
+        id: data.id,
+        title: data.title,
+        position: data.position,
+        due_date: data.due_date,
+        calendar_week: data.calendar_week
+      };
+      setLocalTopics([...localTopics, newTopic]);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    await pb.collection('board_top_topics').delete(id);
+    setLocalTopics(localTopics.filter(t => t.id !== id));
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Star color="warning" /> {t('kanban.topTopicsTitle')}
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          {localTopics.length === 0 && <Typography variant="body2" color="text.secondary">{t('kanban.noTopTopics')}</Typography>}
+          {localTopics.map((topic, index) => (
+            <Box key={topic.id} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <TextField fullWidth size="small" placeholder={t('kanban.topicPlaceholder')} value={topic.title} onChange={(e) => handleSaveTopic(index, 'title', e.target.value)} />
+
+              <Box sx={{ width: 200 }}>
+                <StandardDatePicker
+                  label={t('kanban.dueDate')}
+                  value={topic.due_date ? dayjs(topic.due_date) : null}
+                  onChange={(newValue) => handleDateAccept(index, newValue)}
+                />             </Box>
+              <Chip label={topic.calendar_week ? `KW ${topic.calendar_week.split('-W')[1]}` : 'KW -'} />
+              <IconButton color="error" onClick={() => handleDelete(topic.id)}><DeleteOutline /></IconButton>
+            </Box>
+          ))}
+          {localTopics.length < 5 && <Button startIcon={<AddCircle />} onClick={handleAdd}>{t('kanban.addTopic')}</Button>}
+        </Stack>
+      </DialogContent>
+      <DialogActions><Button onClick={onClose}>{t('kanban.close')}</Button></DialogActions>
+    </Dialog >
+  );
+};
 
 export default OriginalKanbanBoard;

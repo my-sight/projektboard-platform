@@ -17,11 +17,16 @@ async function debug() {
             console.error('❌ Test 1 Failed:', err.status, err.message);
         }
 
-        // Test 2: Attendance Sort by -week_start
+        // Test 2: Attendance Inspect
         try {
-            console.log('\n--- Test 2: Attendance Sort by "-week_start"');
-            const att = await pb.collection('board_attendance').getFullList({ sort: '-week_start' });
-            console.log(`✅ Success! Fetched ${att.length} records.`);
+            console.log('\n--- Test 2: Attendance Inspect');
+            const att = await pb.collection('board_attendance').getFullList();
+            // Client side sort for debug
+            att.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+            console.log(`Found ${att.length} attendance records.`);
+            att.forEach(r => {
+                console.log(` - ID: ${r.id}, User: ${r.profile_id}, Week: ${r.week_start}, Status: ${r.status}, Created: ${r.created}`);
+            });
         } catch (err) {
             console.error('❌ Test 2 Failed:', err.status, err.message);
         }
