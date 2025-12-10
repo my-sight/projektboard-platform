@@ -13,6 +13,7 @@ import {
 import { SettingsSuggest } from '@mui/icons-material';
 import UserManagement from '@/components/admin/UserManagement';
 import SystemBranding from '@/components/admin/SystemBranding';
+import SystemLockoutPanel from '@/components/admin/SystemLockoutPanel';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { pb } from '@/lib/pocketbase';
 
@@ -38,8 +39,6 @@ export default function AdminPage() {
   }, []);
 
   if (loading) return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>;
-  // Optionally redirect if not logged in? UserManagement handles its own checks?
-  // UserManagement likely just shows list if valid.
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -64,7 +63,10 @@ export default function AdminPage() {
               <SystemBranding />
             </Box>
 
-            {/* Datenbank Tools removed as we are now on PocketBase (managed via PB Admin UI) */}
+            {/* Lockout Panel */}
+            <Box>
+              <SystemLockoutPanel />
+            </Box>
           </Stack>
         </Box>
       )}

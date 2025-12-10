@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { AuthModel } from 'pocketbase';
 import { pb } from '@/lib/pocketbase';
+import { isSuperuserEmail } from '@/constants/superuser';
 
 interface AuthContextType {
   user: AuthModel | null;
@@ -27,17 +28,66 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Sync initial state on mount (client-only)
+    // 1. Initial Sync
     setUser(pb.authStore.model);
     setLoading(false);
 
-    // Subscribe to changes
+    // 2. Subscribe to auth changes
     const unsub = pb.authStore.onChange((token, model) => {
       setUser(model);
     });
 
+    // 3. Lockout Check Loop (every 30s)
+    const checkLockout = async () => {
+      try {
+        // Fetch the lockout setting. The 'updated' field gives us Server Time.
+        // We use a filter to get the specific key.
+        const record = await pb.collection('system_settings').getFirstListItem('key="lockout"');
+
+        if (record && record.value && record.value.enabled && record.value.lockoutTime) {
+          const lockoutTime = new Date(record.value.lockoutTime).getTime();
+
+          // Server Time Calculation
+          let now = Date.now();
+          try {
+            // Try to get server time via header
+            const response = await fetch(pb.baseUrl + '/api/health'); // effectively a ping
+            const dateHeader = response.headers.get('Date');
+            if (dateHeader) {
+              now = new Date(dateHeader).getTime();
+            }
+          } catch (e) {
+            console.log("Could not sync time, using local");
+          }
+
+          if (now > lockoutTime) {
+            // Locked!
+            // Check if superuser
+            const user = pb.authStore.model;
+            const email = user?.email;
+            const role = (user as any)?.role;
+
+            const isSuper = isSuperuserEmail(email) || role === 'admin'; // Basic check
+
+            if (!isSuper) {
+              // Redirect to locked page if not already there
+              if (!window.location.pathname.includes('/locked') && !window.location.pathname.includes('/login')) {
+                window.location.href = '/locked';
+              }
+            }
+          }
+        }
+      } catch (e: any) {
+        // 404 if not found, ignore
+      }
+    };
+
+    const interval = setInterval(checkLockout, 10000); // Check every 10s
+    checkLockout(); // Initial check
+
     return () => {
       unsub();
+      clearInterval(interval);
     };
   }, []);
 

@@ -262,7 +262,7 @@ export default function HomePage() {
             <Typography variant="h6">{selectedBoard.name || 'Board'}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Typography variant="body2">👋 {user.email}</Typography>
+            <Typography variant="body2">👋 {user.name || user.email}</Typography>
             <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
           </Box>
         </Box>
@@ -281,7 +281,7 @@ export default function HomePage() {
             <Typography variant="h6">{selectedBoard.name || t('home.teamBoard')}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Typography variant="body2">👋 {user.email}</Typography>
+            <Typography variant="body2">👋 {user.name || user.email}</Typography>
             <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
           </Box>
         </Box>
@@ -345,7 +345,7 @@ export default function HomePage() {
             {language.toUpperCase()}
           </Button>
           {isAdmin && <Button variant="outlined" onClick={() => (window.location.href = '/admin')}>{t('header.admin')}</Button>}
-          <Typography variant="body2">👋 {user.email}</Typography>
+          <Typography variant="body2">👋 {user.name || user.email}</Typography>
           <Button variant="outlined" onClick={signOut} color="error">{t('header.logout')}</Button>
         </Box>
       </Box>

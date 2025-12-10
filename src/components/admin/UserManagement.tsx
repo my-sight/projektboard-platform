@@ -237,7 +237,10 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
         company: u.company || u.department || '',
         created_at: u.created,
         avatar_url: u.avatar ? pb.files.getUrl(u, u.avatar) : undefined
-      }));
+      }))
+        // Filter out superusers from the list
+        .filter(p => !isSuperuserEmail(p.email));
+
       setUsers(profiles);
       const mapped: Record<string, string> = {};
       profiles.forEach(p => mapped[p.id] = p.full_name || '');
