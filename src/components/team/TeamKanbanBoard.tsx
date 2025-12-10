@@ -95,6 +95,7 @@ interface TeamBoardCard {
     createdBy?: string;
     originalStage?: string;
     originalData: any;
+    createdAt?: string;
 }
 
 interface TeamKanbanBoardProps { boardId: string; onExit?: () => void; highlightCardId?: string | null; }
@@ -149,7 +150,7 @@ const convertDbToCard = (item: any, boardMap: Map<string, string>, currentBoardI
 
     return {
         rowId: String(item.id),
-        cardId: String(item.card_id),
+        cardId: String(item.card_id || item.id),
         boardId: item.board_id,
         boardName: boardMap.get(item.board_id) || 'Unbekannt',
         description: d.description || d.Teil || d.Nummer || 'Aufgabe',
@@ -159,6 +160,7 @@ const convertDbToCard = (item: any, boardMap: Map<string, string>, currentBoardI
         assigneeId: d.assigneeId || d.userId || d.VerantwortlichId || null,
         status: status,
         position: pos,
+        createdAt: item.created || item.created_at,
         createdBy: d.createdBy,
         originalStage: item.stage || d['Board Stage'],
         originalData: d
@@ -251,7 +253,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             });
             setSettingsOpen(false);
             enqueueSnackbar(t('teamBoard.settingsSaved'), { variant: 'success' });
-            window.location.reload();
+            enqueueSnackbar(t('teamBoard.settingsSaved'), { variant: 'success' });
         } catch (e) {
             enqueueSnackbar(t('teamBoard.saveFailed'), { variant: 'error' });
         }
@@ -260,24 +262,16 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const handleFinishDone = async () => {
         if (!confirm(t('teamBoard.confirmFinish') || 'Alle erledigten Karten ins Archiv verschieben?')) return;
         try {
-            // Find all cards in 'done' columns
-            const doneCards = cards.filter(c => c.columnId === 'done' || c.laneId === 'done'); // Assuming laneId/columnId distinction
-
-            // Re-filter based on the render logic:
-            // The render logic places cards in columns based on `c.columnId === 'done'`.
-            // Let's iterate over `memberColumns` logic if needed, but filtering `cards` by `columnId === 'done'` is safer.
-            // Wait, logic is: user specific swimlane -> flow1/flow/done.
-            // Cards are updated with `columnId: 'done'` when moved there.
-
-            const cardsToArchive = cards.filter(c => c.columnId === 'done');
+            // Find all cards in 'done' status
+            const cardsToArchive = cards.filter(c => c.status === 'done');
 
             await Promise.all(cardsToArchive.map(c =>
-                pb.collection('kanban_cards').update(c.id, {
-                    card_data: { ...c.data, archived: true, Archived: '1' }
+                pb.collection('kanban_cards').update(c.rowId, {
+                    card_data: { ...(c.originalData || {}), archived: true, Archived: '1' }
                 })
             ));
 
-            setCards(prev => prev.filter(c => c.columnId !== 'done'));
+            setCards(prev => prev.filter(c => c.status !== 'done'));
             enqueueSnackbar(`${cardsToArchive.length} ${t('teamBoard.tasksArchived') || 'Aufgaben archiviert'}`, { variant: 'success' });
         } catch (e) {
             console.error(e);
@@ -294,8 +288,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 .filter(r => (r.card_data?.archived || r.card_data?.Archived === '1'))
                 .map(r => convertDbToCard(r, new Map(), boardId));
 
-            // Sort by manual filter or just recent? Let's verify `updated`
-            archived.sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime());
+            // Sort by creation date (descending)
+            archived.sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
 
             setArchivedCards(archived);
         } catch (e) { console.error(e); }
@@ -303,10 +297,10 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     const restoreCard = async (card: TeamBoardCard) => {
         try {
-            await pb.collection('kanban_cards').update(card.id, {
-                card_data: { ...card.data, archived: false, Archived: '0' }
+            await pb.collection('kanban_cards').update(card.rowId, {
+                card_data: { ...card.originalData, archived: false, Archived: '0' }
             });
-            setArchivedCards(prev => prev.filter(c => c.id !== card.id));
+            setArchivedCards(prev => prev.filter(c => c.rowId !== card.rowId));
             loadCards(members); // Refresh board
             enqueueSnackbar(t('teamBoard.cardRestored') || 'Karte wiederhergestellt', { variant: 'success' });
         } catch (e) {
@@ -314,11 +308,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         }
     };
 
-    const deleteCardPermanently = async (cardId: string) => {
+    const deleteCardPermanently = async (rowId: string) => {
         if (!confirm(t('teamBoard.confirmDelete') || 'Endgültig löschen?')) return;
         try {
-            await pb.collection('kanban_cards').delete(cardId);
-            setArchivedCards(prev => prev.filter(c => c.id !== cardId));
+            await pb.collection('kanban_cards').delete(rowId);
+            setArchivedCards(prev => prev.filter(c => c.rowId !== rowId));
         } catch (e) { console.error(e); }
     };
 
@@ -401,8 +395,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     const evaluatePermissions = useCallback(async (profiles: ClientProfile[], currentMembers: MemberWithProfile[]) => {
         const authModel = pb.authStore.model;
-        if (!authModel) return;
+        if (!authModel) { console.warn('No auth model found'); return; }
         setCurrentUser(authModel);
+        console.log('Evaluating permissions for:', authModel.email, authModel.id);
 
         const profile = profiles.find(p => p.id === authModel.id);
         const globalRole = String(profile?.role ?? '').toLowerCase();
@@ -433,6 +428,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 await loadCards(mems);
                 await loadTopTopics();
                 await evaluatePermissions(profiles, mems);
+                console.log('Init complete. Loading:', false);
                 setLoading(false);
             }
         };
@@ -546,6 +542,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
         const others = newCards.filter(c => !(c.assigneeId === destInfo.assigneeId && c.status === destInfo.status));
         const targetGroup = newCards.filter(c => c.assigneeId === destInfo.assigneeId && c.status === destInfo.status);
+
+        // Sort target group by position to ensure correct insertion index
+        targetGroup.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
 
         targetGroup.splice(destination.index, 0, moved);
         targetGroup.forEach((c, i) => c.position = i);
@@ -825,7 +824,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                             border: '1px solid',
                             borderColor,
                             boxShadow: snap.isDragging ? 3 : 1,
-                            bgcolor: isExternal ? '#fafafa' : alpha(theme.palette.background.paper, 0.8),
+                            bgcolor: isExternal ? '#fafafa' : alpha(theme.palette.background.paper, 0.15),
                             minHeight: MIN_CARD_HEIGHT,
                             position: 'relative',
                             // ✅ ANIMATION WIEDERHERGESTELLT
@@ -915,6 +914,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 <Box sx={{ display: 'flex', gap: 1 }}>
                     <Tooltip title={t('teamBoard.topTopics')}><IconButton onClick={() => { setTopTopicsOpen(true); }}><Star color="warning" /></IconButton></Tooltip>
                     <Tooltip title={t('teamBoard.kpis')}><IconButton onClick={() => setKpiOpen(true)}><Assessment color="primary" /></IconButton></Tooltip>
+                    {/* Show Settings only for Admin/BoardAdmin/Superuser */}
                     {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title={t('teamBoard.boardSettings')}><Settings /></IconButton>}
                 </Box>
             </Box>
@@ -951,7 +951,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                             <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>{t('teamBoard.flow')}</Box>
                             <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 {t('teamBoard.finished')}
-                                {canModify && <Tooltip title={t('teamBoard.finishAll') || 'Abschließen'}><IconButton size="small" onClick={handleFinishDone}><CheckCircleOutline fontSize="small" color="success" /></IconButton></Tooltip>}
+                                {/* Show Archive button for users who can modify */}
+                                {canModify && <Tooltip title={t('teamBoard.archiveAll') || 'Archivieren'}><IconButton size="small" onClick={handleFinishDone}><Inventory2 fontSize="small" color="secondary" /></IconButton></Tooltip>}
                             </Box>
                         </Box>
 
@@ -1033,9 +1034,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                         <FormControlLabel control={<Checkbox checked={draft.watch} onChange={e => setDraft({ ...draft, watch: e.target.checked })} />} label={t('teamBoard.setResubmission')} />
                     </Stack>
                 </DialogContent>
-                <DialogActions>
-                    {editingCard && <Button color="error" onClick={deleteTask}>{t('teamBoard.delete')}</Button>}
-                    <Button onClick={closeDialog}>{t('teamBoard.cancel')}</Button>
+                <DialogActions sx={{ justifyContent: 'space-between' }}>
+                    <Box>
+                        {editingCard && <Button color="error" onClick={deleteTask}>{t('teamBoard.delete')}</Button>}
+                        <Button onClick={closeDialog} sx={{ ml: editingCard ? 1 : 0 }}>{t('teamBoard.cancel')}</Button>
+                    </Box>
                     <Button onClick={saveTask} variant="contained">{t('teamBoard.save')}</Button>
                 </DialogActions>
             </Dialog>
@@ -1070,7 +1073,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                         </Button>
                     </Box>
                 </DialogContent>
-                <DialogActions>
+                <DialogActions sx={{ justifyContent: 'space-between' }}>
                     <Button onClick={() => setSettingsOpen(false)}>{t('teamBoard.cancel')}</Button>
                     <Button variant="contained" onClick={saveBoardSettings}>{t('teamBoard.save')}</Button>
                 </DialogActions>
@@ -1082,20 +1085,20 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
                         {archivedCards.length === 0 && <Typography color="text.secondary" align="center">{t('teamBoard.archiveEmpty') || 'Keine archivierten Karten'}</Typography>}
                         {archivedCards.map(card => (
-                            <Paper key={card.id} sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Paper key={card.rowId} sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <Box>
-                                    <Typography variant="subtitle1" fontWeight="bold">{card.title}</Typography>
-                                    <Typography variant="body2" color="text.secondary">{card.description?.substring(0, 50)}...</Typography>
+                                    <Typography variant="subtitle1" fontWeight="bold">{card.description}</Typography>
+                                    <Typography variant="body2" color="text.secondary">{card.boardName} - {new Date(card.createdAt || Date.now()).toLocaleDateString()}</Typography>
                                 </Box>
                                 <Box>
                                     <Button size="small" onClick={() => restoreCard(card)}>{t('teamBoard.restore') || 'Wiederherstellen'}</Button>
-                                    <IconButton size="small" color="error" onClick={() => deleteCardPermanently(card.id)}><Delete /></IconButton>
+                                    <IconButton size="small" color="error" onClick={() => deleteCardPermanently(card.rowId)}><Delete /></IconButton>
                                 </Box>
                             </Paper>
                         ))}
                     </Box>
                 </DialogContent>
-                <DialogActions>
+                <DialogActions sx={{ justifyContent: 'flex-start' }}>
                     <Button onClick={() => setArchiveOpen(false)}>{t('close') || 'Schließen'}</Button>
                 </DialogActions>
             </Dialog>

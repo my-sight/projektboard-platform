@@ -48,6 +48,8 @@ interface Board {
   boardAdminId: string | null;
 }
 
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+
 export default function HomePage() {
   const theme = useTheme();
   const { language, setLanguage, t } = useLanguage();
@@ -70,6 +72,11 @@ export default function HomePage() {
   const [kpiCount, setKpiCount] = useState(0);
   const [favoriteBoardIds, setFavoriteBoardIds] = useState<Set<string>>(new Set());
 
+  // URL Persistence
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
   useEffect(() => { setArchivedCount(null); setKpiCount(0); }, [selectedBoard]);
 
   useEffect(() => {
@@ -80,8 +87,6 @@ export default function HomePage() {
     if (!user) return;
     try {
       const superuser = isSuperuserEmail(user.email ?? null);
-      // Retrieve role from auth model or users collection if available. 
-      // Assuming 'role' might be added to users or simply relying on superuser/admin checks
       const role = String((pb.authStore.model as any)?.role || '').toLowerCase();
       setIsSuperuser(superuser);
       setIsAdmin(superuser || role === 'admin');
@@ -95,16 +100,14 @@ export default function HomePage() {
   const loadBoards = useCallback(async () => {
     if (!user) return;
     try {
-      // Fetch without sort to avoid 400 error on '-created'
       const boardsData = await pb.collection('kanban_boards').getFullList();
-
       const sanitizedBoards = (boardsData ?? []).map((board) => {
         const rawSettings = board.settings && typeof board.settings === 'object' ? (board.settings as Record<string, unknown>) : {};
         const typeRaw = (rawSettings as Record<string, unknown>)['boardType'];
         const boardType = typeof typeRaw === 'string' && typeRaw.toLowerCase() === 'team' ? 'team' : 'standard';
         return {
           ...board,
-          created_at: board.created, // Map PB 'created' to 'created_at'
+          created_at: board.created,
           settings: rawSettings,
           visibility: board.visibility ?? 'public',
           boardType,
@@ -112,10 +115,7 @@ export default function HomePage() {
           id: board.id
         } as unknown as Board;
       });
-
-      // Sort client-side
       sanitizedBoards.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
       setBoards(sanitizedBoards);
     } catch (error) {
       console.error('DEBUG: Load Boards Error:', error);
@@ -130,9 +130,7 @@ export default function HomePage() {
         filter: `user_id = "${user.id}"`
       });
       setFavoriteBoardIds(new Set(favs.map(f => f.board_id)));
-    } catch (e) {
-      // Ignore
-    }
+    } catch (e) { /* Ignore */ }
   }, [user]);
 
   useEffect(() => {
@@ -142,6 +140,27 @@ export default function HomePage() {
     loadFavorites();
   }, [user, loadProfile, loadBoards, loadFavorites]);
 
+  // Sync state from URL
+  useEffect(() => {
+    if (!loading && boards.length > 0) {
+      const boardId = searchParams.get('boardId');
+      const mode = searchParams.get('mode');
+      if (boardId) {
+        const board = boards.find(b => b.id === boardId);
+        if (board) {
+          setSelectedBoard(board);
+          if (mode === 'team-board' || mode === 'board' || mode === 'management' || mode === 'team-management') {
+            setViewMode(mode as any);
+          } else if (board.boardType === 'team') {
+            setViewMode('team-board');
+          } else {
+            setViewMode('board');
+          }
+        }
+      }
+    }
+  }, [loading, boards, searchParams]);
+
   const currentUserId = user?.id ?? null;
   const isSelectedBoardAdmin = selectedBoard?.boardAdminId === currentUserId;
 
@@ -150,8 +169,23 @@ export default function HomePage() {
     if (board) {
       setSelectedBoard(board);
       if (cardId) setOpenCardId(cardId);
-      setViewMode(type === 'team' ? 'team-board' : 'board');
+      const newMode = type === 'team' ? 'team-board' : 'board';
+      setViewMode(newMode);
+
+      // Update URL
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('boardId', boardId);
+      params.set('mode', newMode);
+      if (cardId) params.set('cardId', cardId);
+      router.push(`${pathname}?${params.toString()}`);
     }
+  };
+
+  const handleExitBoard = () => {
+    setSelectedBoard(null);
+    setViewMode('list');
+    setOpenCardId(null);
+    router.push(pathname);
   };
 
   const standardBoards = useMemo(() => boards.filter((board) => board.boardType === 'standard'), [boards]);
@@ -233,7 +267,7 @@ export default function HomePage() {
           </Box>
         </Box>
         <Box sx={{ flex: 1 }}>
-          <OriginalKanbanBoard ref={boardRef} boardId={selectedBoard.id} onArchiveCountChange={setArchivedCount} onKpiCountChange={setKpiCount} highlightCardId={openCardId} onExit={() => { setViewMode('list'); setOpenCardId(null); }} />
+          <OriginalKanbanBoard ref={boardRef} boardId={selectedBoard.id} onArchiveCountChange={setArchivedCount} onKpiCountChange={setKpiCount} highlightCardId={openCardId} onExit={handleExitBoard} />
         </Box>
       </Box>
     );
@@ -252,7 +286,7 @@ export default function HomePage() {
           </Box>
         </Box>
         <Box sx={{ flex: 1, overflow: 'hidden' }}>
-          <TeamKanbanBoard boardId={selectedBoard.id} highlightCardId={openCardId} onExit={() => { setViewMode('list'); setOpenCardId(null); }} />
+          <TeamKanbanBoard boardId={selectedBoard.id} highlightCardId={openCardId} onExit={handleExitBoard} />
         </Box>
       </Box>
     );

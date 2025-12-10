@@ -139,16 +139,7 @@ export function KanbanColumnsView({
                   </Box>
                 </Box>
 
-                {col.done && (
-                  <IconButton
-                    size="small"
-                    title={t('kanban.archiveColumn')}
-                    onClick={() => archiveColumn(col.name)}
-                    disabled={!allowDrag}
-                  >
-                    📦
-                  </IconButton>
-                )}
+
               </Box>
 
               <Droppable droppableId={col.name} isDropDisabled={!allowDrag}>
