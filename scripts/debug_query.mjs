@@ -26,6 +26,15 @@ async function debug() {
             console.error('❌ Test 2 Failed:', err.status, err.message);
         }
 
+        // Test 3: Users Sort by -created
+        try {
+            console.log('\n--- Test 3: Users Sort by "-created"');
+            const users = await pb.collection('users').getFullList({ sort: '-created' });
+            console.log(`✅ Success! Fetched ${users.length} users.`);
+        } catch (err) {
+            console.error('❌ Test 3 Failed:', err.status, err.message);
+        }
+
         // Test 1: Cards No Sort
         try {
             console.log('\n--- Test 1: Cards No Sort');

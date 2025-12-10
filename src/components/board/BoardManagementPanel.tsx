@@ -768,7 +768,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       const map: Record<string, Record<string, AttendanceRecord | undefined>> = {};
       data.forEach(entry => {
         // PB date strings
-        const weekKey = entry.week_start.split('T')[0]; // Simplify date handling
+        const ws = entry.week_start || entry.date || new Date().toISOString(); // Fallback
+        const weekKey = ws.split('T')[0]; // Simplify date handling
         if (!map[weekKey]) {
           map[weekKey] = {};
         }
