@@ -422,7 +422,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       }
 
       try {
-        const cardId = idFor(card); // Ensure we have the ID
+        const cardId = card.id; // Corrected: Use PB ID, not idFor (UID)
         if (!cardId) throw new Error("Card ID missing");
 
         const fullUpdatedCard = { ...card, ...changes };
@@ -441,6 +441,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         enqueueSnackbar(t('kanban.networkError'), { variant: 'error' });
       }
     }, [permissions.canEditContent, rows, idFor, boardId, enqueueSnackbar, selectedCard, t]);
+
+
 
     const saveSettings = useCallback(async (options?: { skipMeta?: boolean; settingsOverrides?: any }) => {
       if (!permissions.canManageSettings) return false;
@@ -800,7 +802,9 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       if (!window.confirm(t('kanban.deleteCardConfirm').replace('{id}', `${card.Nummer} ${card.Teil}`))) return;
 
       try {
-        const cardId = idFor(card);
+        const cardId = card.id; // Corrected: Use PB ID
+        if (!cardId) throw new Error("Card ID missing");
+
         await pb.collection('kanban_cards').delete(cardId);
 
         setRows(prev => prev.filter(r => idFor(r) !== idFor(card)));

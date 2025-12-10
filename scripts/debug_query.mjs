@@ -8,6 +8,24 @@ async function debug() {
         await pb.collection('users').authWithPassword('michael@mysight.net', 'Serum4x!');
         console.log('✅ Authenticated.');
 
+        // Test 1: Attendance No Sort
+        try {
+            console.log('\n--- Test 1: Attendance No Sort');
+            const att = await pb.collection('board_attendance').getFullList();
+            console.log(`✅ Success! Fetched ${att.length} records.`);
+        } catch (err) {
+            console.error('❌ Test 1 Failed:', err.status, err.message);
+        }
+
+        // Test 2: Attendance Sort by -week_start
+        try {
+            console.log('\n--- Test 2: Attendance Sort by "-week_start"');
+            const att = await pb.collection('board_attendance').getFullList({ sort: '-week_start' });
+            console.log(`✅ Success! Fetched ${att.length} records.`);
+        } catch (err) {
+            console.error('❌ Test 2 Failed:', err.status, err.message);
+        }
+
         // Test 1: Cards No Sort
         try {
             console.log('\n--- Test 1: Cards No Sort');

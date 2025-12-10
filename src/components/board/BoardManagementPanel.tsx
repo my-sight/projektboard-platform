@@ -608,14 +608,25 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         boardResult,
         historyResult,
       ] = await Promise.all([
-        pb.collection('departments').getFullList({ sort: 'name' }),
-        pb.collection('board_members').getFullList({ filter: `board_id="${boardId}"`, sort: 'created' }),
-        pb.collection('board_top_topics').getFullList({ filter: `board_id="${boardId}"`, sort: 'position' }),
+        pb.collection('departments').getFullList(),
+        pb.collection('board_members').getFullList({ filter: `board_id="${boardId}"` }),
+        pb.collection('board_top_topics').getFullList({ filter: `board_id="${boardId}"` }),
         pb.collection('board_escalations').getFullList({ filter: `board_id="${boardId}"` }),
         pb.collection('kanban_cards').getFullList({ filter: `board_id="${boardId}"` }),
         pb.collection('kanban_boards').getOne(boardId),
-        pb.collection('board_escalation_history').getFullList({ filter: `board_id="${boardId}"`, sort: '-changed_at' }),
+        pb.collection('board_escalation_history').getFullList({ filter: `board_id="${boardId}"` }),
       ]);
+
+      // Client-side sorting
+      const sortCreated = (a: any, b: any) => new Date(a.created).getTime() - new Date(b.created).getTime();
+      const sortPosition = (a: any, b: any) => (a.position ?? 0) - (b.position ?? 0);
+      const sortChangedAtDesc = (a: any, b: any) => new Date(b.changed_at).getTime() - new Date(a.changed_at).getTime();
+      const sortName = (a: any, b: any) => (a.name || '').localeCompare(b.name || '');
+
+      departmentsResult.sort(sortName);
+      membersResult.sort(sortCreated);
+      topicsResult.sort(sortPosition);
+      historyResult.sort(sortChangedAtDesc);
 
       const profileRows = (await profilePromise).filter(
         profile => !isSuperuserEmail(profile.email),
@@ -747,9 +758,12 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const loadAttendanceHistory = async () => {
     try {
       const data = await pb.collection('board_attendance').getFullList({
-        filter: `board_id="${boardId}"`,
-        sort: '-week_start'
+        filter: `board_id="${boardId}"`
+        // sort: '-week_start' // Removed due to 400 error
       });
+
+      // Sort client-side
+      data.sort((a, b) => new Date(b.week_start).getTime() - new Date(a.week_start).getTime());
 
       const map: Record<string, Record<string, AttendanceRecord | undefined>> = {};
       data.forEach(entry => {

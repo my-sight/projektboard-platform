@@ -356,19 +356,29 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
         emailVisibility: true,
         password: newUserPassword.trim(),
         passwordConfirm: newUserPassword.trim(),
-        name: newUserName.trim() || undefined,
-        full_name: newUserName.trim() || undefined, // just in case
+        name: newUserName.trim() || undefined, // PB expects 'name', not 'full_name'
         role: 'user',
         company: newUserDepartment || undefined
       };
+
       const record = await pb.collection('users').create(data);
+
       if (record) {
         setCreateUserDialogOpen(false);
         setNewUserEmail(''); setNewUserPassword(''); setNewUserName('');
         setMessage('✅ Benutzer erstellt');
         loadData();
       }
-    } catch (e: any) { setMessage(`❌ ${e.message}`); }
+    } catch (e: any) {
+      console.error("Create User Error:", e.data); // Log detailed validation errors
+      let msg = e.message;
+      if (e.data?.data) {
+        // Extract specific field errors if available
+        const details = Object.entries(e.data.data).map(([k, v]: [string, any]) => `${k}: ${v.message}`).join(', ');
+        if (details) msg += ` (${details})`;
+      }
+      setMessage(`❌ ${msg}`);
+    }
   };
 
   const addDepartment = async () => {
