@@ -1,11 +1,11 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { User } from '@supabase/supabase-js';
-import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { AuthModel } from 'pocketbase';
+import { pb } from '@/lib/pocketbase';
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthModel | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<any>;
   signUp: (email: string, password: string) => Promise<any>;
@@ -22,57 +22,35 @@ export const useAuth = () => {
   return context;
 };
 
-const missingConfigError =
-  'Supabase ist nicht konfiguriert. Bitte setze NEXT_PUBLIC_SUPABASE_URL und NEXT_PUBLIC_SUPABASE_ANON_KEY.';
-
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthModel | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
 
   useEffect(() => {
-    if (!supabase) {
-      setLoading(false);
-      return;
-    }
+    // Sync initial state on mount (client-only)
+    setUser(pb.authStore.model);
+    setLoading(false);
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
+    // Subscribe to changes
+    const unsub = pb.authStore.onChange((token, model) => {
+      setUser(model);
     });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [supabase]);
+    return () => {
+      unsub();
+    };
+  }, []);
 
   const signIn = async (email: string, password: string) => {
-    if (!supabase) {
-      throw new Error(missingConfigError);
-    }
-
-    return supabase.auth.signInWithPassword({ email, password });
+    return pb.collection('users').authWithPassword(email, password);
   };
 
   const signUp = async (email: string, password: string) => {
-    if (!supabase) {
-      throw new Error(missingConfigError);
-    }
-
-    return supabase.auth.signUp({ email, password });
+    return pb.collection('users').create({ email, password, passwordConfirm: password });
   };
 
   const signOut = async () => {
-    if (!supabase) {
-      return;
-    }
-
-    await supabase.auth.signOut();
+    pb.authStore.clear();
   };
 
   return (

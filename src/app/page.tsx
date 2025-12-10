@@ -22,7 +22,6 @@ import {
   Divider,
   useTheme,
   IconButton,
-  Tooltip,
 } from '@mui/material';
 import { Star, StarBorder } from '@mui/icons-material';
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
@@ -33,8 +32,7 @@ import TeamKanbanBoard from '@/components/team/TeamKanbanBoard';
 import TeamBoardManagementPanel from '@/components/team/TeamBoardManagementPanel';
 import PersonalDashboard from '@/components/dashboard/PersonalDashboard';
 import { isSuperuserEmail } from '@/constants/superuser';
-import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
-import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
+import { pb } from '@/lib/pocketbase';
 
 interface Board {
   id: string;
@@ -51,7 +49,6 @@ interface Board {
 }
 
 export default function HomePage() {
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const theme = useTheme();
   const { language, setLanguage, t } = useLanguage();
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
@@ -76,17 +73,16 @@ export default function HomePage() {
   useEffect(() => { setArchivedCount(null); setKpiCount(0); }, [selectedBoard]);
 
   useEffect(() => {
-    if (!supabase) return;
     if (!loading && !user) window.location.href = '/login';
-  }, [loading, supabase, user]);
+  }, [loading, user]);
 
   const loadProfile = useCallback(async () => {
-    if (!user || !supabase) return;
+    if (!user) return;
     try {
       const superuser = isSuperuserEmail(user.email ?? null);
-      const { data, error } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
-      if (error) throw error;
-      const role = String(data?.role || '').toLowerCase();
+      // Retrieve role from auth model or users collection if available. 
+      // Assuming 'role' might be added to users or simply relying on superuser/admin checks
+      const role = String((pb.authStore.model as any)?.role || '').toLowerCase();
       setIsSuperuser(superuser);
       setIsAdmin(superuser || role === 'admin');
     } catch (error) {
@@ -94,39 +90,50 @@ export default function HomePage() {
       setIsSuperuser(superuser);
       setIsAdmin(superuser);
     }
-  }, [supabase, user]);
+  }, [user]);
 
   const loadBoards = useCallback(async () => {
-    if (!supabase) { setMessage(`❌ ${t('home.supabaseMissing')}`); return; }
+    if (!user) return;
     try {
-      let boardsData: Board[] | null = null;
-      try {
-        const { data: rpcBoards, error: rpcError } = await supabase.rpc('list_all_boards');
-        if (!rpcError) boardsData = (rpcBoards as Board[]) ?? [];
-      } catch { }
-
-      if (!boardsData) {
-        const { data, error } = await supabase.from('kanban_boards').select('*').order('created_at', { ascending: false });
-        if (!error) boardsData = (data as Board[]) ?? [];
-      }
+      // Fetch without sort to avoid 400 error on '-created'
+      const boardsData = await pb.collection('kanban_boards').getFullList();
 
       const sanitizedBoards = (boardsData ?? []).map((board) => {
         const rawSettings = board.settings && typeof board.settings === 'object' ? (board.settings as Record<string, unknown>) : {};
         const typeRaw = (rawSettings as Record<string, unknown>)['boardType'];
         const boardType = typeof typeRaw === 'string' && typeRaw.toLowerCase() === 'team' ? 'team' : 'standard';
-        return { ...board, settings: rawSettings, visibility: board.visibility ?? 'public', boardType, boardAdminId: (board as any).board_admin_id ?? null } as Board;
+        return {
+          ...board,
+          created_at: board.created, // Map PB 'created' to 'created_at'
+          settings: rawSettings,
+          visibility: board.visibility ?? 'public',
+          boardType,
+          boardAdminId: (board as any).board_admin_id ?? null,
+          id: board.id
+        } as unknown as Board;
       });
+
+      // Sort client-side
+      sanitizedBoards.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
       setBoards(sanitizedBoards);
-    } catch (error) { setMessage(`❌ ${t('home.loadError')}`); }
-  }, [isAdmin, supabase, user, t]);
+    } catch (error) {
+      console.error('DEBUG: Load Boards Error:', error);
+      setMessage(`❌ ${t('home.loadError')}`);
+    }
+  }, [isAdmin, user, t]);
 
   const loadFavorites = useCallback(async () => {
-    if (!supabase || !user) return;
-    const { data } = await supabase.from('board_favorites').select('board_id').eq('user_id', user.id);
-    if (data) {
-      setFavoriteBoardIds(new Set(data.map(f => f.board_id)));
+    if (!user) return;
+    try {
+      const favs = await pb.collection('board_favorites').getFullList({
+        filter: `user_id = "${user.id}"`
+      });
+      setFavoriteBoardIds(new Set(favs.map(f => f.board_id)));
+    } catch (e) {
+      // Ignore
     }
-  }, [supabase, user]);
+  }, [user]);
 
   useEffect(() => {
     if (!user) { setIsAdmin(false); setIsSuperuser(false); setSelectedBoard(null); setViewMode('list'); return; }
@@ -151,21 +158,29 @@ export default function HomePage() {
   const teamBoards = useMemo(() => boards.filter((board) => board.boardType === 'team'), [boards]);
 
   const createBoard = async () => {
-    if (!supabase || !newBoardName.trim() || !isAdmin) return;
+    if (!newBoardName.trim() || !user) return; // Allow creation for all logged in users, or check isAdmin if preferred
+    // The UI limits the button to isAdmin, so we check here basically implicitly or strictly:
+    if (!isAdmin) return;
+
     try {
       const initialSettings = { boardType: newBoardType };
-      const { data, error } = await supabase.from('kanban_boards').insert([{ name: newBoardName.trim(), description: newBoardDescription.trim(), owner_id: user?.id, user_id: user?.id, visibility: 'public', settings: initialSettings }]).select().single();
-      if (error) throw error;
+      const data = await pb.collection('kanban_boards').create({
+        name: newBoardName.trim(),
+        description: newBoardDescription.trim(),
+        owner_id: user.id,
+        board_admin_id: user.id,
+        settings: initialSettings,
+        visibility: 'public' // Default to public
+      });
       if (data) { loadBoards(); }
       setCreateDialogOpen(false); setNewBoardName(''); setNewBoardDescription(''); setMessage(`✅ ${t('home.boardCreated')}`); setTimeout(() => setMessage(''), 3000);
     } catch (error) { setMessage(`❌ ${t('home.boardCreateError')}`); }
   };
 
   const deleteBoard = async () => {
-    if (!supabase || !boardToDelete || !isAdmin) return;
+    if (!boardToDelete || !isAdmin) return;
     try {
-      const { error } = await supabase.from('kanban_boards').delete().eq('id', boardToDelete.id);
-      if (error) throw error;
+      await pb.collection('kanban_boards').delete(boardToDelete.id);
       setBoards((prev) => prev.filter(b => b.id !== boardToDelete.id));
       setDeleteDialogOpen(false); setBoardToDelete(null); setMessage(`✅ ${t('home.boardDeleted')}`); setTimeout(() => setMessage(''), 3000);
     } catch (error) { setMessage(`❌ ${t('home.boardDeleteError')}`); }
@@ -173,24 +188,35 @@ export default function HomePage() {
 
   const toggleFavorite = async (e: React.MouseEvent, boardId: string) => {
     e.stopPropagation();
-    if (!supabase || !user) return;
+    if (!user) return;
 
     const isFav = favoriteBoardIds.has(boardId);
-    const newFavs = new Set(favoriteBoardIds);
-    if (isFav) {
-      newFavs.delete(boardId);
-      setFavoriteBoardIds(newFavs);
-      await supabase.from('board_favorites').delete().eq('user_id', user.id).eq('board_id', boardId);
-    } else {
-      newFavs.add(boardId);
-      setFavoriteBoardIds(newFavs);
-      await supabase.from('board_favorites').insert({ user_id: user.id, board_id: boardId });
+    try {
+      if (isFav) {
+        // Look up record
+        const record = await pb.collection('board_favorites').getFirstListItem(`user_id="${user.id}" && board_id="${boardId}"`);
+        await pb.collection('board_favorites').delete(record.id);
+        const newFavs = new Set(favoriteBoardIds);
+        newFavs.delete(boardId);
+        setFavoriteBoardIds(newFavs);
+      } else {
+        await pb.collection('board_favorites').create({
+          user_id: user.id,
+          board_id: boardId
+        });
+        const newFavs = new Set(favoriteBoardIds);
+        newFavs.add(boardId);
+        setFavoriteBoardIds(newFavs);
+      }
+    } catch (e) {
+      console.error('Favorite toggle failed', e);
     }
   };
 
   if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 {t('home.loading')}</Typography></Box>;
-  if (!supabase) return <Container maxWidth="sm" sx={{ py: 8 }}><SupabaseConfigNotice /></Container>;
-  if (!user) return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 {t('home.redirecting')}</Typography></Box>;
+  if (!user) {
+    return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}><Typography variant="h6">🔄 {t('home.redirecting')}</Typography></Box>;
+  }
 
   // --- Views für Board & Management ---
   if (selectedBoard && selectedBoard.boardType === 'standard' && viewMode === 'board') {

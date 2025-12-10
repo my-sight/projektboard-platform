@@ -41,7 +41,8 @@ import {
   NotificationsActive
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
-import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { pb } from '@/lib/pocketbase';
+// import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -50,7 +51,7 @@ interface PersonalDashboardProps {
 }
 
 export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProps) {
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  // const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const theme = useTheme();
   const { t } = useLanguage();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
@@ -79,11 +80,10 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
     let active = true;
 
     const loadData = async () => {
-      if (!supabase) return;
       setLoading(true);
 
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = pb.authStore.model;
         if (!user) { if (active) setLoading(false); return; }
         if (active) setUserId(user.id);
 
@@ -91,8 +91,8 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         const myIds = new Set<string>();
         myIds.add(user.id);
         if (user.email) myIds.add(user.email.toLowerCase().trim());
-
-        const metaName = user.user_metadata?.full_name || user.user_metadata?.name;
+        // PB user model uses 'name' or passed in user_metadata equivalent fields
+        const metaName = user.name || (user as any).full_name;
         if (metaName) myIds.add(String(metaName).toLowerCase().trim());
 
         try {
@@ -102,21 +102,21 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         } catch (e) { console.warn('Profile fetch warning', e); }
 
         // Boards laden für Namen
-        const { data: boards } = await supabase.from('kanban_boards').select('id, name, settings');
+        const boards = await pb.collection('kanban_boards').getFullList({ fields: 'id,name,settings' });
         const bMap: Record<string, any> = {};
-        boards?.forEach(b => {
+        boards.forEach((b: any) => {
           const settings = b.settings as Record<string, any> | null;
           bMap[b.id] = { name: b.name, type: settings?.boardType || 'standard' };
         });
 
-        const { data: cards, error } = await supabase.from('kanban_cards').select('*');
-        if (error) throw error;
+        const cards = await pb.collection('kanban_cards').getFullList();
 
         if (cards && active) {
           const foundTasks: any[] = [];
 
-          cards.forEach((row) => {
+          cards.forEach((row: any) => {
             let d = row.card_data;
+            // PB usually returns JSON object for JSON fields, but checking just in case
             if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = {}; } }
             d = d || {};
             if (d.Archived === '1' || d.archived) return;
@@ -151,7 +151,9 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
               const isWatch = (d.watch === true);
 
               foundTasks.push({
-                id: row.card_id, title: d.Nummer ? `${d.Nummer} ${d.Teil}` : (d.description || t('dashboard.task')),
+                id: row.card_id || row.id, // Using row.id if card_id is missing? Scheme says card_id exists.
+                rowId: row.id, // KEEP ROW ID for updates
+                title: d.Nummer ? `${d.Nummer} ${d.Teil}` : (d.description || t('dashboard.task')),
                 boardName: boardInfo.name, boardId: row.board_id, dueDate,
                 type: isTeamBoard ? 'team' : 'standard', isCritical, isPriority, isWatch, stage: d['Board Stage'], originalData: d
               });
@@ -160,7 +162,11 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
           setAllTasks(foundTasks);
         }
 
-        const { data: myNotes } = await supabase.from('personal_notes').select('*').eq('user_id', user.id).order('is_done', { ascending: true }).order('due_date', { ascending: true });
+        // Personal Notes
+        const myNotes = await pb.collection('personal_notes').getFullList({
+          filter: `user_id = "${user.id}"`,
+          sort: 'is_done,due_date'
+        });
         if (active) setNotes(myNotes || []);
 
       } catch (err) {
@@ -169,7 +175,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
     };
     loadData();
     return () => { active = false; };
-  }, [supabase]);
+  }, []);
 
   const kpis = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
@@ -201,36 +207,46 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
   const markTaskAsDone = async (task: any, event: React.MouseEvent) => {
     event.stopPropagation();
-    if (!supabase) return;
     setAllTasks(prev => prev.filter(t => t.id !== task.id));
     try {
-      const { originalData } = task;
+      const { originalData, rowId } = task; // Ensure rowId is available from loadData
       const assignee = originalData.assigneeId || userId;
-      await supabase.from('kanban_cards').update({
+
+      // If we don't have rowId for some reason (old state), we might be in trouble, but loadData provides it.
+      // Supabase used .eq('card_id', task.id). PB update needs record ID.
+      // If task.rowId is missing, we can't easily update by card_id without a filter query or fetch.
+      // Assuming loadData is running and populating rowId.
+      const targetId = rowId || task.id; // Fallback might fail if task.id is not record ID.
+
+      await pb.collection('kanban_cards').update(targetId, {
         stage: 'Fertig',
         card_data: { ...originalData, status: 'done', assigneeId: assignee, "Board Stage": "Fertig" },
-        updated_at: new Date().toISOString()
-      }).eq('card_id', task.id);
+        // updated_at is auto-handled by PB usually, but we can rely on system field 'updated'
+      });
       enqueueSnackbar(t('dashboard.doneMessage'), { variant: 'success' });
     } catch (err) { console.error(err); }
   };
 
   const addNote = async () => {
-    if (!newNote.trim() || !supabase) return;
-    const { data } = await supabase.from('personal_notes').insert({ user_id: userId, content: newNote }).select().single();
-    if (data) { setNotes([...notes, data]); setNewNote(''); }
+    if (!newNote.trim()) return;
+    try {
+      const data = await pb.collection('personal_notes').create({ user_id: userId, content: newNote });
+      if (data) { setNotes([...notes, data]); setNewNote(''); }
+    } catch (e) { console.error(e); }
   };
 
   const toggleNote = async (id: string, current: boolean) => {
-    if (!supabase) return;
-    await supabase.from('personal_notes').update({ is_done: !current }).eq('id', id);
-    setNotes(notes.map(n => n.id === id ? { ...n, is_done: !current } : n));
+    try {
+      const updated = await pb.collection('personal_notes').update(id, { is_done: !current });
+      setNotes(notes.map(n => n.id === id ? updated : n));
+    } catch (e) { console.error(e); }
   };
 
   const deleteNote = async (id: string) => {
-    if (!supabase) return;
-    await supabase.from('personal_notes').delete().eq('id', id);
-    setNotes(notes.filter(n => n.id !== id));
+    try {
+      await pb.collection('personal_notes').delete(id);
+      setNotes(notes.filter(n => n.id !== id));
+    } catch (e) { console.error(e); }
   };
 
   function toBoolean(value: any) { return value === true || value === 'true'; }

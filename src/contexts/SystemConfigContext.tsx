@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { createTheme, ThemeProvider, Theme } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
-import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { pb } from '@/lib/pocketbase';
 import { Inter, Roboto, Open_Sans, Montserrat } from 'next/font/google';
 
 // --- FONTS VORLADEN ---
@@ -35,7 +35,7 @@ interface SystemConfigContextType {
   theme: Theme;
 }
 
-const defaultSettings: SystemConfig = {
+export const defaultSettings: SystemConfig = {
   primaryColor: '#4aa3ff',
   secondaryColor: '#19c37d',
   fontFamily: 'Inter',
@@ -46,7 +46,7 @@ const defaultSettings: SystemConfig = {
 // --- CONTEXT ---
 const SystemConfigContext = createContext<SystemConfigContextType>({
   config: defaultSettings,
-  refreshConfig: async () => {},
+  refreshConfig: async () => { },
   isLoading: true,
   theme: createTheme()
 });
@@ -57,28 +57,24 @@ export const useSystemConfig = () => useContext(SystemConfigContext);
 export function SystemConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<SystemConfig>(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
-  const supabase = getSupabaseBrowserClient();
 
   const refreshConfig = async () => {
-    if (!supabase) return;
     try {
-      const { data } = await supabase
-        .from('system_settings')
-        .select('*')
-        .eq('id', 'config')
-        .single();
-
-      if (data) {
+      const record = await pb.collection('system_settings').getFirstListItem('key="config"');
+      if (record) {
+        const val = record.value || {};
+        const logoUrl = record.logo ? pb.files.getUrl(record, record.logo) : (val.logoUrl || null);
         setConfig({
-          primaryColor: data.primary_color || defaultSettings.primaryColor,
-          secondaryColor: data.secondary_color || defaultSettings.secondaryColor,
-          fontFamily: data.font_family || defaultSettings.fontFamily,
-          logoUrl: data.logo_url,
-          appName: data.app_name || defaultSettings.appName
+          primaryColor: val.primaryColor || defaultSettings.primaryColor,
+          secondaryColor: val.secondaryColor || defaultSettings.secondaryColor,
+          fontFamily: val.fontFamily || defaultSettings.fontFamily,
+          logoUrl: logoUrl,
+          appName: val.appName || defaultSettings.appName
         });
       }
     } catch (e) {
-      console.error('Config Laden fehlgeschlagen:', e);
+      // 404 is expected if config doesn't exist yet
+      console.log('Using default config (server config not found or error)');
     } finally {
       setIsLoading(false);
     }
@@ -122,11 +118,11 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
       },
       MuiAppBar: {
         styleOverrides: {
-            root: {
-                boxShadow: '0 1px 0 rgba(0,0,0,0.05)',
-                backgroundColor: '#ffffff',
-                color: '#333'
-            }
+          root: {
+            boxShadow: '0 1px 0 rgba(0,0,0,0.05)',
+            backgroundColor: '#ffffff',
+            color: '#333'
+          }
         }
       },
       MuiPaper: {
@@ -135,9 +131,9 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
         },
       },
       MuiDialog: {
-          styleOverrides: {
-              paper: { borderRadius: 6 }
-          }
+        styleOverrides: {
+          paper: { borderRadius: 6 }
+        }
       }
     },
   });

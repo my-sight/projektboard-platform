@@ -47,12 +47,7 @@ const colors = {
   },
 };
 
-const theme = createTheme({
-  palette: {
-    mode: 'dark',
-    ...colors,
-    divider: 'rgba(148, 163, 184, 0.12)',
-  },
+const sharedOptions = {
   typography: {
     fontFamily: '"Inter", "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     h1: { fontWeight: 700, letterSpacing: '-0.025em' },
@@ -61,11 +56,12 @@ const theme = createTheme({
     h4: { fontWeight: 600, letterSpacing: '-0.025em' },
     h5: { fontWeight: 600 },
     h6: { fontWeight: 600 },
-    button: { textTransform: 'none', fontWeight: 600 },
+    button: { textTransform: 'none' as const, fontWeight: 600 },
   },
   shape: {
     borderRadius: 16,
   },
+  // Ensure components are defined cleanly
   components: {
     MuiCssBaseline: {
       styleOverrides: {
@@ -149,10 +145,18 @@ const theme = createTheme({
       },
     },
   },
+};
+
+const theme = createTheme({
+  palette: {
+    mode: 'dark',
+    ...colors,
+    divider: 'rgba(148, 163, 184, 0.12)',
+  },
+  ...sharedOptions,
 });
 
 export const lightTheme = createTheme({
-  ...theme,
   palette: {
     mode: 'light',
     primary: colors.primary,
@@ -165,7 +169,9 @@ export const lightTheme = createTheme({
       primary: '#0f172a',
       secondary: '#64748b',
     },
+    divider: 'rgba(148, 163, 184, 0.12)',
   },
+  ...sharedOptions,
 });
 
 export default theme;

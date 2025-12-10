@@ -9,7 +9,7 @@ import {
   Alert,
   CircularProgress
 } from '@mui/material';
-import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function LoginForm() {
@@ -20,47 +20,31 @@ export default function LoginForm() {
   const [message, setMessage] = useState<string | null>(null);
   const { t } = useLanguage();
 
-  const supabase = getSupabaseBrowserClient();
+  const { signIn } = useAuth();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!supabase) return;
-
     setLoading(true);
     setError(null);
     setMessage(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      await signIn(email, password);
 
-      if (error) throw error;
-
-      // Erfolgreicher Login -> Weiterleitung passiert oft automatisch durch Auth-Listener
-      // oder wir machen es manuell:
+      // Successful login
       window.location.href = '/';
 
     } catch (err: any) {
+      console.error(err);
       setError(err.message || t('auth.loginFailed'));
     } finally {
       setLoading(false);
     }
   };
 
-  // Optional: Magic Link Login
+  // Magic Link removed for local offline version
   const handleMagicLink = async () => {
-    if (!email) {
-      setError(t('auth.magicLinkError'));
-      return;
-    }
-    if (!supabase) return;
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithOtp({ email });
-    setLoading(false);
-    if (error) setError(error.message);
-    else setMessage(t('auth.magicLinkSent'));
+    setError("Magic Link is not supported in offline mode.");
   };
 
   return (

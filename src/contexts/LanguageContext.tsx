@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { translations, Language } from '@/i18n/translations';
-import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { pb } from '@/lib/pocketbase';
 
 interface LanguageContextType {
     language: Language;
@@ -14,31 +14,42 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 
 export const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
     const [language, setLanguageState] = useState<Language>('de');
-    const supabase = getSupabaseBrowserClient();
 
     // Load language preference on mount
     useEffect(() => {
         const loadLanguage = async () => {
-            if (!supabase) return;
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user?.user_metadata?.language) {
-                setLanguageState(user.user_metadata.language as Language);
+            // Check local storage first for speed
+            const stored = localStorage.getItem('language') as Language;
+            if (stored) {
+                setLanguageState(stored);
+                return;
+            }
+
+            if (pb.authStore.isValid && pb.authStore.model) {
+                // Try to get from user profile if we have a field (assuming 'language' field might exist or using local storage fallback)
+                // For now, let's stick to localStorage as primary for MVP to avoid strict schema dependency for this preference
+                // But if we want to sync:
+                // const user = await pb.collection('users').getOne(pb.authStore.model.id);
+                // if (user.language) setLanguageState(user.language);
             }
         };
         loadLanguage();
-    }, [supabase]);
+    }, []);
 
     const setLanguage = async (lang: Language) => {
         setLanguageState(lang);
-        // Persist to Supabase
-        if (supabase) {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                await supabase.auth.updateUser({
-                    data: { language: lang }
-                });
+        localStorage.setItem('language', lang);
+
+        // Optional: Persist to PocketBase if user is logged in and schema supports it
+        /*
+        if (pb.authStore.isValid && pb.authStore.model) {
+            try {
+                await pb.collection('users').update(pb.authStore.model.id, { language: lang });
+            } catch (e) {
+                // Ignore update errors (field might not exist)
             }
         }
+        */
     };
 
     const t = (key: string): string => {

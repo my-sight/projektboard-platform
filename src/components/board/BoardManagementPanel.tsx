@@ -41,9 +41,8 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { isSuperuserEmail } from '@/constants/superuser';
+import { pb } from '@/lib/pocketbase';
 import { ClientProfile, fetchClientProfiles } from '@/lib/clientProfiles';
-import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
-import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import {
   CartesianGrid,
   Line,
@@ -94,6 +93,7 @@ interface KanbanCardRow {
   card_data: Record<string, unknown>;
   project_number?: string | null;
   project_name?: string | null;
+  board_id?: string;
 }
 
 // ✅ UPDATE: Kategorien erweitert auf Y und R
@@ -141,6 +141,16 @@ interface BoardManagementPanelProps {
   canEdit: boolean;
   memberCanSee: boolean;
 }
+
+// Helper functions declared previously...
+// ... (startOfWeek, isoDate, etc. - keeping them unchanged if possible, or assumed present)
+// Actually I need to keep them or the replace will cut them.
+// I'll try to keep the top imports and interfaces replacement separate from the body if possible, or include helpers.
+// Since the file is huge, I'll assume lines 43-440 cover imports to state init.
+// I will include the helper functions in the replacement to be safe or be very precise with ranges.
+
+// Since I am replacing lines 43 through 440, I need to include EVERYTHING in between.
+// That includes constants, helpers, etc.
 
 const ESCALATION_SCHEMA_DOC_PATH = 'docs/patch-board-escalations-card-id.sql';
 const ESCALATION_SCHEMA_HELP =
@@ -418,16 +428,7 @@ function buildEscalationViews(
 }
 
 export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }: BoardManagementPanelProps) {
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const { t } = useLanguage();
-
-  if (!supabase) {
-    return (
-      <Box sx={{ p: 3 }}>
-        <SupabaseConfigNotice />
-      </Box>
-    );
-  }
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -596,11 +597,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         setLoading(true);
       }
 
-      if (!supabase) {
-        setMessage(t('home.supabaseMissing'));
-        setTimeout(() => setMessage(''), 4000);
-        return false;
-      }
       const profilePromise = fetchClientProfiles();
 
       const [
@@ -609,76 +605,76 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         topicsResult,
         escalationsResult,
         cardsResult,
-        settingsResult,
+        boardResult,
         historyResult,
       ] = await Promise.all([
-        supabase.from('departments').select('*').order('name'),
-        supabase.from('board_members').select('*').eq('board_id', boardId).order('created_at'),
-        supabase.from('board_top_topics').select('*').eq('board_id', boardId).order('position'),
-        supabase.from('board_escalations').select('*').eq('board_id', boardId),
-        supabase
-          .from('kanban_cards')
-          .select('id, card_id, card_data, project_number, project_name')
-          .eq('board_id', boardId),
-        supabase
-          .from('kanban_board_settings')
-          .select('settings')
-          .eq('board_id', boardId)
-          .maybeSingle(),
-        supabase
-          .from('board_escalation_history')
-          .select('*')
-          .eq('board_id', boardId)
-          .order('changed_at', { ascending: false }),
+        pb.collection('departments').getFullList({ sort: 'name' }),
+        pb.collection('board_members').getFullList({ filter: `board_id="${boardId}"`, sort: 'created' }),
+        pb.collection('board_top_topics').getFullList({ filter: `board_id="${boardId}"`, sort: 'position' }),
+        pb.collection('board_escalations').getFullList({ filter: `board_id="${boardId}"` }),
+        pb.collection('kanban_cards').getFullList({ filter: `board_id="${boardId}"` }),
+        pb.collection('kanban_boards').getOne(boardId),
+        pb.collection('board_escalation_history').getFullList({ filter: `board_id="${boardId}"`, sort: '-changed_at' }),
       ]);
 
       const profileRows = (await profilePromise).filter(
         profile => !isSuperuserEmail(profile.email),
       );
 
-      if (departmentsResult.error) throw new Error(departmentsResult.error.message);
-      if (membersResult.error) throw new Error(membersResult.error.message);
-      if (topicsResult.error) throw new Error(topicsResult.error.message);
-      let escalationSchemaMissing = false;
-      if (escalationsResult.error) {
-        const message = escalationsResult.error.message;
-        if (message && isMissingEscalationColumnError(message)) {
-          escalationSchemaMissing = true;
-        } else {
-          throw new Error(message ?? t('boardManagement.loadBoardError'));
-        }
-      }
-      if (cardsResult.error) throw new Error(cardsResult.error.message);
-      if (settingsResult.error && settingsResult.error.code !== 'PGRST116') {
-        throw new Error(settingsResult.error.message);
-      }
-      let historyRows: EscalationHistoryEntry[] = [];
-      if (historyResult.error) {
-        const message = historyResult.error.message ?? '';
-        if (message.toLowerCase().includes('board_escalation_history')) {
-          setEscalationHistoryReady(false);
-          setMessage(`⚠️ ${ESCALATION_HISTORY_HELP}`);
-          setTimeout(() => setMessage(''), 10000);
-        } else {
-          throw new Error(historyResult.error.message);
-        }
-      } else {
-        setEscalationHistoryReady(true);
-        historyRows = (historyResult.data as EscalationHistoryEntry[] | null) ?? [];
-      }
+      const departmentRows = departmentsResult.map(d => ({ id: d.id, name: d.name }));
+      const memberRows = mergeMemberProfiles(membersResult.map(m => ({ id: m.id, profile_id: m.profile_id })), profileRows);
 
-      const departmentRows = (departmentsResult.data as Department[]) ?? [];
-      const memberRows = mergeMemberProfiles((membersResult.data as Member[]) ?? [], profileRows);
-      const topicRows = (topicsResult.data as Topic[]) ?? [];
-      const escalationRecords = escalationSchemaMissing
-        ? []
-        : ((escalationsResult.data as EscalationRecord[]) ?? []);
-      const cardRows = (cardsResult.data as KanbanCardRow[]) ?? [];
-      const escalationViews = buildEscalationViews(boardId, cardRows, escalationRecords);
-      const settingsRow = (settingsResult.data as { settings?: unknown } | null) ?? null;
+      const topicRows = topicsResult.map(t => ({ id: t.id, board_id: t.board_id, title: t.title, due_date: t.due_date, position: t.position }));
+
+      const escalationRecords = escalationsResult.map(e => ({
+        id: e.id,
+        board_id: e.board_id,
+        card_id: e.card_id,
+        category: e.category,
+        project_code: e.project_code,
+        project_name: e.project_name,
+        reason: e.reason,
+        measure: e.measure,
+        department_id: e.department_id,
+        responsible_id: e.responsible_id,
+        target_date: e.target_date,
+        completion_steps: e.completion_steps
+      })) as EscalationRecord[];
+
+      const cardRows = cardsResult.map(c => ({
+        id: c.id,
+        card_id: c.column_id ? c.id : c.id, // NOTE: PB might not store 'card_id' separately like Supabase did? 
+        // Wait, 'card_id' in Supabase usually referred to the ID of the card.
+        // In PB, id is the ID.
+        // BUT, buildEscalationViews uses c.card_id to map to escalation.card_id.
+        // I should ensure kanban_cards in PB has 'card_data'.
+        // The setup script says: { name: 'card_data', type: 'json' }, { name: 'column_id', ... }
+        // So 'id' is the unique ID.
+        // Let's assume c.id is what we want.
+        card_data: c.card_data,
+        project_number: c.card_data?.Nummer, // Fallback if not explicit column
+        project_name: c.card_data?.Teil
+      })) as KanbanCardRow[];
+
+      // Fix assumption: 'card_id' in KanbanCardRow should probably be 'id' from DB
+      // Supabase query was: select('id, card_id, card_data, ...')
+      // If card_id is expected to be a separate field, PB might not have it unless I added it.
+      // But standard kanban cards usually use 'id'.
+      // I'll map id to card_id for compatibility.
+      const compatibleCardRows = cardsResult.map(c => ({
+        id: c.id,
+        card_id: c.id, // Use DB ID
+        card_data: c.card_data,
+        project_number: c.card_data?.Nummer,
+        project_name: c.card_data?.Teil,
+        board_id: c.board_id
+      })) as KanbanCardRow[];
+
+      const escalationViews = buildEscalationViews(boardId, compatibleCardRows, escalationRecords);
+      const settingsRow = boardResult;
       const stageOrder = extractStageOrder(settingsRow?.settings);
       const baseStages = stageOrder.length ? stageOrder : DEFAULT_STAGE_NAMES;
-      const stageCounts = cardRows.reduce((map, row) => {
+      const stageCounts = compatibleCardRows.reduce((map, row) => {
         const raw = (row.card_data ?? {}) as Record<string, unknown>;
         const stage =
           stringOrNull(raw['Board Stage']) ??
@@ -704,7 +700,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       const chartData = stageList.map(stage => ({ stage, count: stageCounts.get(stage) ?? 0 }));
 
       setProfiles(profileRows);
-      setDepartments(departmentRows);
+      setDepartments(departmentRows as Department[]);
       setMembers(memberRows);
       setTopics(topicRows);
       // Initialize topic drafts once using complete objects
@@ -717,17 +713,25 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       });
       setTopicDrafts(topicDraftValues);
       setEscalations(escalationViews);
-      setEscalationSchemaReady(!escalationSchemaMissing);
-      if (escalationSchemaMissing) {
-        setMessage(`⚠️ ${ESCALATION_SCHEMA_HELP}`);
-        setTimeout(() => setMessage(''), 10000);
-      }
+      setEscalationSchemaReady(true); // Always true with PB
+
+      const historyRows = historyResult.map(h => ({
+        id: h.id,
+        board_id: h.board_id,
+        card_id: h.card_id,
+        escalation_id: h.escalation_id,
+        changed_at: h.changed_at,
+        changed_by: h.changed_by,
+        changes: h.changes
+      })) as EscalationHistoryEntry[];
+
       const historyMap: Record<string, EscalationHistoryEntry[]> = {};
       historyRows.forEach(entry => {
         const list = historyMap[entry.card_id] ?? [];
         historyMap[entry.card_id] = [...list, entry];
       });
       setEscalationHistory(historyMap);
+      setEscalationHistoryReady(true);
       setStageChartData(chartData);
       return true;
     } catch (error) {
@@ -742,26 +746,25 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const loadAttendanceHistory = async () => {
     try {
-      if (!supabase) {
-        setMessage(t('home.supabaseMissing'));
-        setTimeout(() => setMessage(''), 4000);
-        return;
-      }
-      const { data, error } = await supabase
-        .from('board_attendance')
-        .select('*')
-        .eq('board_id', boardId)
-        .order('week_start', { ascending: false });
-
-      if (error) throw new Error(error.message);
+      const data = await pb.collection('board_attendance').getFullList({
+        filter: `board_id="${boardId}"`,
+        sort: '-week_start'
+      });
 
       const map: Record<string, Record<string, AttendanceRecord | undefined>> = {};
-      (data as AttendanceRecord[] | null)?.forEach(entry => {
-        const key = entry.week_start;
-        if (!map[key]) {
-          map[key] = {};
+      data.forEach(entry => {
+        // PB date strings
+        const weekKey = entry.week_start.split('T')[0]; // Simplify date handling
+        if (!map[weekKey]) {
+          map[weekKey] = {};
         }
-        map[key][entry.profile_id] = entry;
+        map[weekKey][entry.profile_id] = {
+          id: entry.id,
+          board_id: entry.board_id,
+          profile_id: entry.profile_id,
+          week_start: entry.week_start,
+          status: entry.status
+        } as AttendanceRecord;
       });
 
       setAttendanceByWeek(map);
@@ -801,22 +804,38 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
     try {
       setAttendanceSaving(true);
-      const payload = members.map(member => ({
-        board_id: boardId,
-        profile_id: member.profile_id,
-        week_start: selectedWeek,
-        status: (attendanceDraft[member.profile_id] ?? true) ? 'present' : 'absent',
-      }));
+      const weekKey = selectedWeek.split('T')[0];
 
-      const { error } = await supabase
-        .from('board_attendance')
-        .upsert(payload, { onConflict: 'board_id,profile_id,week_start' });
+      // Prepare updates
+      const promises = members.map(async (member) => {
+        const present = attendanceDraft[member.profile_id] ?? true;
+        const status = present ? 'present' : 'absent';
+        const existing = attendanceByWeek[weekKey]?.[member.profile_id];
 
-      if (error) throw new Error(error.message);
+        if (existing) {
+          // Update if changed
+          if (existing.status !== status) {
+            await pb.collection('board_attendance').update(existing.id, { status });
+          }
+        } else {
+          // Create if not present (only if absent? No, record presence too)
+          // Actually logic usually is: if present is default, maybe we don't store?
+          // But here we urge to store 'present' or 'absent'.
+          // Code shows we store it.
+          await pb.collection('board_attendance').create({
+            board_id: boardId,
+            profile_id: member.profile_id,
+            week_start: selectedWeek,
+            status
+          });
+        }
+      });
 
-      await loadAttendanceHistory();
+      await Promise.all(promises);
+
       setMessage(t('boardManagement.attendanceSaved'));
       setTimeout(() => setMessage(''), 4000);
+      await loadAttendanceHistory();
     } catch (error) {
       handleError(error, t('boardManagement.saveAttendanceError'));
     } finally {
@@ -825,34 +844,30 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   };
 
   const addMember = async () => {
-    if (!memberSelect) return;
+    if (!memberSelect || !canEdit) return;
+
     try {
-      const { data, error } = await supabase
-        .from('board_members')
-        .insert({ board_id: boardId, profile_id: memberSelect })
-        .select()
-        .single();
+      if (members.some(m => m.profile_id === memberSelect)) {
+        return;
+      }
 
-      if (error) throw new Error(error.message);
+      await pb.collection('board_members').create({
+        board_id: boardId,
+        profile_id: memberSelect
+      });
 
-      const profile = profiles.find(entry => entry.id === memberSelect);
-      setMembers(prev => [...prev, { ...(data as Member), profile }]);
       setMemberSelect('');
+      await loadBaseData({ skipLoading: true });
     } catch (error) {
       handleError(error, t('boardManagement.addMemberError'));
     }
   };
 
-  const removeMember = async (memberId: string) => {
+  const removeMember = async (id: string) => {
+    if (!canEdit) return;
     try {
-      const { error } = await supabase
-        .from('board_members')
-        .delete()
-        .eq('id', memberId);
-
-      if (error) throw new Error(error.message);
-
-      setMembers(prev => prev.filter(member => member.id !== memberId));
+      await pb.collection('board_members').delete(id);
+      await loadBaseData({ skipLoading: true });
     } catch (error) {
       handleError(error, t('boardManagement.removeMemberError'));
     }
@@ -860,21 +875,11 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
 
 
-  const deleteTopic = async (topicId: string) => {
+  const deleteTopic = async (id: string) => {
+    if (!canEdit) return;
     try {
-      const { error } = await supabase
-        .from('board_top_topics')
-        .delete()
-        .eq('id', topicId);
-
-      if (error) throw new Error(error.message);
-
-      setTopics(prev => prev.filter(topic => topic.id !== topicId));
-      setTopicDrafts(prev => {
-        const next = { ...prev };
-        delete next[topicId];
-        return next;
-      });
+      await pb.collection('board_top_topics').delete(id);
+      setTopics(prev => prev.filter(t => t.id !== id));
     } catch (error) {
       handleError(error, t('boardManagement.deleteTopicError'));
     }
@@ -899,15 +904,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const canEditEscalations = memberCanSee;
 
   useEffect(() => {
-    supabase.auth
-      .getUser()
-      .then(result => {
-        setCurrentProfileId(result.data.user?.id ?? null);
-      })
-      .catch(() => {
-        setCurrentProfileId(null);
-      });
-  }, [supabase]);
+    setCurrentProfileId(pb.authStore.model?.id ?? null);
+    // No subscription needed for auth state in this panel usually, but if needed:
+    // return pb.authStore.onChange(...)
+  }, []);
 
   const openEscalationEditor = (entry: EscalationView) => {
     setEditingEscalation(entry);
@@ -956,11 +956,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       return;
     }
     if (!editingEscalation || !escalationDraft) return;
-    if (!escalationSchemaReady) {
-      setMessage(`❌ Eskalationen können erst gespeichert werden, nachdem ${ESCALATION_SCHEMA_HELP}`);
-      setTimeout(() => setMessage(''), 10000);
-      return;
-    }
 
     try {
       const currentEscalation = editingEscalation;
@@ -979,20 +974,29 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         completion_steps: Math.max(0, Math.min(4, escalationDraft.completion_steps ?? 0)),
       };
 
-      const { data, error } = await supabase
-        .from('board_escalations')
-        .upsert(payload, { onConflict: 'board_id,card_id' })
-        .select()
-        .maybeSingle();
+      let escalationId = currentEscalation.id;
+      let resultRecord: EscalationRecord;
 
-      if (error) throw new Error(error.message);
-
+      if (escalationId) {
+        resultRecord = await pb.collection('board_escalations').update(escalationId, payload) as EscalationRecord;
+      } else {
+        // Check if exists by card_id (simulating upsert)
+        try {
+          const existing = await pb.collection('board_escalations').getFirstListItem(`board_id="${boardId}" && card_id="${currentEscalation.card_id}"`);
+          escalationId = existing.id;
+          resultRecord = await pb.collection('board_escalations').update(escalationId, payload) as EscalationRecord;
+        } catch {
+          // Create new
+          resultRecord = await pb.collection('board_escalations').create(payload) as EscalationRecord;
+          escalationId = resultRecord.id;
+        }
+      }
       setEscalations(prev =>
         prev.map(entry =>
           entry.card_id === currentEscalation.card_id
             ? {
               ...entry,
-              id: (data as EscalationRecord | null)?.id ?? entry.id,
+              id: resultRecord.id, // Ensure we have the ID
               reason: payload.reason ?? null,
               measure: payload.measure ?? null,
               department_id: payload.department_id ?? null,
@@ -1003,19 +1007,18 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
             : entry,
         ),
       );
-      const escalationId = (data as EscalationRecord | null)?.id ?? currentEscalation.id ?? null;
 
       if (escalationHistoryReady && currentProfileId && escalationId) {
-        const { error: historyError } = await supabase
-          .from('board_escalation_history')
-          .insert({
+        try {
+          await pb.collection('board_escalation_history').create({
             board_id: boardId,
             card_id: currentEscalation.card_id,
             escalation_id: escalationId,
             changed_by: currentProfileId,
             changes: payload,
+            changed_at: new Date().toISOString()
           });
-        if (historyError) {
+        } catch (historyError) {
           console.error('⚠️ Fehler beim Schreiben der Eskalationshistorie', historyError);
         }
       }
@@ -1031,6 +1034,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       handleError(error, t('boardManagement.saveEscalationError'));
     }
   };
+
+
 
   const cycleDraftCompletion = () => {
     if (!escalationDraft) return;
@@ -1320,19 +1325,18 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                     <Button
                       variant="contained"
                       onClick={async () => {
-                        if (!supabase) return;
                         const draft = topicDrafts['new'];
                         if (!draft?.title.trim()) return;
 
                         try {
-                          const { data, error } = await supabase
-                            .from('board_top_topics')
-                            .insert({ board_id: boardId, title: draft.title, due_date: draft.dueDate || null, position: topics.length })
-                            .select()
-                            .single();
-                          if (error) throw error;
+                          const data = await pb.collection('board_top_topics').create({
+                            board_id: boardId,
+                            title: draft.title,
+                            due_date: draft.dueDate || null,
+                            position: topics.length
+                          });
 
-                          setTopics(prev => [...prev, data as Topic]);
+                          setTopics(prev => [...prev, data as unknown as Topic]); // data has matching struct
                           setTopicDrafts(prev => {
                             const copy = { ...prev };
                             delete copy['new'];

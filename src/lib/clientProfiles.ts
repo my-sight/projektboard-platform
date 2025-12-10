@@ -14,52 +14,28 @@ interface RawClientProfile extends Omit<ClientProfile, 'is_active'> {
   is_active: boolean | null;
 }
 
-import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
-
-interface ProfilesResponse {
-  data?: RawClientProfile[];
-  error?: string;
-}
-
-function mapProfiles(rows: RawClientProfile[] | null | undefined): ClientProfile[] {
-  return (rows ?? []).map(profile => ({
-    ...profile,
-    is_active: profile.is_active ?? true,
-    name: profile.full_name || profile.email // Polyfill name if needed
-  }));
-}
+import { pb } from '@/lib/pocketbase';
 
 export async function fetchClientProfiles(): Promise<ClientProfile[]> {
-  const supabase = typeof window === 'undefined' ? null : getSupabaseBrowserClient();
+  try {
+    const records = await pb.collection('users').getFullList({
+      sort: 'name',
+    });
 
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, email, full_name, company, department, role, is_active, created_at')
-        .order('full_name', { ascending: true })
-        .order('email', { ascending: true });
-
-      if (error) {
-        console.warn('Konnte Profile nicht direkt aus Supabase laden:', error.message);
-      } else {
-        return mapProfiles(data as RawClientProfile[] | null | undefined);
-      }
-    } catch (error) {
-      console.warn('Fehler beim direkten Laden der Profile aus Supabase:', error);
-    }
+    return records.map(u => ({
+      id: u.id,
+      email: u.email,
+      full_name: u.name, // PB 'users' has 'name'
+      company: u.company || null,
+      department: u.department || null,
+      name: u.name,
+      role: u.role || null,
+      is_active: true, // PB users are active if retrieved/verified
+      created_at: u.data?.created ?? u.created // Access created timestamp
+    }));
+  } catch (error) {
+    console.warn('Fehler beim Laden der Profile aus PocketBase:', error);
+    return [];
   }
-
-  const response = await fetch('/api/profiles', {
-    cache: 'no-store',
-  });
-
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => ({}))) as ProfilesResponse;
-    throw new Error(payload?.error ?? `Fehler ${response.status}`);
-  }
-
-  const payload = (await response.json()) as ProfilesResponse;
-  return mapProfiles(payload.data);
 }
 

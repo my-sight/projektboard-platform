@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
-import { AppRouterCacheProvider } from '@mui/material-nextjs/v13-appRouter';
+import { AppRouterCacheProvider } from '@mui/material-nextjs/v15-appRouter';
 import ThemeRegistry from '@/theme/ThemeRegistry';
 import SnackbarProviderWrapper from '@/components/SnackbarProviderWrapper';
 import { SystemConfigProvider } from '@/contexts/SystemConfigContext';

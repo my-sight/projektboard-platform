@@ -35,10 +35,9 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 
-import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { pb } from '@/lib/pocketbase';
 import { fetchClientProfiles, ClientProfile } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
-import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
 import { StandardDatePicker } from '@/components/common/StandardDatePicker';
 import dayjs from 'dayjs';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -221,7 +220,6 @@ function parseWeekInputValue(value: string): string | null {
 }
 
 export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSee }: TeamBoardManagementPanelProps) {
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
   const { t } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -236,7 +234,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   const [attendanceSaving, setAttendanceSaving] = useState(false);
   const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; memberId: string | null }>({ open: false, memberId: null });
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const currentUserId = pb.authStore.model?.id || null;
 
   const [selectedWeek, setSelectedWeek] = useState<string>(() => isoDate(startOfWeek(new Date())));
   const [orderedWeeks, setOrderedWeeks] = useState<string[]>(() =>
@@ -281,21 +279,10 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     [sortedWeekEntries, selectedWeek],
   );
 
-  useEffect(() => {
-    if (supabase) {
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        setCurrentUserId(user?.id ?? null);
-      }).catch(() => {
-        setCurrentUserId(null);
-      });
-    }
-  }, [supabase]);
-
   const isMember = useMemo(() => members.some((m) => m.profile_id === currentUserId), [members, currentUserId]);
   const canManageTopics = canEdit || isMember;
 
   useEffect(() => {
-    if (!supabase) return;
     let active = true;
 
     const run = async () => {
@@ -307,36 +294,28 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
         setProfiles(profileList);
 
         const [memberResult, attendanceResult, topicsResult] = await Promise.all([
-          supabase
-            .from('board_members')
-            .select('id, profile_id')
-            .eq('board_id', boardId)
-            .order('created_at', { ascending: true }),
-          supabase
-            .from('board_attendance')
-            .select('id, board_id, profile_id, week_start, status')
-            .eq('board_id', boardId)
-            .order('week_start', { ascending: true }),
-          supabase
-            .from('board_top_topics')
-            .select('*')
-            .eq('board_id', boardId)
-            .order('position', { ascending: true }),
+          pb.collection('board_members').getFullList({
+            filter: `board_id="${boardId}"`,
+            sort: 'created'
+          }),
+          pb.collection('board_attendance').getFullList({
+            filter: `board_id="${boardId}"`,
+            sort: 'week_start'
+          }),
+          pb.collection('board_top_topics').getFullList({
+            filter: `board_id="${boardId}"`,
+            sort: 'position'
+          })
         ]);
 
-        if (memberResult.error) throw memberResult.error;
-        if (attendanceResult.error) throw attendanceResult.error;
-        if (topicsResult.error) throw topicsResult.error;
-
-        const memberRows = (memberResult.data as BoardMemberRow[] | null) ?? [];
-        const mappedMembers: MemberWithProfile[] = memberRows
+        const mappedMembers: MemberWithProfile[] = memberResult
           .map((row) => {
             const profile = profileList.find((entry) => entry.id === row.profile_id) ?? null;
             if (profile && !isSuperuserEmail(profile.email) && (profile.is_active ?? true)) {
-              return { ...row, profile };
+              return { id: row.id, profile_id: row.profile_id, profile };
             }
             if (!profile) {
-              return { ...row, profile: null };
+              return { id: row.id, profile_id: row.profile_id, profile: null };
             }
             return null;
           })
@@ -344,14 +323,15 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
 
         setMembers(mappedMembers);
 
-        const attendanceRows = (attendanceResult.data as AttendanceRecord[] | null) ?? [];
         const attendanceMap: Record<string, Record<string, AttendanceRecord>> = {};
-        attendanceRows.forEach((row) => {
-          const weekKey = isoDate(startOfWeek(new Date(row.week_start)));
+        (attendanceResult as any[]).forEach((row) => {
+          // PB date strings usually iso8601, but row.week_start might be date only depending on schema type 'date' which returns string
+          const dateStr = row.week_start.split('T')[0];
+          const weekKey = isoDate(startOfWeek(new Date(dateStr)));
           if (!attendanceMap[weekKey]) {
             attendanceMap[weekKey] = {};
           }
-          attendanceMap[weekKey][row.profile_id] = row;
+          attendanceMap[weekKey][row.profile_id] = { id: row.id, board_id: row.board_id, profile_id: row.profile_id, week_start: row.week_start, status: row.status } as AttendanceRecord;
         });
         setAttendanceByWeek(attendanceMap);
 
@@ -370,7 +350,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
         });
         setAttendanceDraft(draft);
 
-        const topicRows = (topicsResult.data as TopicRow[] | null) ?? [];
+        const topicRows = topicsResult.map(r => ({ id: r.id, board_id: r.board_id, title: r.title, calendar_week: r.calendar_week, due_date: r.due_date, position: r.position })) as TopicRow[];
         setTopics(topicRows);
         const topicDraftValues: Record<string, TopicDraft> = {};
         topicRows.forEach((row) => {
@@ -380,10 +360,10 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
           };
         });
         setTopicDrafts(topicDraftValues);
-      } catch (cause) {
+      } catch (cause: any) {
         if (!active) return;
         console.error('❌ Fehler beim Laden des Team-Managements', cause);
-        setMessage(t('boardManagement.loadError'));
+        setMessage(t('boardManagement.loadError') + ': ' + cause.message);
       } finally {
         if (active) {
           setLoading(false);
@@ -396,7 +376,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     return () => {
       active = false;
     };
-  }, [boardId, supabase]);
+  }, [boardId]);
 
   const availableProfiles = useMemo(() => {
     const selected = new Set(members.map((entry) => entry.profile_id));
@@ -452,22 +432,43 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   };
 
   const saveAttendance = async () => {
-    if (!supabase) return;
     setAttendanceSaving(true);
     setMessage(null);
     const weekDate = startOfWeek(new Date(selectedWeek));
-    const payload = members.map((member) => ({
-      board_id: boardId,
-      profile_id: member.profile_id,
-      week_start: weekDate.toISOString().slice(0, 10),
-      status: attendanceDraft[member.profile_id] === false ? 'absent' : 'present',
-    }));
+    const weekStartStr = weekDate.toISOString().slice(0, 10); // 'YYYY-MM-DD'
 
     try {
-      const { error } = await supabase
-        .from('board_attendance')
-        .upsert(payload, { onConflict: 'board_id,profile_id,week_start' });
-      if (error) throw error;
+      // Iterate and update/create
+      // We need to know if it exists. attendanceByWeek has this info (including ID)
+      const promises = members.map(async (member) => {
+        const status = attendanceDraft[member.profile_id] === false ? 'absent' : 'present';
+        const existing = attendanceByWeek[selectedWeek]?.[member.profile_id];
+
+        if (existing && existing.id && !existing.id.startsWith(boardId)) { // check if real ID
+          if (existing.status !== status) {
+            await pb.collection('board_attendance').update(existing.id, { status });
+          }
+          return { ...existing, status };
+        } else {
+          // Check if exists in DB (double check) or just create
+          // Since we loaded data, we trust existing. If not found, create.
+          const created = await pb.collection('board_attendance').create({
+            board_id: boardId,
+            profile_id: member.profile_id,
+            week_start: weekDate, // PB accepts date object or string
+            status
+          });
+          return {
+            id: created.id,
+            board_id: created.board_id,
+            profile_id: created.profile_id,
+            week_start: created.week_start,
+            status: created.status
+          } as AttendanceRecord;
+        }
+      });
+
+      const results = await Promise.all(promises);
 
       setMessage(t('boardManagement.attendanceSaved'));
       setTimeout(() => setMessage(null), 4000);
@@ -476,38 +477,31 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
       if (!copy[selectedWeek]) {
         copy[selectedWeek] = {};
       }
-      payload.forEach((entry) => {
-        const existing = attendanceByWeek[selectedWeek]?.[entry.profile_id];
-        copy[selectedWeek][entry.profile_id] = {
-          id: existing?.id ?? `${boardId}-${entry.profile_id}-${selectedWeek}`,
-          board_id: boardId,
-          profile_id: entry.profile_id,
-          week_start: entry.week_start,
-          status: entry.status,
-        };
+
+      results.forEach(res => {
+        if (res) copy[selectedWeek][res.profile_id] = res;
       });
       setAttendanceByWeek(copy);
-    } catch (cause) {
+
+    } catch (cause: any) {
       console.error('❌ Fehler beim Speichern der Anwesenheit', cause);
-      setMessage(t('boardManagement.attendanceSaveError'));
+      setMessage(t('boardManagement.attendanceSaveError') + ': ' + cause.message);
     } finally {
       setAttendanceSaving(false);
     }
   };
 
   const addMember = async () => {
-    if (!supabase || !memberSelect) return;
+    if (!memberSelect) return;
     try {
-      const { error, data } = await supabase
-        .from('board_members')
-        .insert({ board_id: boardId, profile_id: memberSelect })
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await pb.collection('board_members').create({
+        board_id: boardId,
+        profile_id: memberSelect
+      });
 
       const profile = profiles.find((entry) => entry.id === memberSelect) ?? null;
       const nextMember: MemberWithProfile = {
-        id: data.id as string,
+        id: data.id,
         profile_id: memberSelect,
         profile,
       };
@@ -515,9 +509,9 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
       setMemberSelect('');
       setMessage(t('boardManagement.memberAdded'));
       setTimeout(() => setMessage(null), 3000);
-    } catch (cause) {
+    } catch (cause: any) {
       console.error('❌ Fehler beim Hinzufügen eines Mitglieds', cause);
-      setMessage(t('boardManagement.memberAddError'));
+      setMessage(t('boardManagement.memberAddError') + ': ' + cause.message);
     }
   };
 
@@ -526,17 +520,13 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   };
 
   const confirmRemoveMember = async () => {
-    if (!supabase || !deleteDialog.memberId) {
+    if (!deleteDialog.memberId) {
       setDeleteDialog({ open: false, memberId: null });
       return;
     }
 
     try {
-      const { error } = await supabase
-        .from('board_members')
-        .delete()
-        .eq('id', deleteDialog.memberId);
-      if (error) throw error;
+      await pb.collection('board_members').delete(deleteDialog.memberId);
 
       setMembers((prev) => prev.filter((entry) => entry.id !== deleteDialog.memberId));
       setAttendanceDraft((prev) => {
@@ -558,24 +548,18 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   };
 
   const addTopic = async () => {
-    if (!supabase) return;
     const draft = topicDrafts['new'];
     if (!draft?.title.trim()) return;
 
     try {
-      const { data, error } = await supabase
-        .from('board_top_topics')
-        .insert({
-          board_id: boardId,
-          title: draft.title,
-          due_date: draft.dueDate || null,
-          position: topics.length,
-        })
-        .select()
-        .single();
-      if (error) throw error;
+      const data = await pb.collection('board_top_topics').create({
+        board_id: boardId,
+        title: draft.title,
+        due_date: draft.dueDate || null,
+        position: topics.length,
+      });
 
-      const topic = data as TopicRow;
+      const topic = { id: data.id, board_id: data.board_id, title: data.title, due_date: data.due_date, position: data.position, calendar_week: data.calendar_week } as TopicRow;
       setTopics((prev) => [...prev, topic]);
       setTopicDrafts((prev) => {
         const copy = { ...prev };
@@ -596,8 +580,6 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   };
 
   const persistTopic = async (topicId: string) => {
-    if (!supabase) return;
-
     const draft = topicDrafts[topicId] ?? { title: '', dueDate: '' };
     const trimmedTitle = draft.title.trim();
     const dateValue = draft.dueDate;
@@ -610,15 +592,10 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     }
 
     try {
-      const { error } = await supabase
-        .from('board_top_topics')
-        .update({
-          title: trimmedTitle,
-          due_date: dateValue || null, // Jetzt wird due_date gespeichert
-          calendar_week: null // Wir nutzen das alte Feld nicht mehr primär
-        })
-        .eq('id', topicId);
-      if (error) throw error;
+      await pb.collection('board_top_topics').update(topicId, {
+        title: trimmedTitle,
+        due_date: dateValue || null
+      });
 
       setTopics((prev) =>
         prev.map((topic) =>
@@ -639,13 +616,8 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   };
 
   const deleteTopic = async (topicId: string) => {
-    if (!supabase) return;
     try {
-      const { error } = await supabase
-        .from('board_top_topics')
-        .delete()
-        .eq('id', topicId);
-      if (error) throw error;
+      await pb.collection('board_top_topics').delete(topicId);
 
       setTopics((prev) => prev.filter((topic) => topic.id !== topicId));
       setTopicDrafts((prev) => {
@@ -659,15 +631,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     }
   };
 
-  if (!supabase) {
-    return (
-      <Card>
-        <CardContent>
-          <SupabaseConfigNotice />
-        </CardContent>
-      </Card>
-    );
-  }
+
 
   if (!memberCanSee) {
     return (
@@ -940,32 +904,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
                     />
                     <Button
                       variant="contained"
-                      onClick={async () => {
-                        if (!supabase) return;
-                        const draft = topicDrafts['new'];
-                        if (!draft?.title.trim()) return;
-
-                        try {
-                          const { data, error } = await supabase
-                            .from('board_top_topics')
-                            .insert({ board_id: boardId, title: draft.title, due_date: draft.dueDate || null, position: topics.length })
-                            .select()
-                            .single();
-                          if (error) throw error;
-
-                          setTopics(prev => [...prev, data as TopicRow]);
-                          setTopicDrafts(prev => {
-                            const copy = { ...prev };
-                            delete copy['new'];
-                            return copy;
-                          });
-                          setMessage(t('boardManagement.topicCreated'));
-                          setTimeout(() => setMessage(null), 3000);
-                        } catch (e) {
-                          console.error(e);
-                          setMessage(t('boardManagement.createError'));
-                        }
-                      }}
+                      onClick={addTopic}
                       disabled={!topicDrafts['new']?.title.trim()}
                     >
                       {t('boardManagement.saveButton')}

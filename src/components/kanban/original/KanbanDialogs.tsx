@@ -772,7 +772,7 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
   );
 }
 
-export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users, boardMembers, saveCards, trLabel = 'TR', sopLabel = 'SOP' }: any) {
+export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, setRows, users, boardMembers, saveCards, trLabel = 'TR', sopLabel = 'SOP', onCreate }: any) {
   const { t } = useLanguage();
   const [newCard, setNewCard] = useState<any>({
     Nummer: '',
@@ -792,16 +792,22 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
     TR_History: [],
   });
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!newCard.Nummer?.trim() || !newCard.Teil?.trim()) {
       alert(t('kanban.requiredFields'));
       return;
     }
 
-    setRows([...rows, newCard]);
-    setNewCardOpen(false);
+    if (onCreate) {
+      await onCreate(newCard);
+    } else {
+      // Fallback or old logic? Better to just fail or warn if logic is missing.
+      // But for safety, keep optimistic update if onCreate missing?
+      // No, migrating fully.
+      console.warn("NewCardDialog: onCreate prop missing!");
+    }
 
-    if (saveCards) setTimeout(() => saveCards(), 100);
+    setNewCardOpen(false);
 
     setNewCard({
       Nummer: '',

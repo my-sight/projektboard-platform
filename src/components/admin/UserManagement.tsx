@@ -49,8 +49,7 @@ import {
   Edit as EditIcon
 } from '@mui/icons-material';
 import { isSuperuserEmail } from '@/constants/superuser';
-import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
-import SupabaseConfigNotice from '@/components/SupabaseConfigNotice';
+import { pb } from '@/lib/pocketbase';
 
 // --- TYPEN ---
 interface UserProfile {
@@ -169,7 +168,7 @@ function CustomTabPanel(props: TabPanelProps) {
 
 // ✅ HIER IST DER FIX: Props übernehmen
 export default function UserManagement({ isSuperUser = false }: UserManagementProps) {
-  const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  // const supabase = useMemo(() => getSupabaseBrowserClient(), []);
 
   // --- STATE ---
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -220,47 +219,56 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
 
   const postJson = useMemo(() => ({ 'Content-Type': 'application/json' }), []);
 
-  if (!supabase) return <Box sx={{ p: 3 }}><SupabaseConfigNotice /></Box>;
-
+  // --- DATA LOADING ---
   // --- DATA LOADING ---
   const loadData = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
+      // 1. Users laden
+      const usersList = await pb.collection('users').getFullList({ sort: '-created' });
 
-      // Eigene ID holen
-      const { data: authData } = await supabase.auth.getUser();
-      setCurrentUserId(authData.user?.id ?? null);
+      // Transform PB users to UserProfile
+      const profiles: UserProfile[] = usersList.map((u: any) => ({
+        id: u.id,
+        email: u.email,
+        full_name: u.name || u.full_name || '', // PB uses 'name' by default
+        role: u.role || 'user',
+        is_active: u.is_active ?? true, // Assuming is_active field exists or default true
+        company: u.company || u.department || '',
+        created_at: u.created,
+        avatar_url: u.avatar ? pb.files.getUrl(u, u.avatar) : undefined
+      }));
+      setUsers(profiles);
+      const mapped: Record<string, string> = {};
+      profiles.forEach(p => mapped[p.id] = p.full_name || '');
+      setEditableNames(mapped);
 
-      const [usersResult, departmentsResult, boardsResult] = await Promise.all([
-        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-        supabase.from('departments').select('*').order('name'),
-        supabase.from('kanban_boards').select('id, name, description, settings, board_admin_id').order('name'),
-      ]);
+      // 2. Departments laden 
+      try {
+        const deps = await pb.collection('departments').getFullList({ sort: 'name' });
+        setDepartments(deps.map((d: any) => ({ id: d.id, name: d.name, created_at: d.created })));
+      } catch (e) { console.log("Departments collection might not exist yet", e); setDepartments([]); }
 
-      if (usersResult.data) {
-        const normalized = usersResult.data.map(normalizeUserProfile);
-        setUsers(normalized);
-        const mapped: Record<string, string> = {};
-        normalized.forEach(p => mapped[p.id] = p.full_name || '');
-        setEditableNames(mapped);
-      }
-      if (departmentsResult.data) setDepartments(departmentsResult.data);
-      if (boardsResult.data) {
-        const normalizedBoards = boardsResult.data.map((board: any) => ({
-          id: board.id,
-          name: board.name,
-          description: board.description,
-          settings: board.settings || {},
-          board_admin_id: board.board_admin_id,
-          boardType: (board.settings?.boardType === 'team' ? 'team' : 'standard')
-        })) as BoardSummary[];
-        setBoards(normalizedBoards);
+      // 3. Boards laden (für Admin-Zuweisung)
+      try {
+        const boardsList = await pb.collection('kanban_boards').getFullList({ fields: 'id,name,description,settings,board_admin_id' });
+        const summary: BoardSummary[] = boardsList.map((b: any) => ({
+          id: b.id,
+          name: b.name,
+          description: b.description,
+          settings: b.settings,
+          board_admin_id: b.board_admin_id,
+          boardType: b.settings?.boardType || 'standard'
+        }));
+        setBoards(summary);
         const admins: Record<string, string> = {};
-        normalizedBoards.forEach(b => admins[b.id] = b.board_admin_id || '');
+        summary.forEach(b => admins[b.id] = b.board_admin_id || '');
         setBoardAdminSelections(admins);
-      }
+      } catch (e) { console.error(e); }
+
     } catch (error: any) {
-      setMessage(`❌ Fehler beim Laden: ${error.message}`);
+      console.error('Error loading data:', error);
+      setMessage('Fehler beim Laden der Daten: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -277,14 +285,15 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
 
   const mutateUser = async (userId: string, payload: any, successMsg: string) => {
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, { method: 'PATCH', headers: postJson, body: JSON.stringify(payload) });
-      const json = await res.json();
-      console.log('mutateUser response:', json);
-      if (!res.ok) throw new Error(json.error);
-      const { data } = json;
+      // PB fields mapping: full_name -> name usually, but custom schema might keep full_name
+      // Assuming payload keys match PB schema or we need minimal mapping
+      const updateData = { ...payload };
+      if (updateData.full_name) { updateData.name = updateData.full_name; delete updateData.full_name; }
+
+      const updated = await pb.collection('users').update(userId, updateData);
 
       // Update local state immediately
-      setUsers(prev => prev.map(u => u.id === userId ? normalizeUserProfile({ ...u, ...data }) : u));
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...payload, ...normalizeUserProfile(updated) } : u)); // mixing payload + updated just in case
 
       setMessage(`✅ ${successMsg}`);
       setTimeout(() => setMessage(''), 3000);
@@ -302,8 +311,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const deleteUser = async (id: string) => {
     if (isProtectedUser(id) || !confirm('Benutzer löschen?')) return;
     try {
-      const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error((await res.json()).error);
+      await pb.collection('users').delete(id);
       setUsers(prev => prev.filter(u => u.id !== id));
       setMessage('✅ Benutzer gelöscht');
     } catch (e: any) { setMessage(`❌ ${e.message}`); }
@@ -312,7 +320,6 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   // BULK DELETE (Nur für Superuser erlaubt)
   const bulkDeleteOthers = async () => {
     if (!currentUserId) return;
-    // Doppelte Absicherung: Nur wenn Prop true ist
     if (!isSuperUser) {
       alert("Nur Superuser dürfen diese Aktion ausführen.");
       return;
@@ -326,14 +333,13 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
 
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/users/reset', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ currentUserId })
-      });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.error);
-      setMessage(`✅ Aufräumen beendet: ${result.message}`);
+      // Manual loop delete as PB doesn't expose bulk delete easily locally without admin batch script or just loop
+      // Since it's client-side, we loop.
+      const others = users.filter(u => u.id !== currentUserId);
+      for (const u of others) {
+        await pb.collection('users').delete(u.id);
+      }
+      setMessage(`✅ Alle anderen Benutzer (${others.length}) gelöscht.`);
       await loadData();
     } catch (e: any) {
       setMessage(`❌ Fehler beim Löschen: ${e.message}`);
@@ -345,13 +351,18 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const createUser = async () => {
     if (!newUserEmail.trim() || !newUserPassword.trim()) return;
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const data = {
         email: newUserEmail.trim(),
+        emailVisibility: true,
         password: newUserPassword.trim(),
-        options: { data: { full_name: newUserName.trim(), company: newUserDepartment || null, role: 'user' } }
-      });
-      if (error) throw error;
-      if (data.user) {
+        passwordConfirm: newUserPassword.trim(),
+        name: newUserName.trim() || undefined,
+        full_name: newUserName.trim() || undefined, // just in case
+        role: 'user',
+        company: newUserDepartment || undefined
+      };
+      const record = await pb.collection('users').create(data);
+      if (record) {
         setCreateUserDialogOpen(false);
         setNewUserEmail(''); setNewUserPassword(''); setNewUserName('');
         setMessage('✅ Benutzer erstellt');
@@ -363,10 +374,8 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const addDepartment = async () => {
     if (!newDepartmentName.trim()) return;
     try {
-      const res = await fetch('/api/admin/departments', { method: 'POST', headers: postJson, body: JSON.stringify({ name: newDepartmentName.trim() }) });
-      if (!res.ok) throw new Error('Fehler');
-      const { data } = await res.json();
-      setDepartments(prev => [...prev, data]);
+      const data = await pb.collection('departments').create({ name: newDepartmentName.trim() });
+      setDepartments(prev => [...prev, { id: data.id, name: data.name, created_at: data.created }]);
       setDepartmentDialogOpen(false);
       setNewDepartmentName('');
       setMessage('✅ Abteilung erstellt');
@@ -376,8 +385,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const deleteDepartment = async (id: string) => {
     if (!confirm('Löschen?')) return;
     try {
-      const res = await fetch(`/api/admin/departments/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Fehler');
+      await pb.collection('departments').delete(id);
       setDepartments(prev => prev.filter(d => d.id !== id));
     } catch { setMessage('❌ Fehler'); }
   };
@@ -385,27 +393,14 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const updateBoardAdmin = async (boardId: string, adminId: string) => {
     setBoardAdminSelections(prev => ({ ...prev, [boardId]: adminId }));
     try {
-      const { error } = await supabase.from('kanban_boards').update({ board_admin_id: adminId || null }).eq('id', boardId);
-      if (error) throw error;
+      await pb.collection('kanban_boards').update(boardId, { board_admin_id: adminId || null });
       setBoards(prev => prev.map(b => b.id === boardId ? { ...b, board_admin_id: adminId || null } : b));
       setMessage('✅ Admin aktualisiert');
     } catch (e: any) { setMessage(`❌ ${e.message}`); }
   };
 
   // --- IMPORT LOGIK ---
-  const checkServerConfig = async () => {
-    try {
-      const res = await fetch('/api/admin/users/import', { method: 'GET' });
-      const data = await res.json();
-      if (data.config?.key === 'OK') {
-        setServerCheck({ status: 'ok', msg: 'Server bereit.' });
-      } else {
-        setServerCheck({ status: 'error', msg: 'Service Key fehlt in .env.local!' });
-      }
-    } catch (e) {
-      setServerCheck({ status: 'error', msg: 'Server nicht erreichbar.' });
-    }
-  };
+
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -441,7 +436,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
         parsedUsers.push({ email, password: fixedPassword, generatedPassword: fixedPassword, full_name, company: '', role: 'user' });
       }
       setImportData(parsedUsers);
-      if (parsedUsers.length > 0) { setImportDialogOpen(true); setImportProgress(0); checkServerConfig(); }
+      if (parsedUsers.length > 0) { setImportDialogOpen(true); setImportProgress(0); }
       else { alert('Keine gültigen Daten gefunden.'); }
       event.target.value = '';
     };
@@ -451,38 +446,43 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const executeImport = async () => {
     setImporting(true);
     setImportProgress(0);
-    const CHUNK_SIZE = 5;
     const total = importData.length;
-    let processed = 0;
     let successCount = 0;
     let allErrors: string[] = [];
 
-    try {
-      for (let i = 0; i < total; i += CHUNK_SIZE) {
-        const chunk = importData.slice(i, i + CHUNK_SIZE);
-        try {
-          const response = await fetch('/api/admin/users/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ users: chunk }) });
-          const textResponse = await response.text();
-          let result;
-          try { result = JSON.parse(textResponse); } catch (e) { throw new Error(`Server-Fehler (Kein JSON)`); }
-          if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
-          successCount += result.imported || 0;
-          if (result.errors) allErrors = [...allErrors, ...result.errors];
-        } catch (err: any) { allErrors.push(`Batch Fehler: ${err.message}`); }
-        processed += chunk.length;
-        setImportProgress(Math.min(100, Math.round((processed / total) * 100)));
+    for (let i = 0; i < total; i++) {
+      const u = importData[i];
+      try {
+        await pb.collection('users').create({
+          email: u.email,
+          emailVisibility: true,
+          password: u.password,
+          passwordConfirm: u.password,
+          name: u.full_name,
+          role: 'user',
+          company: u.company || ''
+        });
+        successCount++;
+      } catch (err: any) {
+        console.error(err);
+        allErrors.push(`${u.email}: ${err.message}`);
       }
-      setImportDialogOpen(false);
-      setImportData([]);
-      if (allErrors.length > 0) {
-        alert(`Import beendet.\n✅ ${successCount} erfolgreich\n❌ ${allErrors.length} Fehler`);
-        setMessage(`⚠️ Import mit Fehlern (${successCount} OK).`);
-      } else {
-        setMessage(`✅ ${successCount} Benutzer erfolgreich importiert.`);
-      }
-      await loadData();
-    } catch (err: any) { setMessage(`❌ Fehler: ${err.message}`); }
-    finally { setImporting(false); setImportProgress(0); }
+      setImportProgress(Math.round(((i + 1) / total) * 100));
+    }
+
+    setImportDialogOpen(false);
+    setImportData([]);
+
+    if (allErrors.length > 0) {
+      const errorMsg = allErrors.slice(0, 5).join('\n') + (allErrors.length > 5 ? `\n...und ${allErrors.length - 5} weitere.` : '');
+      alert(`Import fertig.\n✅ ${successCount} OK\n❌ ${allErrors.length} Fehler:\n${errorMsg}`);
+      setMessage(`⚠️ Import mit Fehlern.`);
+    } else {
+      setMessage(`✅ Alle ${successCount} Benutzer erfolgreich importiert.`);
+    }
+    await loadData();
+    setImporting(false);
+    setImportProgress(0);
   };
 
   if (loading) return <Box sx={{ py: 10, textAlign: 'center' }}><Typography variant="h6">🔄 Laden...</Typography></Box>;
@@ -734,14 +734,8 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
           <Button variant="contained" onClick={async () => {
             if (!editingDepartment || !editDepartmentName.trim()) return;
             try {
-              const res = await fetch(`/api/admin/departments/${editingDepartment.id}`, {
-                method: 'PATCH',
-                headers: postJson,
-                body: JSON.stringify({ name: editDepartmentName.trim() })
-              });
-              if (!res.ok) throw new Error('Fehler');
-              const { data } = await res.json();
-              setDepartments(prev => prev.map(d => d.id === editingDepartment.id ? { ...d, name: data.name } : d));
+              const updated = await pb.collection('departments').update(editingDepartment.id, { name: editDepartmentName.trim() });
+              setDepartments(prev => prev.map(d => d.id === editingDepartment.id ? { ...d, name: updated.name } : d));
               setEditDepartmentDialogOpen(false);
               setMessage('✅ Abteilung umbenannt');
             } catch { setMessage('❌ Fehler'); }
@@ -778,7 +772,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={checkServerConfig} disabled={importing}>Verbindung testen</Button>
+
           <Box sx={{ flexGrow: 1 }} />
           <Button onClick={() => setImportDialogOpen(false)} disabled={importing}>Abbrechen</Button>
           <Button onClick={executeImport} variant="contained" disabled={importing} startIcon={<UploadFileIcon />}>{importing ? 'Importiere...' : 'Starten'}</Button>

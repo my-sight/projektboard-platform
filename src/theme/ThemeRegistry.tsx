@@ -34,7 +34,6 @@ export default function ThemeRegistry({
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
     // Check localStorage first, then system preference
     const savedTheme = localStorage.getItem('theme-mode');
     if (savedTheme) {
@@ -42,6 +41,7 @@ export default function ThemeRegistry({
     } else {
       setIsDark(prefersDarkMode);
     }
+    setMounted(true);
   }, [prefersDarkMode]);
 
   const toggleTheme = () => {
@@ -50,21 +50,18 @@ export default function ThemeRegistry({
     localStorage.setItem('theme-mode', newMode ? 'dark' : 'light');
   };
 
-  // Prevent hydration mismatch
-  if (!mounted) {
-    return (
-      <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
-        <ThemeProvider theme={theme}>
-          {children}
-        </ThemeProvider>
-      </LocalizationProvider>
-    );
-  }
+  // While not mounted, we render nothing to avoid hydration mismatch
+  // OR we render the default server theme (dark) and accept a potential flash if client wants light.
+  // BUT the className mismatch implies the generated CSS differs.
+  // The safest way to avoid mismatch errors is to render the SAME theme initially.
+  // If we render `theme` (dark) on server, we must render `theme` (dark) on client first render.
+
+  const currentTheme = mounted ? (isDark ? theme : lightTheme) : theme;
 
   return (
     <ThemeContext.Provider value={{ isDark, toggleTheme }}>
       <LocalizationProvider dateAdapter={AdapterDayjs} adapterLocale="de">
-        <ThemeProvider theme={isDark ? theme : lightTheme}>
+        <ThemeProvider theme={currentTheme}>
           {children}
         </ThemeProvider>
       </LocalizationProvider>
