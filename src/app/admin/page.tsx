@@ -13,7 +13,8 @@ import {
 import { SettingsSuggest } from '@mui/icons-material';
 import UserManagement from '@/components/admin/UserManagement';
 import SystemBranding from '@/components/admin/SystemBranding';
-import SystemLockoutPanel from '@/components/admin/SystemLockoutPanel';
+
+import SystemLicensePanel from '@/components/admin/SystemLicensePanel';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -55,9 +56,11 @@ export default function AdminPage() {
               <SystemBranding />
             </Box>
 
-            {/* Lockout Panel */}
+
+
+            {/* License Panel */}
             <Box>
-              <SystemLockoutPanel />
+              <SystemLicensePanel />
             </Box>
           </Stack>
         </Box>

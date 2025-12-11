@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 import { isSuperuserEmail } from '@/constants/superuser';
+import { getLicenseStatus } from '@/lib/license';
 
 export interface Profile {
   id: string;
@@ -63,17 +64,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // 1. Initial Sync
     const initAuth = async () => {
       setLoading(true);
-      const { data: { session } } = await supabase.auth.getSession();
+      // 1. Initial Session Load
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
+        // License Check
+        const license = await getLicenseStatus();
+        if (!license.valid && !window.location.pathname.includes('/license')) {
+          window.location.href = '/license';
+          return; // Stop here
+        }
 
-      if (session?.user) {
-        setUser(session.user);
-        const p = await fetchProfile(session.user.id);
-        setProfile(p);
-      } else {
-        setUser(null);
-        setProfile(null);
-      }
-      setLoading(false);
+        if (session?.user) {
+          setUser(session.user);
+          setProfile(await fetchProfile(session.user.id));
+        } else {
+          setUser(null);
+          setProfile(null);
+        }
+        setLoading(false);
+      });
     };
 
     initAuth();
@@ -94,52 +102,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     });
 
-    // 3. Lockout Check Loop (every 30s)
-    const checkLockout = async () => {
-      try {
-        const { data: record } = await supabase
-          .from('system_settings')
-          .select('*')
-          .eq('key', 'lockout')
-          .single();
 
-        if (record && record.value && record.value.enabled && record.value.lockoutTime) {
-          const lockoutTime = new Date(record.value.lockoutTime).getTime();
-          const now = Date.now(); // Using local time for simplicity in local dev
-
-          if (now > lockoutTime) {
-            // Locked!
-            // Check if superuser
-            const { data: { user } } = await supabase.auth.getUser();
-
-            // We need profile for role check
-            let currentProfile = profile;
-            if (user && !currentProfile) {
-              currentProfile = await fetchProfile(user.id);
-            }
-
-            const email = user?.email;
-            const role = currentProfile?.role;
-            const isSuper = isSuperuserEmail(email) || role === 'superuser';
-
-            if (!isSuper) {
-              if (!window.location.pathname.includes('/locked') && !window.location.pathname.includes('/login')) {
-                window.location.href = '/locked';
-              }
-            }
-          }
-        }
-      } catch (e) {
-        // Ignore errors
-      }
-    };
-
-    const interval = setInterval(checkLockout, 10000);
-    checkLockout();
 
     return () => {
       subscription.unsubscribe();
-      clearInterval(interval);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
