@@ -32,7 +32,7 @@ import TeamKanbanBoard from '@/components/team/TeamKanbanBoard';
 import TeamBoardManagementPanel from '@/components/team/TeamBoardManagementPanel';
 import PersonalDashboard from '@/components/dashboard/PersonalDashboard';
 import { isSuperuserEmail } from '@/constants/superuser';
-import { pb } from '@/lib/pocketbase';
+import { supabase } from '@/lib/supabaseClient';
 
 interface Board {
   id: string;
@@ -56,7 +56,7 @@ export default function HomePage() {
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'management' | 'board' | 'team-management' | 'team-board'>('list');
   const [openCardId, setOpenCardId] = useState<string | null>(null);
-  const { user, loading, signOut } = useAuth();
+  const { user, loading, signOut, isAdmin: authIsAdmin } = useAuth(); // Assuming isAdmin exposed from context refactor
   const boardRef = useRef<OriginalKanbanBoardHandle>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -85,33 +85,39 @@ export default function HomePage() {
 
   const loadProfile = useCallback(async () => {
     if (!user) return;
+    // AuthContext now handles admin check mostly, but we sync local state
+    // We already have authIsAdmin from hook if updated, but let's re-verify or trust hook
     try {
       const superuser = isSuperuserEmail(user.email ?? null);
-      const role = String((pb.authStore.model as any)?.role || '').toLowerCase();
+
+      // We need to fetch profile role manually if not in user metadata or if context not fully relied on here yet
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      const role = profile?.role || 'user';
+
       setIsSuperuser(superuser);
       setIsAdmin(superuser || role === 'admin');
     } catch (error) {
-      const superuser = isSuperuserEmail(user.email ?? null);
-      setIsSuperuser(superuser);
-      setIsAdmin(superuser);
+      console.error(error);
     }
   }, [user]);
 
   const loadBoards = useCallback(async () => {
     if (!user) return;
     try {
-      const boardsData = await pb.collection('kanban_boards').getFullList();
+      const { data: boardsData, error } = await supabase.from('kanban_boards').select('*');
+      if (error) throw error;
+
       const sanitizedBoards = (boardsData ?? []).map((board) => {
         const rawSettings = board.settings && typeof board.settings === 'object' ? (board.settings as Record<string, unknown>) : {};
         const typeRaw = (rawSettings as Record<string, unknown>)['boardType'];
         const boardType = typeof typeRaw === 'string' && typeRaw.toLowerCase() === 'team' ? 'team' : 'standard';
         return {
           ...board,
-          created_at: board.created,
+          created_at: board.created_at, // Supabase uses created_at
           settings: rawSettings,
           visibility: board.visibility ?? 'public',
           boardType,
-          boardAdminId: (board as any).board_admin_id ?? null,
+          boardAdminId: board.board_admin_id ?? null,
           id: board.id
         } as unknown as Board;
       });
@@ -121,15 +127,15 @@ export default function HomePage() {
       console.error('DEBUG: Load Boards Error:', error);
       setMessage(`❌ ${t('home.loadError')}`);
     }
-  }, [isAdmin, user, t]);
+  }, [user, t]);
 
   const loadFavorites = useCallback(async () => {
     if (!user) return;
     try {
-      const favs = await pb.collection('board_favorites').getFullList({
-        filter: `user_id = "${user.id}"`
-      });
-      setFavoriteBoardIds(new Set(favs.map(f => f.board_id)));
+      const { data: favs } = await supabase.from('board_favorites').select('board_id').eq('user_id', user.id);
+      if (favs) {
+        setFavoriteBoardIds(new Set(favs.map(f => f.board_id)));
+      }
     } catch (e) { /* Ignore */ }
   }, [user]);
 
@@ -198,14 +204,16 @@ export default function HomePage() {
 
     try {
       const initialSettings = { boardType: newBoardType };
-      const data = await pb.collection('kanban_boards').create({
+      const { data, error } = await supabase.from('kanban_boards').insert({
         name: newBoardName.trim(),
         description: newBoardDescription.trim(),
         owner_id: user.id,
         board_admin_id: user.id,
         settings: initialSettings,
-        visibility: 'public' // Default to public
-      });
+        visibility: 'public'
+      }).select().single();
+
+      if (error) throw error;
       if (data) { loadBoards(); }
       setCreateDialogOpen(false); setNewBoardName(''); setNewBoardDescription(''); setMessage(`✅ ${t('home.boardCreated')}`); setTimeout(() => setMessage(''), 3000);
     } catch (error) { setMessage(`❌ ${t('home.boardCreateError')}`); }
@@ -214,7 +222,8 @@ export default function HomePage() {
   const deleteBoard = async () => {
     if (!boardToDelete || !isAdmin) return;
     try {
-      await pb.collection('kanban_boards').delete(boardToDelete.id);
+      const { error } = await supabase.from('kanban_boards').delete().eq('id', boardToDelete.id);
+      if (error) throw error;
       setBoards((prev) => prev.filter(b => b.id !== boardToDelete.id));
       setDeleteDialogOpen(false); setBoardToDelete(null); setMessage(`✅ ${t('home.boardDeleted')}`); setTimeout(() => setMessage(''), 3000);
     } catch (error) { setMessage(`❌ ${t('home.boardDeleteError')}`); }
@@ -227,14 +236,12 @@ export default function HomePage() {
     const isFav = favoriteBoardIds.has(boardId);
     try {
       if (isFav) {
-        // Look up record
-        const record = await pb.collection('board_favorites').getFirstListItem(`user_id="${user.id}" && board_id="${boardId}"`);
-        await pb.collection('board_favorites').delete(record.id);
+        await supabase.from('board_favorites').delete().eq('user_id', user.id).eq('board_id', boardId);
         const newFavs = new Set(favoriteBoardIds);
         newFavs.delete(boardId);
         setFavoriteBoardIds(newFavs);
       } else {
-        await pb.collection('board_favorites').create({
+        await supabase.from('board_favorites').insert({
           user_id: user.id,
           board_id: boardId
         });
@@ -262,7 +269,7 @@ export default function HomePage() {
             <Typography variant="h6">{selectedBoard.name || 'Board'}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Typography variant="body2">👋 {user.name || user.email}</Typography>
+            <Typography variant="body2">👋 {user.user_metadata?.full_name || user.email}</Typography>
             <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
           </Box>
         </Box>
@@ -281,7 +288,7 @@ export default function HomePage() {
             <Typography variant="h6">{selectedBoard.name || t('home.teamBoard')}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Typography variant="body2">👋 {user.name || user.email}</Typography>
+            <Typography variant="body2">👋 {user.user_metadata?.full_name || user.email}</Typography>
             <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
           </Box>
         </Box>
@@ -345,7 +352,7 @@ export default function HomePage() {
             {language.toUpperCase()}
           </Button>
           {isAdmin && <Button variant="outlined" onClick={() => (window.location.href = '/admin')}>{t('header.admin')}</Button>}
-          <Typography variant="body2">👋 {user.name || user.email}</Typography>
+          <Typography variant="body2">👋 {user.user_metadata?.full_name || user.email}</Typography>
           <Button variant="outlined" onClick={signOut} color="error">{t('header.logout')}</Button>
         </Box>
       </Box>

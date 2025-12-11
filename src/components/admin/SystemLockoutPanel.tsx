@@ -15,7 +15,7 @@ import {
     Divider
 } from '@mui/material';
 import { AccessTime, LockClock } from '@mui/icons-material';
-import { pb } from '@/lib/pocketbase';
+import { supabase } from '@/lib/supabaseClient';
 import dayjs from 'dayjs';
 import 'dayjs/locale/de';
 
@@ -29,7 +29,12 @@ export default function SystemLockoutPanel() {
 
     const fetchSettings = async () => {
         try {
-            const record = await pb.collection('system_settings').getFirstListItem('key="lockout"');
+            const { data: record } = await supabase
+                .from('system_settings')
+                .select('*')
+                .eq('key', 'lockout')
+                .single();
+
             if (record && record.value) {
                 setEnabled(!!record.value.enabled);
 
@@ -39,9 +44,7 @@ export default function SystemLockoutPanel() {
                 }
                 setMessage(record.value.message || '');
 
-                // Approximate server time from record update if available, or just show client time as reference
-                // Better: Use the updated timestamp of the record as a "last known server time" reference
-                setServerTime(new Date(record.updated).toLocaleString());
+                setServerTime(new Date(record.updated_at || record.created_at).toLocaleString());
             }
         } catch (e) {
             console.log('No lockout settings found, using defaults.');
@@ -62,13 +65,15 @@ export default function SystemLockoutPanel() {
                 message
             };
 
-            // Check if exists
-            try {
-                const record = await pb.collection('system_settings').getFirstListItem('key="lockout"');
-                await pb.collection('system_settings').update(record.id, { value: payload });
-            } catch {
-                await pb.collection('system_settings').create({ key: 'lockout', value: payload });
-            }
+            // Check if exists or upsert
+            // Assuming 'key' is unique
+            const { error } = await supabase.from('system_settings').upsert({
+                key: 'lockout',
+                value: payload,
+                updated_at: new Date().toISOString()
+            }, { onConflict: 'key' });
+
+            if (error) throw error;
 
             setSuccess('Einstellungen gespeichert. Serverzeit aktualisiert.');
             fetchSettings(); // Refresh to get new 'updated' time

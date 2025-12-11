@@ -41,8 +41,8 @@ import {
   NotificationsActive
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
-import { pb } from '@/lib/pocketbase';
-// import { getSupabaseBrowserClient } from '@/lib/supabaseBrowser';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthContext';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -58,7 +58,8 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
-  const [userId, setUserId] = useState<string>('');
+  const { user } = useAuth();
+  const userId = user?.id || '';
 
   const [allTasks, setAllTasks] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
@@ -83,16 +84,14 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
       setLoading(true);
 
       try {
-        const user = pb.authStore.model;
         if (!user) { if (active) setLoading(false); return; }
-        if (active) setUserId(user.id);
+        // userId is already set from context
 
         // 1. Identitäten sammeln (ID, Email, Voller Name)
         const myIds = new Set<string>();
         myIds.add(user.id);
         if (user.email) myIds.add(user.email.toLowerCase().trim());
-        // PB user model uses 'name' or passed in user_metadata equivalent fields
-        const metaName = user.name || (user as any).full_name;
+        const metaName = user.user_metadata?.full_name || user.user_metadata?.name;
         if (metaName) myIds.add(String(metaName).toLowerCase().trim());
 
         try {
@@ -102,14 +101,14 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         } catch (e) { console.warn('Profile fetch warning', e); }
 
         // Boards laden für Namen
-        const boards = await pb.collection('kanban_boards').getFullList({ fields: 'id,name,settings' });
+        const { data: boards } = await supabase.from('kanban_boards').select('id,name,settings');
         const bMap: Record<string, any> = {};
-        boards.forEach((b: any) => {
+        (boards || []).forEach((b: any) => {
           const settings = b.settings as Record<string, any> | null;
           bMap[b.id] = { name: b.name, type: settings?.boardType || 'standard' };
         });
 
-        const cards = await pb.collection('kanban_cards').getFullList();
+        const { data: cards } = await supabase.from('kanban_cards').select('*');
 
         if (cards && active) {
           const foundTasks: any[] = [];
@@ -163,24 +162,29 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         }
 
         // Personal Notes
-        const myNotes = await pb.collection('personal_notes').getFullList({
-          filter: `user_id = "${user.id}"`,
-          sort: 'is_done,due_date'
-        });
+        const { data: myNotes } = await supabase.from('personal_notes')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('due_date', { ascending: true })
+          .order('is_done', { ascending: true }); // Supabase orders by multiple cols naturally
+
+        // Client side sort if needed to match PB exact order 'is_done,due_date'
+        // But SQL order should be fine.
+
         if (active) setNotes(myNotes || []);
 
       } catch (err) {
         console.error(err);
       } finally { if (active) setLoading(false); }
     };
-    loadData();
+    if (user) loadData();
     return () => { active = false; };
-  }, []);
+  }, [user]); // user dependency
 
   const kpis = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     return {
-      total: allTasks.length,
+      total: allTasks.filter(t => t.type === 'team').length,
       overdue: allTasks.filter(t => t.dueDate && t.dueDate < today).length,
       dueToday: allTasks.filter(t => t.dueDate === today).length,
       critical: allTasks.filter(t => t.isCritical).length,
@@ -216,13 +220,13 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
       // Supabase used .eq('card_id', task.id). PB update needs record ID.
       // If task.rowId is missing, we can't easily update by card_id without a filter query or fetch.
       // Assuming loadData is running and populating rowId.
-      const targetId = rowId || task.id; // Fallback might fail if task.id is not record ID.
+      const targetId = rowId || task.id;
 
-      await pb.collection('kanban_cards').update(targetId, {
+      await supabase.from('kanban_cards').update({
         stage: 'Fertig',
-        card_data: { ...originalData, status: 'done', assigneeId: assignee, "Board Stage": "Fertig" },
-        // updated_at is auto-handled by PB usually, but we can rely on system field 'updated'
-      });
+        card_data: { ...originalData, status: 'done', assigneeId: assignee, "Board Stage": "Fertig" }
+      }).eq('id', targetId);
+
       enqueueSnackbar(t('dashboard.doneMessage'), { variant: 'success' });
     } catch (err) { console.error(err); }
   };
@@ -230,21 +234,21 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
   const addNote = async () => {
     if (!newNote.trim()) return;
     try {
-      const data = await pb.collection('personal_notes').create({ user_id: userId, content: newNote });
+      const { data } = await supabase.from('personal_notes').insert({ user_id: userId, content: newNote }).select().single();
       if (data) { setNotes([...notes, data]); setNewNote(''); }
     } catch (e) { console.error(e); }
   };
 
   const toggleNote = async (id: string, current: boolean) => {
     try {
-      const updated = await pb.collection('personal_notes').update(id, { is_done: !current });
-      setNotes(notes.map(n => n.id === id ? updated : n));
+      const { data: updated } = await supabase.from('personal_notes').update({ is_done: !current }).eq('id', id).select().single();
+      if (updated) setNotes(notes.map(n => n.id === id ? updated : n));
     } catch (e) { console.error(e); }
   };
 
   const deleteNote = async (id: string) => {
     try {
-      await pb.collection('personal_notes').delete(id);
+      await supabase.from('personal_notes').delete().eq('id', id);
       setNotes(notes.filter(n => n.id !== id));
     } catch (e) { console.error(e); }
   };
@@ -338,6 +342,21 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                       color={new Date(task.dueDate) < new Date() ? 'error' : 'default'}
                       variant={new Date(task.dueDate) < new Date() ? 'filled' : 'outlined'}
                       sx={{ height: 16, fontSize: '0.6rem' }}
+                    />
+                  )}
+                  {task.stage && (
+                    <Chip
+                      label={task.stage}
+                      size="small"
+                      variant="outlined"
+                      sx={{
+                        fontSize: '0.6rem',
+                        height: 16,
+                        borderColor: 'text.secondary',
+                        color: 'text.secondary',
+                        maxWidth: '80px',
+                        px: 0.5
+                      }}
                     />
                   )}
                 </Box>

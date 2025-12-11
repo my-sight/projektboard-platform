@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { translations, Language } from '@/i18n/translations';
-import { pb } from '@/lib/pocketbase';
 
 interface LanguageContextType {
     language: Language;
@@ -25,13 +24,7 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
                 return;
             }
 
-            if (pb.authStore.isValid && pb.authStore.model) {
-                // Try to get from user profile if we have a field (assuming 'language' field might exist or using local storage fallback)
-                // For now, let's stick to localStorage as primary for MVP to avoid strict schema dependency for this preference
-                // But if we want to sync:
-                // const user = await pb.collection('users').getOne(pb.authStore.model.id);
-                // if (user.language) setLanguageState(user.language);
-            }
+            // if (pb.authStore.isValid && pb.authStore.model) ... removed PB dep
         };
         loadLanguage();
     }, []);
@@ -40,16 +33,7 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
         setLanguageState(lang);
         localStorage.setItem('language', lang);
 
-        // Optional: Persist to PocketBase if user is logged in and schema supports it
-        /*
-        if (pb.authStore.isValid && pb.authStore.model) {
-            try {
-                await pb.collection('users').update(pb.authStore.model.id, { language: lang });
-            } catch (e) {
-                // Ignore update errors (field might not exist)
-            }
-        }
-        */
+        // Optional: Persist to DB if schema supports it (omitted for now)
     };
 
     const t = (key: string): string => {

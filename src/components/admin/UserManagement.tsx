@@ -49,7 +49,8 @@ import {
   Edit as EditIcon
 } from '@mui/icons-material';
 import { isSuperuserEmail } from '@/constants/superuser';
-import { pb } from '@/lib/pocketbase';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthContext';
 
 // --- TYPEN ---
 interface UserProfile {
@@ -177,7 +178,8 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const [boardAdminSelections, setBoardAdminSelections] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const { user: currentUser } = useAuth(); // Removed session if not in context
+  const currentUserId = currentUser?.id || null;
 
   // Tabs
   const [currentTab, setCurrentTab] = useState(0);
@@ -224,22 +226,27 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const loadData = async () => {
     setLoading(true);
     try {
-      // 1. Users laden
-      const usersList = await pb.collection('users').getFullList({ sort: '-created' });
+      // 1. Users laden via API (requires admin token)
+      let profiles: UserProfile[] = [];
+      const { data: { session } } = await supabase.auth.getSession();
 
-      // Transform PB users to UserProfile
-      const profiles: UserProfile[] = usersList.map((u: any) => ({
-        id: u.id,
-        email: u.email,
-        full_name: u.name || u.full_name || '', // PB uses 'name' by default
-        role: u.role || 'user',
-        is_active: u.is_active ?? true, // Assuming is_active field exists or default true
-        company: u.company || u.department || '',
-        created_at: u.created,
-        avatar_url: u.avatar ? pb.files.getUrl(u, u.avatar) : undefined
-      }))
-        // Filter out superusers from the list
-        .filter(p => !isSuperuserEmail(p.email));
+      if (session?.access_token) {
+        const res = await fetch('/api/admin/users', {
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.users) {
+            profiles = data.users.map((u: any) => normalizeUserProfile(u))
+              .filter((p: UserProfile) => !isSuperuserEmail(p.email));
+          }
+        } else {
+          console.error('Failed to load users via API', res.statusText);
+          // Fallback or error? If 401, maybe not admin.
+          // If we can't load users via API, maybe we try public profiles read if allowed?
+          // But let's assume API is the way for this panel.
+        }
+      }
 
       setUsers(profiles);
       const mapped: Record<string, string> = {};
@@ -248,25 +255,29 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
 
       // 2. Departments laden 
       try {
-        const deps = await pb.collection('departments').getFullList({ sort: 'name' });
-        setDepartments(deps.map((d: any) => ({ id: d.id, name: d.name, created_at: d.created })));
-      } catch (e) { console.log("Departments collection might not exist yet", e); setDepartments([]); }
+        const { data: deps } = await supabase.from('departments').select('*').order('name');
+        if (deps) {
+          setDepartments(deps.map((d: any) => ({ id: d.id, name: d.name, created_at: d.created_at })));
+        }
+      } catch (e) { console.log("Departments load error", e); setDepartments([]); }
 
       // 3. Boards laden (für Admin-Zuweisung)
       try {
-        const boardsList = await pb.collection('kanban_boards').getFullList({ fields: 'id,name,description,settings,board_admin_id' });
-        const summary: BoardSummary[] = boardsList.map((b: any) => ({
-          id: b.id,
-          name: b.name,
-          description: b.description,
-          settings: b.settings,
-          board_admin_id: b.board_admin_id,
-          boardType: b.settings?.boardType || 'standard'
-        }));
-        setBoards(summary);
-        const admins: Record<string, string> = {};
-        summary.forEach(b => admins[b.id] = b.board_admin_id || '');
-        setBoardAdminSelections(admins);
+        const { data: boardsList } = await supabase.from('kanban_boards').select('id,name,description,settings,board_admin_id');
+        if (boardsList) {
+          const summary: BoardSummary[] = boardsList.map((b: any) => ({
+            id: b.id,
+            name: b.name,
+            description: b.description,
+            settings: b.settings,
+            board_admin_id: b.board_admin_id,
+            boardType: b.settings?.boardType || 'standard'
+          }));
+          setBoards(summary);
+          const admins: Record<string, string> = {};
+          summary.forEach(b => admins[b.id] = b.board_admin_id || '');
+          setBoardAdminSelections(admins);
+        }
       } catch (e) { console.error(e); }
 
     } catch (error: any) {
@@ -277,7 +288,9 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+  }, [currentUser]); // Reload when user changes/auth init
 
   // --- ACTIONS ---
   const handleTabChange = (event: SyntheticEvent, newValue: number) => {
@@ -288,15 +301,25 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
 
   const mutateUser = async (userId: string, payload: any, successMsg: string) => {
     try {
-      // PB fields mapping: full_name -> name usually, but custom schema might keep full_name
-      // Assuming payload keys match PB schema or we need minimal mapping
-      const updateData = { ...payload };
-      if (updateData.full_name) { updateData.name = updateData.full_name; delete updateData.full_name; }
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Nicht authentifiziert');
 
-      const updated = await pb.collection('users').update(userId, updateData);
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify({ id: userId, ...payload })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Update fehlgeschlagen');
+      }
 
       // Update local state immediately
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...payload, ...normalizeUserProfile(updated) } : u)); // mixing payload + updated just in case
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...payload } : u));
 
       setMessage(`✅ ${successMsg}`);
       setTimeout(() => setMessage(''), 3000);
@@ -314,7 +337,16 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const deleteUser = async (id: string) => {
     if (isProtectedUser(id) || !confirm('Benutzer löschen?')) return;
     try {
-      await pb.collection('users').delete(id);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No session');
+
+      const res = await fetch(`/api/admin/users?id=${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      });
+
+      if (!res.ok) throw new Error('Delete failed');
+
       setUsers(prev => prev.filter(u => u.id !== id));
       setMessage('✅ Benutzer gelöscht');
     } catch (e: any) { setMessage(`❌ ${e.message}`); }
@@ -336,11 +368,15 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
 
     setLoading(true);
     try {
-      // Manual loop delete as PB doesn't expose bulk delete easily locally without admin batch script or just loop
-      // Since it's client-side, we loop.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No session');
+
       const others = users.filter(u => u.id !== currentUserId);
       for (const u of others) {
-        await pb.collection('users').delete(u.id);
+        await fetch(`/api/admin/users?id=${u.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        });
       }
       setMessage(`✅ Alle anderen Benutzer (${others.length}) gelöscht.`);
       await loadData();
@@ -354,41 +390,47 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const createUser = async () => {
     if (!newUserEmail.trim() || !newUserPassword.trim()) return;
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Nicht authentifiziert');
+
       const data = {
         email: newUserEmail.trim(),
-        emailVisibility: true,
         password: newUserPassword.trim(),
-        passwordConfirm: newUserPassword.trim(),
-        name: newUserName.trim() || undefined, // PB expects 'name', not 'full_name'
+        name: newUserName.trim() || undefined,
         role: 'user',
         company: newUserDepartment || undefined
       };
 
-      const record = await pb.collection('users').create(data);
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(data)
+      });
 
-      if (record) {
-        setCreateUserDialogOpen(false);
-        setNewUserEmail(''); setNewUserPassword(''); setNewUserName('');
-        setMessage('✅ Benutzer erstellt');
-        loadData();
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Erstellen fehlgeschlagen');
       }
+
+      setCreateUserDialogOpen(false);
+      setNewUserEmail(''); setNewUserPassword(''); setNewUserName('');
+      setMessage('✅ Benutzer erstellt');
+      loadData();
     } catch (e: any) {
-      console.error("Create User Error:", e.data); // Log detailed validation errors
-      let msg = e.message;
-      if (e.data?.data) {
-        // Extract specific field errors if available
-        const details = Object.entries(e.data.data).map(([k, v]: [string, any]) => `${k}: ${v.message}`).join(', ');
-        if (details) msg += ` (${details})`;
-      }
-      setMessage(`❌ ${msg}`);
+      console.error("Create User Error:", e);
+      setMessage(`❌ ${e.message}`);
     }
   };
 
   const addDepartment = async () => {
     if (!newDepartmentName.trim()) return;
     try {
-      const data = await pb.collection('departments').create({ name: newDepartmentName.trim() });
-      setDepartments(prev => [...prev, { id: data.id, name: data.name, created_at: data.created }]);
+      const { data, error } = await supabase.from('departments').insert({ name: newDepartmentName.trim() }).select().single();
+      if (error || !data) throw error;
+      setDepartments(prev => [...prev, { id: data.id, name: data.name, created_at: data.created_at }]);
       setDepartmentDialogOpen(false);
       setNewDepartmentName('');
       setMessage('✅ Abteilung erstellt');
@@ -398,7 +440,8 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const deleteDepartment = async (id: string) => {
     if (!confirm('Löschen?')) return;
     try {
-      await pb.collection('departments').delete(id);
+      const { error } = await supabase.from('departments').delete().eq('id', id);
+      if (error) throw error;
       setDepartments(prev => prev.filter(d => d.id !== id));
     } catch { setMessage('❌ Fehler'); }
   };
@@ -406,7 +449,8 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const updateBoardAdmin = async (boardId: string, adminId: string) => {
     setBoardAdminSelections(prev => ({ ...prev, [boardId]: adminId }));
     try {
-      await pb.collection('kanban_boards').update(boardId, { board_admin_id: adminId || null });
+      const { error } = await supabase.from('kanban_boards').update({ board_admin_id: adminId || null }).eq('id', boardId);
+      if (error) throw error;
       setBoards(prev => prev.map(b => b.id === boardId ? { ...b, board_admin_id: adminId || null } : b));
       setMessage('✅ Admin aktualisiert');
     } catch (e: any) { setMessage(`❌ ${e.message}`); }
@@ -466,15 +510,27 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
     for (let i = 0; i < total; i++) {
       const u = importData[i];
       try {
-        await pb.collection('users').create({
-          email: u.email,
-          emailVisibility: true,
-          password: u.password,
-          passwordConfirm: u.password,
-          name: u.full_name,
-          role: 'user',
-          company: u.company || ''
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('Not authenticated');
+
+        const res = await fetch('/api/admin/users', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({
+            email: u.email,
+            password: u.password,
+            name: u.full_name,
+            role: 'user',
+            company: u.company || ''
+          })
         });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed');
+        }
         successCount++;
       } catch (err: any) {
         console.error(err);
@@ -747,7 +803,8 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
           <Button variant="contained" onClick={async () => {
             if (!editingDepartment || !editDepartmentName.trim()) return;
             try {
-              const updated = await pb.collection('departments').update(editingDepartment.id, { name: editDepartmentName.trim() });
+              const { data: updated, error } = await supabase.from('departments').update({ name: editDepartmentName.trim() }).eq('id', editingDepartment.id).select().single();
+              if (error || !updated) throw error;
               setDepartments(prev => prev.map(d => d.id === editingDepartment.id ? { ...d, name: updated.name } : d));
               setEditDepartmentDialogOpen(false);
               setMessage('✅ Abteilung umbenannt');

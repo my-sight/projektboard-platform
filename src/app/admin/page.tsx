@@ -15,28 +15,20 @@ import UserManagement from '@/components/admin/UserManagement';
 import SystemBranding from '@/components/admin/SystemBranding';
 import SystemLockoutPanel from '@/components/admin/SystemLockoutPanel';
 import { isSuperuserEmail } from '@/constants/superuser';
-import { pb } from '@/lib/pocketbase';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminPage() {
   const [isSuperUser, setIsSuperUser] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Check auth state from PocketBase
-    if (pb.authStore.isValid && pb.authStore.model) {
-      const email = pb.authStore.model.email;
-      // We can also check role if available
-      const role = (pb.authStore.model as any)?.role;
+  const { user } = useAuth();
 
-      if (email && isSuperuserEmail(email)) {
-        setIsSuperUser(true);
-      } else if (role === 'admin' && email && isSuperuserEmail(email)) {
-        // Double check supersu email logic
-        setIsSuperUser(true);
-      }
+  useEffect(() => {
+    if (user) {
+      setIsSuperUser(isSuperuserEmail(user.email));
     }
     setLoading(false);
-  }, []);
+  }, [user]);
 
   if (loading) return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>;
 

@@ -4,8 +4,7 @@ import { ReactNode, useEffect, useMemo, useRef } from 'react';
 import { Box, Chip, IconButton, Typography, Card, CardContent, Avatar, Tooltip } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
 import { CheckCircle, AccessTime, Warning, PriorityHigh, UnfoldMore, UnfoldLess, ArrowCircleRight } from '@mui/icons-material';
-import { keyframes } from '@mui/system';
-import { alpha, useTheme } from '@mui/material/styles';
+import { keyframes, alpha, useTheme } from '@mui/material/styles';
 
 import { nullableDate, toBoolean } from '@/utils/booleans';
 import { ProjectBoardCard, LayoutDensity } from '@/types';

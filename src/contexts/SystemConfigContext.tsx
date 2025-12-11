@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { createTheme, ThemeProvider, Theme } from '@mui/material/styles';
 import { CssBaseline } from '@mui/material';
-import { pb } from '@/lib/pocketbase';
+import { supabase } from '@/lib/supabaseClient';
 import { Inter, Roboto, Open_Sans, Montserrat } from 'next/font/google';
 
 // --- FONTS VORLADEN ---
@@ -60,10 +60,27 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
 
   const refreshConfig = async () => {
     try {
-      const record = await pb.collection('system_settings').getFirstListItem('key="config"');
+      const { data: record, error } = await supabase
+        .from('system_settings')
+        .select('*')
+        .eq('key', 'config')
+        .single();
+
       if (record) {
+        // Supabase returns the JSON column as object automatically if defined as such, 
+        // but looking at schema it might be stored differently. 
+        // Schema check: "value" type is json. Correct.
+        // "logo" column name in PB was 'logo', here it is 'logo_url' (text) based on schema (line 183): "logo_url" text
+        // Wait, line 183 says "logo_url". Line 80 of previous PB schema said "logo" (file).
+        // My pulled schema line 183: "logo_url" text.
+        // It seems `setup_pocketbase` used `logo` file field, but valid schema might use URL string? 
+        // Or maybe I am looking at Supabase schema which has logo_url?
+        // Let's assume `logo_url` holds the public URL or partial path.
+
         const val = record.value || {};
-        const logoUrl = record.logo ? pb.files.getUrl(record, record.logo) : (val.logoUrl || null);
+        // If logo_url is stored, use it. If not, check val.logoUrl
+        const logoUrl = record.logo_url || val.logoUrl || null;
+
         setConfig({
           primaryColor: val.primaryColor || defaultSettings.primaryColor,
           secondaryColor: val.secondaryColor || defaultSettings.secondaryColor,

@@ -41,7 +41,8 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 import { isSuperuserEmail } from '@/constants/superuser';
-import { pb } from '@/lib/pocketbase';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthContext';
 import { ClientProfile, fetchClientProfiles } from '@/lib/clientProfiles';
 import {
   CartesianGrid,
@@ -449,7 +450,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const [attendanceSaving, setAttendanceSaving] = useState(false);
   const [escalationHistory, setEscalationHistory] = useState<Record<string, EscalationHistoryEntry[]>>({});
   const [escalationHistoryReady, setEscalationHistoryReady] = useState(true);
-  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
+  const { user } = useAuth();
+  const currentProfileId = user?.id || null;
 
   const [topics, setTopics] = useState<Topic[]>([]);
   const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
@@ -608,13 +610,15 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         boardResult,
         historyResult,
       ] = await Promise.all([
-        pb.collection('departments').getFullList(),
-        pb.collection('board_members').getFullList({ filter: `board_id="${boardId}"` }),
-        pb.collection('board_top_topics').getFullList({ filter: `board_id="${boardId}"` }),
-        pb.collection('board_escalations').getFullList({ filter: `board_id="${boardId}"` }),
-        pb.collection('kanban_cards').getFullList({ filter: `board_id="${boardId}"` }),
-        pb.collection('kanban_boards').getOne(boardId),
-        pb.collection('board_escalation_history').getFullList({ filter: `board_id="${boardId}"` }),
+        (async () => (await supabase.from('departments').select('*')).data || [])(),
+        (async () => (await supabase.from('board_members').select('*').eq('board_id', boardId)).data || [])(),
+        (async () => (await supabase.from('board_top_topics').select('*').eq('board_id', boardId)).data || [])(),
+        (async () => (await supabase.from('board_escalations').select('*').eq('board_id', boardId)).data || [])(),
+        // kanban_cards: in PB we filtered by board_id. 
+        // Supabase 'kanban_cards' table has 'board_id'.
+        (async () => (await supabase.from('kanban_cards').select('*').eq('board_id', boardId)).data || [])(),
+        (async () => (await supabase.from('kanban_boards').select('*').eq('id', boardId).single()).data)(),
+        (async () => (await supabase.from('board_escalation_history').select('*').eq('board_id', boardId)).data || [])(),
       ]);
 
       // Client-side sorting
@@ -757,10 +761,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const loadAttendanceHistory = async () => {
     try {
-      const data = await pb.collection('board_attendance').getFullList({
-        filter: `board_id="${boardId}"`
-        // sort: '-week_start' // Removed due to 400 error
-      });
+      const { data: rawData } = await supabase.from('board_attendance').select('*').eq('board_id', boardId);
+      const data = rawData || [];
 
       // Sort client-side
       data.sort((a, b) => new Date(b.week_start).getTime() - new Date(a.week_start).getTime());
@@ -842,13 +844,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
         if (existing) {
           if (existing.status !== status) {
-            await pb.collection('board_attendance').update(existing.id, { status });
+            await supabase.from('board_attendance').update({ status }).eq('id', existing.id);
           }
         } else {
-          await pb.collection('board_attendance').create({
+          await supabase.from('board_attendance').insert({
             board_id: boardId,
             user_id: member.profile_id,
-            week_start: selectedWeek,
+            week_start: new Date(selectedWeek).toISOString(), // Ensure ISO
             status
           });
         }
@@ -874,9 +876,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         return;
       }
 
-      await pb.collection('board_members').create({
+      await supabase.from('board_members').insert({
         board_id: boardId,
-        profile_id: memberSelect
+        profile_id: memberSelect,
+        user_id: memberSelect
       });
 
       setMemberSelect('');
@@ -889,7 +892,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const removeMember = async (id: string) => {
     if (!canEdit) return;
     try {
-      await pb.collection('board_members').delete(id);
+      await supabase.from('board_members').delete().eq('id', id);
       await loadBaseData({ skipLoading: true });
     } catch (error) {
       handleError(error, t('boardManagement.removeMemberError'));
@@ -901,7 +904,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const deleteTopic = async (id: string) => {
     if (!canEdit) return;
     try {
-      await pb.collection('board_top_topics').delete(id);
+      await supabase.from('board_top_topics').delete().eq('id', id);
       setTopics(prev => prev.filter(t => t.id !== id));
     } catch (error) {
       handleError(error, t('boardManagement.deleteTopicError'));
@@ -926,11 +929,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const canEditEscalations = memberCanSee;
 
-  useEffect(() => {
-    setCurrentProfileId(pb.authStore.model?.id ?? null);
-    // No subscription needed for auth state in this panel usually, but if needed:
-    // return pb.authStore.onChange(...)
-  }, []);
+  /* useEffect(() => {
+    // Auth subscription not strictly needed here with useAuth
+  }, []); */
 
   const openEscalationEditor = (entry: EscalationView) => {
     setEditingEscalation(entry);
@@ -1001,17 +1002,37 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       let resultRecord: EscalationRecord;
 
       if (escalationId) {
-        resultRecord = await pb.collection('board_escalations').update(escalationId, payload) as EscalationRecord;
+        const { data, error } = await supabase.from('board_escalations')
+          .update(payload)
+          .eq('id', escalationId)
+          .select().single();
+        if (error || !data) throw error;
+        resultRecord = data as EscalationRecord;
       } else {
-        // Check if exists by card_id (simulating upsert)
-        try {
-          const existing = await pb.collection('board_escalations').getFirstListItem(`board_id="${boardId}" && card_id="${currentEscalation.card_id}"`);
+        // Upsert by card_id + board_id
+        // Supabase upsert requires a unique constraint. If not present, we can do check-then-insert/update.
+        // Assuming unique constraint on (board_id, card_id) typically exists or we manually check.
+        // Let's do manual check to be safe as per PB logic.
+        const { data: existing } = await supabase.from('board_escalations')
+          .select('id')
+          .eq('board_id', boardId)
+          .eq('card_id', currentEscalation.card_id)
+          .single();
+
+        if (existing) {
           escalationId = existing.id;
-          resultRecord = await pb.collection('board_escalations').update(escalationId, payload) as EscalationRecord;
-        } catch {
-          // Create new
-          resultRecord = await pb.collection('board_escalations').create(payload) as EscalationRecord;
-          escalationId = resultRecord.id;
+          const { data, error } = await supabase.from('board_escalations')
+            .update(payload)
+            .eq('id', escalationId)
+            .select().single();
+          if (error || !data) throw error;
+          resultRecord = data as EscalationRecord;
+        } else {
+          const { data, error } = await supabase.from('board_escalations')
+            .insert(payload)
+            .select().single();
+          if (error || !data) throw error;
+          resultRecord = data as EscalationRecord;
         }
       }
       setEscalations(prev =>
@@ -1031,12 +1052,12 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         ),
       );
 
-      if (escalationHistoryReady && currentProfileId && escalationId) {
+      if (escalationHistoryReady && currentProfileId && resultRecord.id) {
         try {
-          await pb.collection('board_escalation_history').create({
+          await supabase.from('board_escalation_history').insert({
             board_id: boardId,
             card_id: currentEscalation.card_id,
-            escalation_id: escalationId,
+            escalation_id: resultRecord.id,
             changed_by: currentProfileId,
             changes: payload,
             changed_at: new Date().toISOString()
@@ -1352,14 +1373,16 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
                         if (!draft?.title.trim()) return;
 
                         try {
-                          const data = await pb.collection('board_top_topics').create({
+                          const { data, error } = await supabase.from('board_top_topics').insert({
                             board_id: boardId,
                             title: draft.title,
                             due_date: draft.dueDate || null,
                             position: topics.length
-                          });
+                          }).select().single();
 
-                          setTopics(prev => [...prev, data as unknown as Topic]); // data has matching struct
+                          if (error || !data) throw error;
+
+                          setTopics(prev => [...prev, data as unknown as Topic]);
                           setTopicDrafts(prev => {
                             const copy = { ...prev };
                             delete copy['new'];

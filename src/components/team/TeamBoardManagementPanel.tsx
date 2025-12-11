@@ -35,7 +35,8 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import DeleteIcon from '@mui/icons-material/Delete';
 
-import { pb } from '@/lib/pocketbase';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthContext';
 import { fetchClientProfiles, ClientProfile } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { StandardDatePicker } from '@/components/common/StandardDatePicker';
@@ -234,7 +235,8 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   const [attendanceSaving, setAttendanceSaving] = useState(false);
   const [topicDrafts, setTopicDrafts] = useState<Record<string, TopicDraft>>({});
   const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; memberId: string | null }>({ open: false, memberId: null });
-  const currentUserId = pb.authStore.model?.id || null;
+  const { user } = useAuth();
+  const currentUserId = user?.id || null;
 
   const [selectedWeek, setSelectedWeek] = useState<string>(() => isoDate(startOfWeek(new Date())));
   const [orderedWeeks, setOrderedWeeks] = useState<string[]>(() =>
@@ -296,22 +298,16 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
 
         const [memberResult, attendanceResult, topicsResult] = await Promise.all([
           (async () => {
-            try {
-              console.log('Loading board_members...');
-              return await pb.collection('board_members').getFullList({ filter: `board_id="${boardId}"` });
-            } catch (e: any) { console.error('Failed to load members:', e); throw e; }
+            const { data } = await supabase.from('board_members').select('*').eq('board_id', boardId);
+            return data || [];
           })(),
           (async () => {
-            try {
-              console.log('Loading board_attendance...');
-              return await pb.collection('board_attendance').getFullList({ filter: `board_id="${boardId}"` });
-            } catch (e: any) { console.error('Failed to load attendance:', e); throw e; }
+            const { data } = await supabase.from('board_attendance').select('*').eq('board_id', boardId);
+            return data || [];
           })(),
           (async () => {
-            try {
-              console.log('Loading board_top_topics...');
-              return await pb.collection('board_top_topics').getFullList({ filter: `board_id="${boardId}"` });
-            } catch (e: any) { console.error('Failed to load top topics:', e); throw e; }
+            const { data } = await supabase.from('board_top_topics').select('*').eq('board_id', boardId);
+            return data || [];
           })()
         ]);
 
@@ -472,22 +468,25 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
 
         if (existing && existing.id && !existing.id.startsWith(boardId)) { // check if real ID
           if (existing.status !== status) {
-            await pb.collection('board_attendance').update(existing.id, { status });
+            await supabase.from('board_attendance').update({ status }).eq('id', existing.id);
           }
           return { ...existing, status };
         } else {
           // Check if exists in DB (double check) or just create
           // Since we loaded data, we trust existing. If not found, create.
-          const created = await pb.collection('board_attendance').create({
+          const { data: created, error } = await supabase.from('board_attendance').insert({
             board_id: boardId,
             user_id: member.profile_id, // Fix: Use user_id field for DB relation
-            week_start: weekDate, // PB accepts date object or string
+            week_start: weekDate.toISOString(), // Supabase usually wants ISO string for timestamptz
             status
-          });
+          }).select().single();
+
+          if (error || !created) throw error || new Error('Failed to create attendance');
+
           return {
             id: created.id,
             board_id: created.board_id,
-            profile_id: created.profile_id,
+            profile_id: created.user_id || created.profile_id,
             week_start: created.week_start,
             status: created.status
           } as AttendanceRecord;
@@ -520,11 +519,13 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
   const addMember = async () => {
     if (!memberSelect) return;
     try {
-      const data = await pb.collection('board_members').create({
+      const { data, error } = await supabase.from('board_members').insert({
         board_id: boardId,
         user_id: memberSelect,
         profile_id: memberSelect // Maintain both for compatibility
-      });
+      }).select().single();
+
+      if (error || !data) throw error;
 
       const profile = profiles.find((entry) => entry.id === memberSelect) ?? null;
       const nextMember: MemberWithProfile = {
@@ -553,7 +554,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     }
 
     try {
-      await pb.collection('board_members').delete(deleteDialog.memberId);
+      await supabase.from('board_members').delete().eq('id', deleteDialog.memberId);
 
       setMembers((prev) => prev.filter((entry) => entry.id !== deleteDialog.memberId));
       setAttendanceDraft((prev) => {
@@ -579,12 +580,14 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     if (!draft?.title.trim()) return;
 
     try {
-      const data = await pb.collection('board_top_topics').create({
+      const { data, error } = await supabase.from('board_top_topics').insert({
         board_id: boardId,
         title: draft.title,
         due_date: draft.dueDate || null,
         position: topics.length,
-      });
+      }).select().single();
+
+      if (error || !data) throw error;
 
       const topic = { id: data.id, board_id: data.board_id, title: data.title, due_date: data.due_date, position: data.position, calendar_week: data.calendar_week } as TopicRow;
       setTopics((prev) => [...prev, topic]);
@@ -619,10 +622,10 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     }
 
     try {
-      await pb.collection('board_top_topics').update(topicId, {
+      await supabase.from('board_top_topics').update({
         title: trimmedTitle,
         due_date: dateValue || null
-      });
+      }).eq('id', topicId);
 
       setTopics((prev) =>
         prev.map((topic) =>
@@ -644,7 +647,7 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
 
   const deleteTopic = async (topicId: string) => {
     try {
-      await pb.collection('board_top_topics').delete(topicId);
+      await supabase.from('board_top_topics').delete().eq('id', topicId);
 
       setTopics((prev) => prev.filter((topic) => topic.id !== topicId));
       setTopicDrafts((prev) => {

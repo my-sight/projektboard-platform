@@ -49,9 +49,10 @@ import {
 } from '@mui/icons-material';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
 import { useSnackbar } from 'notistack';
-import { keyframes } from '@mui/system';
+import { keyframes } from '@mui/material/styles';
 
-import { pb } from '@/lib/pocketbase';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthContext';
 import { fetchClientProfiles, ClientProfile } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
 // import SupabaseConfigNotice from '@/components/SupabaseConfigNotice'; // Removed
@@ -171,6 +172,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     // const supabase = useMemo(() => getSupabaseBrowserClient(), []); // Removed
     const { enqueueSnackbar } = useSnackbar();
     const { t } = useLanguage();
+    const { user, profile } = useAuth();
     const theme = useTheme();
 
     const [members, setMembers] = useState<MemberWithProfile[]>([]);
@@ -207,7 +209,13 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     // --- Loading ---
     const loadBoardSettings = useCallback(async () => {
         try {
-            const record = await pb.collection('kanban_boards').getOne(boardId);
+            const { data: record, error } = await supabase
+                .from('kanban_boards')
+                .select('*')
+                .eq('id', boardId)
+                .single();
+            if (error) throw error;
+
             const s = record.settings || {};
             setBoardSettings(s);
             setIsHomeBoard(!!s.isHomeBoard);
@@ -220,7 +228,10 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const persistCompletedCount = useCallback(async (nextCount: number) => {
         const nextSettings = { ...boardSettings, teamBoard: { ...(boardSettings.teamBoard || {}), completedCount: nextCount } };
         try {
-            await pb.collection('kanban_boards').update(boardId, { settings: nextSettings });
+            await supabase
+                .from('kanban_boards')
+                .update({ settings: nextSettings })
+                .eq('id', boardId);
             setBoardSettings(nextSettings);
             setCompletedCount(nextCount);
         } catch (e) {
@@ -235,9 +246,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         if (settingsOpen && boardName === '') {
             (async () => {
                 try {
-                    const b = await pb.collection('kanban_boards').getOne(boardId);
-                    setBoardName(b.name);
-                    setBoardDescription(b.description || '');
+                    const { data: b } = await supabase.from('kanban_boards').select('*').eq('id', boardId).single();
+                    if (b) {
+                        setBoardName(b.name);
+                        setBoardDescription(b.description || '');
+                    }
                 } catch (e) { console.error('Error loading board details', e); }
             })();
         }
@@ -246,11 +259,14 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const saveBoardSettings = async () => {
         const nextSettings = { ...boardSettings, isHomeBoard };
         try {
-            await pb.collection('kanban_boards').update(boardId, {
+            const { error } = await supabase.from('kanban_boards').update({
                 name: boardName,
                 description: boardDescription,
                 settings: nextSettings
-            });
+            }).eq('id', boardId);
+
+            if (error) throw error;
+
             setSettingsOpen(false);
             enqueueSnackbar(t('teamBoard.settingsSaved'), { variant: 'success' });
             enqueueSnackbar(t('teamBoard.settingsSaved'), { variant: 'success' });
@@ -266,9 +282,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             const cardsToArchive = cards.filter(c => c.status === 'done');
 
             await Promise.all(cardsToArchive.map(c =>
-                pb.collection('kanban_cards').update(c.rowId, {
+                supabase.from('kanban_cards').update({
                     card_data: { ...(c.originalData || {}), archived: true, Archived: '1' }
-                })
+                }).eq('id', c.rowId)
             ));
 
             setCards(prev => prev.filter(c => c.status !== 'done'));
@@ -281,9 +297,13 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     const loadArchive = async () => {
         try {
-            const records = await pb.collection('kanban_cards').getFullList({
-                filter: `board_id = "${boardId}"`
-            });
+            const { data: records } = await supabase
+                .from('kanban_cards')
+                .select('*')
+                .eq('board_id', boardId);
+
+            if (!records) return;
+
             const archived = records
                 .filter(r => (r.card_data?.archived || r.card_data?.Archived === '1'))
                 .map(r => convertDbToCard(r, new Map(), boardId));
@@ -297,9 +317,10 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     const restoreCard = async (card: TeamBoardCard) => {
         try {
-            await pb.collection('kanban_cards').update(card.rowId, {
+            await supabase.from('kanban_cards').update({
                 card_data: { ...card.originalData, archived: false, Archived: '0' }
-            });
+            }).eq('id', card.rowId);
+
             setArchivedCards(prev => prev.filter(c => c.rowId !== card.rowId));
             loadCards(members); // Refresh board
             enqueueSnackbar(t('teamBoard.cardRestored') || 'Karte wiederhergestellt', { variant: 'success' });
@@ -311,7 +332,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const deleteCardPermanently = async (rowId: string) => {
         if (!confirm(t('teamBoard.confirmDelete') || 'Endgültig löschen?')) return;
         try {
-            await pb.collection('kanban_cards').delete(rowId);
+            await supabase.from('kanban_cards').delete().eq('id', rowId);
             setArchivedCards(prev => prev.filter(c => c.rowId !== rowId));
         } catch (e) { console.error(e); }
     };
@@ -320,11 +341,14 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     const loadMembers = useCallback(async (availableProfiles: ClientProfile[]) => {
         try {
-            const data = await pb.collection('board_members').getFullList({
-                filter: `board_id = "${boardId}"`
-            });
+            const { data } = await supabase
+                .from('board_members')
+                .select('*')
+                .eq('board_id', boardId);
 
-            const mapped = data.map((entry: any) => {
+            const memberList = data || [];
+
+            const mapped = memberList.map((entry: any) => {
                 const userId = entry.user_id || entry.profile_id;
                 const profile = availableProfiles.find((c) => c.id === userId) ?? null;
                 return (profile && (profile.is_active ?? true) && !isSuperuserEmail(profile.email)) ? { ...entry, profile_id: userId, profile } : null;
@@ -339,16 +363,19 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     const loadCards = useCallback(async (currentMembers: MemberWithProfile[]) => {
         try {
-            const boards = await pb.collection('kanban_boards').getFullList({ fields: 'id,name' });
-            const boardMap = new Map(boards.map((b: any) => [b.id, b.name]));
+            const { data: boards } = await supabase.from('kanban_boards').select('id,name');
+            const boardMap = new Map((boards || []).map((b: any) => [b.id, b.name]));
 
             let records;
             if (isHomeBoard) {
-                records = await pb.collection('kanban_cards').getFullList();
+                const { data } = await supabase.from('kanban_cards').select('*');
+                records = data || [];
             } else {
-                records = await pb.collection('kanban_cards').getFullList({
-                    filter: `board_id = "${boardId}"`
-                });
+                const { data } = await supabase
+                    .from('kanban_cards')
+                    .select('*')
+                    .eq('board_id', boardId);
+                records = data || [];
             }
 
             const memberIds = currentMembers.map(m => m.profile_id);
@@ -356,17 +383,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
             records.forEach(item => {
                 let d = item.card_data || {};
-                // if (d?.Archived === '1' || d?.archived) return; // DB filter or ignored? PB usually returns all unless filter.
 
                 // Check if card or item has Archived flag
-                // Supabase code had: if (d?.Archived === '1' || d?.archived) return;
-                // Assuming PB stores it similarly in card_data or fields
                 if (d.Archived === '1' || d.archived) return;
-
-                // Filter logic:
-                // STRICT REQUIREMENT: TeamKanbanBoard (used for both Team Boards and Homeboard)
-                // MUST ONLY show "Aufgabenkarten" (Team Tasks).
-                // "Projektkarten" (which have 'Nummer') must NEVER be shown here.
 
                 const isProjektkarte = !!(d.Nummer || d.project_number);
                 if (isProjektkarte) return;
@@ -386,36 +405,38 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     const loadTopTopics = useCallback(async () => {
         try {
-            const data = await pb.collection('board_top_topics').getFullList({
-                filter: `board_id = "${boardId}"`
-            });
-            setTopTopics(data as any[]);
+            const { data } = await supabase
+                .from('board_top_topics')
+                .select('*')
+                .eq('board_id', boardId);
+            setTopTopics((data || []) as any[]);
         } catch (e) { console.error(e); }
     }, [boardId]);
 
     const evaluatePermissions = useCallback(async (profiles: ClientProfile[], currentMembers: MemberWithProfile[]) => {
-        const authModel = pb.authStore.model;
-        if (!authModel) { console.warn('No auth model found'); return; }
-        setCurrentUser(authModel);
-        console.log('Evaluating permissions for:', authModel.email, authModel.id);
+        if (!user) { console.warn('No auth model found'); return; }
+        setCurrentUser(user);
+        // console.log('Evaluating permissions for:', user.email, user.id);
 
-        const profile = profiles.find(p => p.id === authModel.id);
-        const globalRole = String(profile?.role ?? '').toLowerCase();
-        // Assuming admin@kanban.local is a safe fallback check
-        const isSuper = isSuperuserEmail(authModel.email || '') || globalRole === 'admin' || globalRole === 'superuser';
+        let userProfile: any = profile;
+        if (!userProfile) userProfile = profiles.find(p => p.id === user.id) || null;
+
+        const globalRole = String(userProfile?.role ?? '').toLowerCase();
+        const isSuper = isSuperuserEmail(user.email || '') || globalRole === 'admin' || globalRole === 'superuser';
 
         let boardRow = null;
         try {
-            boardRow = await pb.collection('kanban_boards').getOne(boardId);
+            const { data } = await supabase.from('kanban_boards').select('*').eq('id', boardId).single();
+            boardRow = data;
         } catch (e) { /* ignore */ }
 
-        const isOwner = boardRow?.owner_id === authModel.id;
-        const isBoardAdmin = boardRow?.board_admin_id === authModel.id;
-        const isMember = currentMembers.some(m => m.profile_id === authModel.id);
+        const isOwner = boardRow?.owner_id === user.id;
+        const isBoardAdmin = boardRow?.board_admin_id === user.id;
+        const isMember = currentMembers.some(m => m.profile_id === user.id);
 
         setCanModify(isSuper || isOwner || isBoardAdmin || isMember);
         setCanConfigure(isSuper || isOwner || isBoardAdmin);
-    }, [boardId]);
+    }, [boardId, user, profile]);
 
     useEffect(() => {
         let active = true;
@@ -504,10 +525,10 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         setCards(prev => prev.map(c => c.cardId === card.cardId ? { ...c, status: 'done' } : c));
         try {
             const dbStage = 'Fertig';
-            await pb.collection('kanban_cards').update(card.rowId, {
+            await supabase.from('kanban_cards').update({
                 stage: dbStage,
                 card_data: { ...card.originalData, "Board Stage": dbStage, status: 'done' }
-            });
+            }).eq('id', card.rowId);
             enqueueSnackbar(t('teamBoard.taskCompleted'), { variant: 'success' });
         } catch (err) { console.error(err); setCards(cards); }
     };
@@ -518,9 +539,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         const newValue = !card[property];
         setCards(prev => prev.map(c => c.cardId === card.cardId ? { ...c, [property]: newValue } : c));
         try {
-            await pb.collection('kanban_cards').update(card.rowId, {
+            await supabase.from('kanban_cards').update({
                 card_data: { ...card.originalData, [property]: newValue }
-            });
+            }).eq('id', card.rowId);
         } catch (err) { console.error(err); setCards(cards); }
     };
 
@@ -571,7 +592,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                         card_data: { ...c.originalData, position: c.position }
                     })
                 };
-                return pb.collection('kanban_cards').update(c.rowId, payload);
+                return supabase.from('kanban_cards').update(payload).eq('id', c.rowId);
             });
             await Promise.all(updates);
 
@@ -591,11 +612,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                     assigneeId: draft.assigneeId,
                     position: editingCard.position
                 };
-                await pb.collection('kanban_cards').update(editingCard.rowId, { card_data: mergedData });
+                await supabase.from('kanban_cards').update({ card_data: mergedData }).eq('id', editingCard.rowId);
                 enqueueSnackbar(t('teamBoard.taskUpdated'), { variant: 'success' });
             } else {
                 const existingInCol = cards.filter(c => c.assigneeId === draft.assigneeId && c.status === draft.status).length;
-                await pb.collection('kanban_cards').create({
+                await supabase.from('kanban_cards').insert({
                     board_id: boardId,
                     card_id: crypto.randomUUID(),
                     stage: draft.status === 'done' ? 'Fertig' : 'Backlog',
@@ -624,7 +645,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         if (!confirm(t('teamBoard.deletePrompt'))) return;
 
         try {
-            await pb.collection('kanban_cards').delete(editingCard.rowId);
+            await supabase.from('kanban_cards').delete().eq('id', editingCard.rowId);
             setCards(prev => prev.filter(c => c.cardId !== editingCard.cardId));
             closeDialog();
         } catch (e) {
@@ -638,9 +659,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         try {
             const doneCards = cards.filter(c => c.status === 'done');
             for (const card of doneCards) {
-                await pb.collection('kanban_cards').update(card.rowId, {
+                await supabase.from('kanban_cards').update({
                     card_data: { ...card.originalData, Archived: "1", ArchivedDate: new Date().toISOString() }
-                });
+                }).eq('id', card.rowId);
             }
             await persistCompletedCount(completedCount + doneCards.length);
             setCards(prev => prev.filter(c => c.status !== 'done'));
@@ -677,15 +698,15 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             if (!newTitle.trim()) return;
 
             try {
-                const data = await pb.collection('board_top_topics').create({
+                const { data, error } = await supabase.from('board_top_topics').insert({
                     board_id: boardId,
                     title: newTitle,
                     due_date: newDate,
                     position: localTopics.length
-                });
+                }).select().single();
 
                 if (data) {
-                    // map pb record to TopTopic interface if needed, or assume it matches enough
+                    // map record to TopTopic interface if needed, or assume it matches enough
                     const topic: TopTopic = {
                         id: data.id,
                         title: data.title,
@@ -702,7 +723,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
         const handleDelete = async (id: string) => {
             try {
-                await pb.collection('board_top_topics').delete(id);
+                await supabase.from('board_top_topics').delete().eq('id', id);
                 setLocalTopics(prev => prev.filter(t => t.id !== id));
             } catch (e) { console.error(e); }
         };

@@ -1,40 +1,39 @@
+import { supabase } from '@/lib/supabaseClient';
+
 export interface ClientProfile {
   id: string;
   email: string;
   full_name: string | null;
   company: string | null;
-  department?: string | null; // Added
-  name?: string | null; // Added
+  department?: string | null;
+  name?: string | null; // Compatibility alias for full_name
   role: string | null;
   is_active: boolean;
   created_at?: string | null;
 }
 
-interface RawClientProfile extends Omit<ClientProfile, 'is_active'> {
-  is_active: boolean | null;
-}
-
-import { pb } from '@/lib/pocketbase';
-
 export async function fetchClientProfiles(): Promise<ClientProfile[]> {
   try {
-    const records = await pb.collection('users').getFullList({
-      sort: 'name',
-    });
+    const { data: records, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('full_name', { ascending: true });
 
-    return records.map(u => ({
+    if (error) throw error;
+
+    return (records || []).map((u: any) => ({
       id: u.id,
       email: u.email,
-      full_name: u.name, // PB 'users' has 'name'
+      full_name: u.full_name,
       company: u.company || null,
-      department: u.department || null,
-      name: u.name,
-      role: u.role || null,
-      is_active: true, // PB users are active if retrieved/verified
-      created_at: u.data?.created ?? u.created // Access created timestamp
+      department: null, // 'department' column missing in public.profiles schema
+      name: u.full_name, // Alias
+      role: u.role || 'user',
+      is_active: u.is_active ?? true,
+      created_at: u.created_at
     }));
   } catch (error) {
-    console.warn('Fehler beim Laden der Profile aus PocketBase:', error);
+    console.warn('Fehler beim Laden der Profile aus Supabase:', error);
     return [];
   }
 }

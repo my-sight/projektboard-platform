@@ -7,7 +7,7 @@ import {
 } from '@mui/material';
 import { Save, CloudUpload, Refresh, ColorLens, Image as ImageIcon } from '@mui/icons-material';
 import { useSystemConfig, defaultSettings } from '@/contexts/SystemConfigContext';
-import { pb } from '@/lib/pocketbase';
+import { supabase } from '@/lib/supabaseClient';
 import { useSnackbar } from 'notistack';
 
 export default function SystemBranding() {
@@ -23,26 +23,21 @@ export default function SystemBranding() {
     setLocalConfig(prev => ({ ...prev, [key]: value }));
   };
 
-  const ensureConfigRecord = async () => {
-    try {
-      return await pb.collection('system_settings').getFirstListItem('key="config"');
-    } catch {
-      return await pb.collection('system_settings').create({ key: 'config', value: defaultSettings });
-    }
-  };
-
   const handleSave = async () => {
     try {
-      const record = await ensureConfigRecord();
-      await pb.collection('system_settings').update(record.id, {
+      const { error } = await supabase.from('system_settings').upsert({
+        key: 'config',
         value: {
           primaryColor: localConfig.primaryColor,
           secondaryColor: localConfig.secondaryColor,
           fontFamily: localConfig.fontFamily,
           appName: localConfig.appName,
-          logoUrl: localConfig.logoUrl // keep URL in json for fallback or explicitly null
-        }
-      });
+          logoUrl: localConfig.logoUrl
+        },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'key' });
+
+      if (error) throw error;
 
       await refreshConfig();
       enqueueSnackbar('Design gespeichert!', { variant: 'success' });
@@ -56,13 +51,33 @@ export default function SystemBranding() {
     setUploading(true);
     try {
       const file = e.target.files[0];
-      const record = await ensureConfigRecord();
+      const fileExt = file.name.split('.').pop();
+      const fileName = `logo_${Date.now()}.${fileExt}`;
 
-      const formData = new FormData();
-      formData.append('logo', file);
+      // Upload to 'branding' bucket
+      const { data, error } = await supabase.storage
+        .from('branding')
+        .upload(fileName, file, { upsert: true });
 
-      const updated = await pb.collection('system_settings').update(record.id, formData);
-      const url = pb.files.getUrl(updated, updated.logo);
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('branding')
+        .getPublicUrl(fileName);
+
+      // Save new config with logoUrl
+      const { error: dbError } = await supabase.from('system_settings').upsert({
+        key: 'config',
+        value: {
+          ...localConfig,
+          logoUrl: publicUrl
+        },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'key' });
+
+      if (dbError) throw dbError;
+
+      const url = publicUrl;
 
       // Update local state and save config with new URL (optional, depends on if context prefers file url)
       setLocalConfig(prev => ({ ...prev, logoUrl: url }));

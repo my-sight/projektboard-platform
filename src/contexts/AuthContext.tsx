@@ -1,16 +1,28 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { AuthModel } from 'pocketbase';
-import { pb } from '@/lib/pocketbase';
+import { User } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 import { isSuperuserEmail } from '@/constants/superuser';
 
+export interface Profile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  role: string;
+  company: string | null;
+  is_active: boolean;
+}
+
 interface AuthContextType {
-  user: AuthModel | null;
+  user: User | null;
+  profile: Profile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<any>;
   signUp: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
+  isAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,87 +36,141 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<AuthModel | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const fetchProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.warn('Error fetching profile:', error);
+        return null;
+      }
+      return data as Profile;
+    } catch (e) {
+      console.error('Fetch profile exception:', e);
+      return null;
+    }
+  };
 
   useEffect(() => {
     // 1. Initial Sync
-    setUser(pb.authStore.model);
-    setLoading(false);
+    const initAuth = async () => {
+      setLoading(true);
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session?.user) {
+        setUser(session.user);
+        const p = await fetchProfile(session.user.id);
+        setProfile(p);
+      } else {
+        setUser(null);
+        setProfile(null);
+      }
+      setLoading(false);
+    };
+
+    initAuth();
 
     // 2. Subscribe to auth changes
-    const unsub = pb.authStore.onChange((token, model) => {
-      setUser(model);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        // Only fetch profile if not already set or if user changed
+        if (!profile || profile.id !== session.user.id) {
+          const p = await fetchProfile(session.user.id);
+          setProfile(p);
+        }
+      } else {
+        setUser(null);
+        setProfile(null);
+      }
+      setLoading(false);
     });
 
     // 3. Lockout Check Loop (every 30s)
     const checkLockout = async () => {
       try {
-        // Fetch the lockout setting. The 'updated' field gives us Server Time.
-        // We use a filter to get the specific key.
-        const record = await pb.collection('system_settings').getFirstListItem('key="lockout"');
+        const { data: record } = await supabase
+          .from('system_settings')
+          .select('*')
+          .eq('key', 'lockout')
+          .single();
 
         if (record && record.value && record.value.enabled && record.value.lockoutTime) {
           const lockoutTime = new Date(record.value.lockoutTime).getTime();
-
-          // Server Time Calculation
-          let now = Date.now();
-          try {
-            // Try to get server time via header
-            const response = await fetch(pb.baseUrl + '/api/health'); // effectively a ping
-            const dateHeader = response.headers.get('Date');
-            if (dateHeader) {
-              now = new Date(dateHeader).getTime();
-            }
-          } catch (e) {
-            console.log("Could not sync time, using local");
-          }
+          const now = Date.now(); // Using local time for simplicity in local dev
 
           if (now > lockoutTime) {
             // Locked!
             // Check if superuser
-            const user = pb.authStore.model;
-            const email = user?.email;
-            const role = (user as any)?.role;
+            const { data: { user } } = await supabase.auth.getUser();
 
-            const isSuper = isSuperuserEmail(email) || role === 'admin'; // Basic check
+            // We need profile for role check
+            let currentProfile = profile;
+            if (user && !currentProfile) {
+              currentProfile = await fetchProfile(user.id);
+            }
+
+            const email = user?.email;
+            const role = currentProfile?.role;
+            const isSuper = isSuperuserEmail(email) || role === 'superuser';
 
             if (!isSuper) {
-              // Redirect to locked page if not already there
               if (!window.location.pathname.includes('/locked') && !window.location.pathname.includes('/login')) {
                 window.location.href = '/locked';
               }
             }
           }
         }
-      } catch (e: any) {
-        // 404 if not found, ignore
+      } catch (e) {
+        // Ignore errors
       }
     };
 
-    const interval = setInterval(checkLockout, 10000); // Check every 10s
-    checkLockout(); // Initial check
+    const interval = setInterval(checkLockout, 10000);
+    checkLockout();
 
     return () => {
-      unsub();
+      subscription.unsubscribe();
       clearInterval(interval);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    return pb.collection('users').authWithPassword(email, password);
+    return supabase.auth.signInWithPassword({ email, password });
   };
 
   const signUp = async (email: string, password: string) => {
-    return pb.collection('users').create({ email, password, passwordConfirm: password });
+    return supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        // Default metadata
+        data: {
+          full_name: email.split('@')[0],
+        }
+      }
+    });
   };
 
   const signOut = async () => {
-    pb.authStore.clear();
+    await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
   };
 
+  const isAdmin = profile?.role === 'admin' || isSuperuserEmail(user?.email);
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, isAdmin }}>
       {children}
     </AuthContext.Provider>
   );

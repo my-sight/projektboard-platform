@@ -20,7 +20,8 @@ import isoWeek from 'dayjs/plugin/isoWeek';
 
 dayjs.extend(isoWeek);
 
-import { pb } from '@/lib/pocketbase';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthContext';
 import { KanbanCard } from './original/KanbanCard';
 import { KanbanColumnsView, KanbanLaneView, KanbanSwimlaneView } from './original/KanbanViews';
 import { EditCardDialog, NewCardDialog, ArchiveDialog } from './original/KanbanDialogs';
@@ -28,7 +29,6 @@ import { KanbanSettingsDialog } from './original/KanbanSettingsDialog';
 import { nullableDate, toBoolean } from '@/utils/booleans';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
 import { isSuperuserEmail } from '@/constants/superuser';
-// import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders'; // Removed
 
 import { ProjectBoardCard, LayoutDensity, ViewMode } from '@/types';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -92,9 +92,9 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
     // const supabase = useMemo(() => getSupabaseBrowserClient(), []); // Removed
     const { enqueueSnackbar } = useSnackbar();
     const { t } = useLanguage();
+    const { user, profile } = useAuth(); // Use Auth Context
 
     // Removed SupabaseConfigNotice check
-
 
     const [viewMode, setViewMode] = useState<ViewMode>('columns');
     const [density, setDensity] = useState<LayoutDensity>('compact');
@@ -106,7 +106,9 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
     const [users, setUsers] = useState<any[]>([]);
     const [boardMembers, setBoardMembers] = useState<any[]>([]);
     const [canModifyBoard, setCanModifyBoard] = useState(false);
-    const [currentUserName, setCurrentUserName] = useState<string | null>(null);
+
+    // Derived from AuthContext
+    const currentUserName = profile?.full_name || user?.email || null;
 
     const [topTopicsOpen, setTopTopicsOpen] = useState(false);
     const [topTopics, setTopTopics] = useState<TopTopic[]>([]);
@@ -308,10 +310,13 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
     const loadTopTopics = useCallback(async () => {
       try {
-        const records = await pb.collection('board_top_topics').getFullList({
-          filter: `board_id = "${boardId}"`,
-          sort: 'position'
-        });
+        const { data: records, error } = await supabase
+          .from('board_top_topics')
+          .select('*')
+          .eq('board_id', boardId)
+          .order('position', { ascending: true });
+
+        if (error) throw error;
         setTopTopics(records as any[]);
       } catch (e) {
         console.error('Error loading top topics', e);
@@ -330,7 +335,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
       if (filters.mine && currentUserName) {
         const myNameParts = currentUserName.toLowerCase().split(' ').filter(p => p.length > 2);
-        const myEmail = pb.authStore.model?.email;
+        const myEmail = user?.email;
 
         result = result.filter(r => {
           // Fix für Fehler 2551: VerantwortlichEmail ist nicht im Typ definiert, daher casten wir
@@ -375,41 +380,47 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
     useEffect(() => {
       if (!boardId) return;
 
-      // PocketBase Realtime
-      pb.collection('kanban_cards').subscribe('*', (e) => {
-        if (e.record.board_id !== boardId) return;
+      // Supabase Realtime
+      const channel = supabase
+        .channel(`kanban_cards_${boardId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'kanban_cards', filter: `board_id=eq.${boardId}` },
+          (payload) => {
+            // Handle changes
+            const { eventType, new: newRecord, old: oldRecord } = payload;
 
-        if (e.action === 'create') {
-          const newCard = convertDbToCard(e.record);
-          setRows((prev) => {
-            if (prev.some((r) => idFor(r) === idFor(newCard))) return prev;
-            return reindexByStage([...prev, newCard]);
-          });
-        }
-        if (e.action === 'update') {
-          const updatedCard = convertDbToCard(e.record);
-          setRows((prev) => {
-            const isArchived = updatedCard["Archived"] === "1";
-            if (isArchived) {
-              return prev.filter(r => idFor(r) !== idFor(updatedCard));
+            if (eventType === 'INSERT') {
+              const newCard = convertDbToCard(newRecord);
+              setRows((prev) => {
+                if (prev.some((r) => idFor(r) === idFor(newCard))) return prev;
+                return reindexByStage([...prev, newCard]);
+              });
+            } else if (eventType === 'UPDATE') {
+              const updatedCard = convertDbToCard(newRecord);
+              setRows((prev) => {
+                const isArchived = updatedCard["Archived"] === "1";
+                if (isArchived) {
+                  return prev.filter(r => idFor(r) !== idFor(updatedCard));
+                }
+                const index = prev.findIndex(r => idFor(r) === idFor(updatedCard));
+                if (index === -1) {
+                  return reindexByStage([...prev, updatedCard]);
+                }
+                const newRows = [...prev];
+                newRows[index] = updatedCard;
+                return newRows;
+              });
+            } else if (eventType === 'DELETE') {
+              const deletedId = oldRecord.id;
+              setRows((prev) => prev.filter((r) => r.id !== deletedId));
             }
-            const index = prev.findIndex(r => idFor(r) === idFor(updatedCard));
-            if (index === -1) {
-              return reindexByStage([...prev, updatedCard]);
-            }
-            const newRows = [...prev];
-            newRows[index] = updatedCard;
-            return newRows;
-          });
-        }
-        if (e.action === 'delete') {
-          const deletedId = e.record.id;
-          setRows((prev) => prev.filter((r) => r.id !== deletedId));
-        }
-      });
+          }
+        )
+        .subscribe();
 
       return () => {
-        pb.collection('kanban_cards').unsubscribe('*');
+        supabase.removeChannel(channel);
       };
     }, [boardId, convertDbToCard, reindexByStage, idFor]);
 
@@ -419,6 +430,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         return;
       }
 
+      // Optimistic Update
       const updatedRows = rows.map(r => {
         if (idFor(r) === idFor(card)) { return { ...r, ...changes } as ProjectBoardCard; }
         return r;
@@ -430,7 +442,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       }
 
       try {
-        const cardId = card.id; // Corrected: Use PB ID, not idFor (UID)
+        const cardId = card.id;
         if (!cardId) throw new Error("Card ID missing");
 
         const fullUpdatedCard = { ...card, ...changes };
@@ -438,11 +450,16 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         const updateData: any = {
           card_data: fullUpdatedCard
         };
-        // Map top-level columns if they exist in schema and change
+        // Map top-level columns
         if (changes['Board Stage']) updateData.stage = changes['Board Stage'];
         if (changes.position !== undefined) updateData.position = changes.position;
 
-        await pb.collection('kanban_cards').update(cardId, updateData);
+        const { error } = await supabase
+          .from('kanban_cards')
+          .update(updateData)
+          .eq('id', cardId);
+
+        if (error) throw error;
 
       } catch (error) {
         console.error('Patch error:', error);
@@ -486,8 +503,14 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           }
         }
 
-        const record = await pb.collection('kanban_boards').update(boardId, updateData);
+        const { data: record, error } = await supabase
+          .from('kanban_boards')
+          .update(updateData)
+          .eq('id', boardId)
+          .select()
+          .single();
 
+        if (error) throw error;
         if (!record) {
           enqueueSnackbar(formatPocketBaseActionError('Einstellungen speichern', { message: 'Not found' }), { variant: 'error' });
           return false;
@@ -514,21 +537,22 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       try {
         // Using Promise.all for parallel updates
         const promises = rows.map(card => {
+          // Check if card has an ID (if not, it shouldn't be here or handled differently, but rows usually have IDs)
+          if (!card.id) return Promise.resolve();
+
           const stage = inferStage(card);
           const data = {
             card_data: card,
             stage: stage,
             position: card.position ?? card.order ?? 0,
-            // project_number/name can be computed if needed in PB hooks, but let's send if schematic
             project_number: card.Nummer || null,
             project_name: card.Teil,
           };
-          if (card.id) {
-            return pb.collection('kanban_cards').update(card.id, data).catch(e => {
-              console.error(`Failed to update card ${card.id}`, e);
-            });
-          }
-          return Promise.resolve();
+
+          return supabase
+            .from('kanban_cards')
+            .update(data)
+            .eq('id', card.id);
         });
 
         await Promise.all(promises);
@@ -537,7 +561,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         console.error('Karten speichern Fehler:', getErrorMessage(error));
         return false;
       }
-    }, [permissions.canEditContent, rows, inferStage, idFor]);
+    }, [permissions.canEditContent, rows, inferStage]);
 
     const handleCreateCard = useCallback(async (newCardData: any) => {
       if (!permissions.canEditContent) return false;
@@ -545,14 +569,24 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       try {
         const payload = {
           board_id: boardId,
-          column_id: newCardData['Board Stage'], // Assuming mapping logic if needed, or simple string
+          card_id: crypto.randomUUID(),
           card_data: newCardData,
-          // Promote top-level fields for indexing/sorting
           stage: newCardData['Board Stage'],
-          position: 0 // Default to top
+          position: 0
         };
 
-        await pb.collection('kanban_cards').create(payload);
+        const { data, error } = await supabase
+          .from('kanban_cards')
+          .insert(payload)
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        // Update local state immediately
+        const newCard = convertDbToCard(data);
+        setRows(prev => [...prev, newCard]);
+
         enqueueSnackbar(t('kanban.cardCreated'), { variant: 'success' });
         return true;
       } catch (error) {
@@ -560,11 +594,15 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         enqueueSnackbar(formatPocketBaseActionError('Karte erstellen', error), { variant: 'error' });
         return false;
       }
-    }, [permissions.canEditContent, boardId, enqueueSnackbar, t]);
+    }, [permissions.canEditContent, boardId, enqueueSnackbar, t, convertDbToCard]);
 
     const loadSettings = useCallback(async () => {
       try {
-        const record = await pb.collection('kanban_boards').getOne(boardId);
+        const { data: record } = await supabase
+          .from('kanban_boards')
+          .select('settings')
+          .eq('id', boardId)
+          .single();
 
         if (record?.settings) {
           const s = record.settings;
@@ -589,10 +627,12 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
     const loadCards = useCallback(async () => {
       try {
-        const records = await pb.collection('kanban_cards').getFullList({
-          filter: `board_id = "${boardId}"`,
-          // sort: '-updated' // Removed due to 400 error
-        });
+        const { data: records, error } = await supabase
+          .from('kanban_cards')
+          .select('*')
+          .eq('board_id', boardId);
+
+        if (error) throw error;
 
         if (records && records.length > 0) {
           let loadedCards = records.map(convertDbToCard);
@@ -637,23 +677,22 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
     const resolvePermissions = useCallback(async (loadedUsers: any[]) => {
       try {
-        const authModel = pb.authStore.model;
-        if (!authModel) {
+        if (!user) {
           setCanModifyBoard(false);
           setPermissions({ canEditContent: false, canManageSettings: false, canManageAttendance: false });
           return;
         }
 
-        const authUserId = authModel.id;
-        const email = authModel.email ?? '';
-        const profile = loadedUsers.find((user: any) => user.id === authUserId);
+        const authUserId = user.id;
+        const email = user.email ?? '';
 
-        if (profile) {
-          setCurrentUserName(profile.full_name || profile.name || email);
+        let userProfile = profile;
+        // If profile not yet loaded (race condition), try find in loadedUsers
+        if (!userProfile) {
+          userProfile = loadedUsers.find((u: any) => u.id === authUserId);
         }
 
-        // Simplistic role check for local version
-        const globalRole = String(profile?.role ?? '').toLowerCase();
+        const globalRole = String(userProfile?.role ?? '').toLowerCase();
         const isSuper = isSuperuserEmail(email) || globalRole === 'superuser' || email === 'admin@kanban.local';
         const isGlobalAdmin = isSuper || globalRole === 'admin';
 
@@ -666,7 +705,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         // Fetch board data for owner check
         let boardRow = null;
         try {
-          boardRow = await pb.collection('kanban_boards').getOne(boardId);
+          const { data } = await supabase.from('kanban_boards').select('*').eq('id', boardId).single();
+          boardRow = data;
         } catch (e) { /* ignore 404 */ }
 
         const isOwner = boardRow?.owner_id === authUserId;
@@ -675,7 +715,13 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         // Fetch member data
         let memberRow = null;
         try {
-          memberRow = await pb.collection('board_members').getFirstListItem(`board_id="${boardId}" && profile_id="${authUserId}"`);
+          const { data } = await supabase
+            .from('board_members')
+            .select('*')
+            .eq('board_id', boardId)
+            .eq('profile_id', authUserId)
+            .single();
+          memberRow = data;
         } catch (e) { /* ignore 404 */ }
 
         const isMember = !!memberRow;
@@ -693,13 +739,13 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         setCanModifyBoard(false);
         setPermissions({ canEditContent: false, canManageSettings: false, canManageAttendance: false });
       }
-    }, [boardId]);
+    }, [boardId, user, profile]);
 
     const loadBoardMeta = useCallback(async () => {
       try {
-        const data = await pb.collection('kanban_boards').getOne(boardId);
+        const { data } = await supabase.from('kanban_boards').select('*').eq('id', boardId).single();
         if (data) {
-          setBoardMeta(data as any); // Cast or map if needed
+          setBoardMeta(data as any);
           setBoardName(data.name || '');
           setBoardDescription(data.description || '');
           return data;
@@ -721,14 +767,15 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
     const loadBoardMembers = useCallback(async (allProfiles: any[]) => {
       try {
-        const membersData = await pb.collection('board_members').getFullList({
-          filter: `board_id = "${boardId}"`
-        });
+        const { data: membersData } = await supabase
+          .from('board_members')
+          .select('*')
+          .eq('board_id', boardId);
 
         const memberIds = new Set(membersData?.map((m: any) => m.profile_id) || []);
 
         try {
-          const boardData = await pb.collection('kanban_boards').getOne(boardId);
+          const { data: boardData } = await supabase.from('kanban_boards').select('owner_id, board_admin_id').eq('id', boardId).single();
           if (boardData) {
             if (boardData.owner_id) memberIds.add(boardData.owner_id);
             if (boardData.board_admin_id) memberIds.add(boardData.board_admin_id);
@@ -769,14 +816,16 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
     const loadArchivedCards = useCallback(async () => {
       try {
-        const records = await pb.collection('kanban_cards').getFullList({
-          filter: `board_id = "${boardId}"`
-        });
+        const { data: records } = await supabase
+          .from('kanban_cards')
+          .select('*')
+          .eq('board_id', boardId);
 
-        // Filter for archived in memory if needed, or query parameter. 
-        // Note: Supabase had "Archived" column string "1".
-        // PB schema likely has same if imported, or boolean.
-        // Assuming string "1" for now based on other code.
+        if (!records) {
+          updateArchivedState([]);
+          return [];
+        }
+
         const archived = records
           .map(convertDbToCard)
           .filter(card => card["Archived"] === "1");
@@ -810,10 +859,11 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       if (!window.confirm(t('kanban.deleteCardConfirm').replace('{id}', `${card.Nummer} ${card.Teil}`))) return;
 
       try {
-        const cardId = card.id; // Corrected: Use PB ID
+        const cardId = card.id;
         if (!cardId) throw new Error("Card ID missing");
 
-        await pb.collection('kanban_cards').delete(cardId);
+        const { error } = await supabase.from('kanban_cards').delete().eq('id', cardId);
+        if (error) throw error;
 
         setRows(prev => prev.filter(r => idFor(r) !== idFor(card)));
         setArchivedCards(prev => prev.filter(r => idFor(r) !== idFor(card)));
@@ -872,8 +922,13 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         return;
       }
 
-      const authModel = pb.authStore.model;
-      const currentUser = users.find(u => u.id === authModel?.id)?.full_name || authModel?.name || authModel?.email || 'System';
+      // const authModel = pb.authStore.model; 
+      // Use profile from closure or look up. 
+      // But `profile` might be stale in callback if not in dep array?
+      // `users` is in dep array (implicit in OriginalKanbanBoard scope if not memoized weirdly).
+      // Let's use `currentUserName` or `profile` from scope.
+
+      const currentUser = currentUserName || 'System'; // Using the derived name from line 108
 
       if (!Array.isArray(card["TR_History"])) card["TR_History"] = [];
 
@@ -1328,7 +1383,7 @@ function TopTopicsDialog({
     newTopics[index] = updated;
     setLocalTopics(newTopics);
     if (!topic.id.startsWith('temp-')) {
-      await pb.collection('board_top_topics').update(topic.id, { [field]: value });
+      await supabase.from('board_top_topics').update({ [field]: value }).eq('id', topic.id);
     }
   };
 
@@ -1342,19 +1397,22 @@ function TopTopicsDialog({
     newTopics[index] = updated;
     setLocalTopics(newTopics);
     if (!topic.id.startsWith('temp-')) {
-      await pb.collection('board_top_topics').update(topic.id, { due_date: d, calendar_week: kw });
+      await supabase.from('board_top_topics').update({ due_date: d, calendar_week: kw }).eq('id', topic.id);
     }
   };
 
   const handleAdd = async () => {
     if (localTopics.length >= 5) return;
     try {
-      const data = await pb.collection('board_top_topics').create({
+      const { data, error } = await supabase.from('board_top_topics').insert({
         board_id: boardId,
         title: '',
         position: localTopics.length
-      });
-      // Adapt PB record to TopTopic
+      }).select().single();
+
+      if (error || !data) throw error;
+
+      // Adapt Record to TopTopic
       const newTopic: TopTopic = {
         id: data.id,
         title: data.title,
@@ -1369,7 +1427,7 @@ function TopTopicsDialog({
   };
 
   const handleDelete = async (id: string) => {
-    await pb.collection('board_top_topics').delete(id);
+    await supabase.from('board_top_topics').delete().eq('id', id);
     setLocalTopics(localTopics.filter(t => t.id !== id));
   };
 
