@@ -1348,10 +1348,10 @@ function TRKPIPopup({
             <Card variant="outlined" sx={{ height: '100%', backgroundColor: hasEscalations ? '#fff3e0' : '#f0f0f0' }}>
               <CardContent>
                 <Typography variant="subtitle2" color="text.secondary">{t('kanban.escalations')}</Typography>
-                <Typography variant="h4" color={hasEscalations ? 'warning.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
-                  {kpis.yEscalations.length + kpis.rEscalations.length}
+                <Typography variant="h4" color={hasEscalations ? 'error.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
+                  {kpis.rEscalations.length}
                 </Typography>
-                <Typography variant="caption" color="text.secondary">Y: {kpis.yEscalations.length} / R: {kpis.rEscalations.length}</Typography>
+                <Typography variant="caption" color="text.secondary">R: {kpis.rEscalations.length}</Typography>
               </CardContent>
             </Card>
           </Grid>

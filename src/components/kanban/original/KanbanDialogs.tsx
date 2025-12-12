@@ -324,31 +324,7 @@ export function EditCardDialog({
                                   onBlur={() => saveCards()}
                                 />
                               </TableCell>
-                              <TableCell>
-                                <FormControlLabel
-                                  control={
-                                    <Checkbox
-                                      size="small"
-                                      checked={val.escalation || false}
-                                      disabled={!canEdit}
-                                      onChange={(e) => {
-                                        const newHistory = JSON.parse(JSON.stringify(selectedCard.StatusHistory || []));
-                                        if (!newHistory[idx][key]) newHistory[idx][key] = { text: '', escalation: false };
-                                        newHistory[idx][key].escalation = e.target.checked;
-                                        // Update state
-                                        const updatedCard = { ...selectedCard, StatusHistory: newHistory };
-                                        updateStatusSummary(updatedCard);
-                                        setSelectedCard(updatedCard as ProjectBoardCard);
-                                        const newRows = rows.map(r => idFor(r) === idFor(updatedCard) ? updatedCard : r);
-                                        setRows(newRows as ProjectBoardCard[]);
-                                        // Save immediately for checkboxes as there is no blur event
-                                        setTimeout(() => saveCards(), 0);
-                                      }}
-                                    />
-                                  }
-                                  label={t('kanban.escalation')}
-                                />
-                              </TableCell>
+
                             </TableRow>
                           );
                         })}
@@ -631,12 +607,7 @@ export function EditCardDialog({
                 disabled={!canEdit}
               />
 
-              <Typography>{t('kanban.priority')}</Typography>
-              <Checkbox
-                checked={toBoolean(selectedCard.Priorität)}
-                disabled={!canEdit}
-                onChange={(e) => handlePatch('Priorität', e.target.checked)}
-              />
+
             </Box>
 
             <Box sx={{ mt: 2 }}>

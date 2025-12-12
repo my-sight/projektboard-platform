@@ -124,9 +124,8 @@ export function KanbanCard({
   } else if (isYellow) {
     borderColor = theme.palette.warning.main;
     glowColor = alpha(theme.palette.warning.main, 0.2);
-  } else if (hasPriority) {
-    borderColor = theme.palette.error.light;
   }
+
 
   const handleUpdateCard = (updates: Partial<ProjectBoardCard>) => {
     if (!canModify) return;
@@ -218,7 +217,7 @@ export function KanbanCard({
                         color: theme.palette.primary.main
                       }}
                     />
-                    {hasPriority && <PriorityHigh sx={{ fontSize: 14, color: 'error.main' }} />}
+
 
                     {/* Escalation Toggle */}
                     <IconButton
@@ -237,11 +236,8 @@ export function KanbanCard({
                       }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        let nextState = '';
-                        if (!isYellow && !isRed) nextState = 'Y';
-                        else if (isYellow) nextState = 'R';
-                        else if (isRed) nextState = '';
-
+                        // Nur noch Toggle zwischen 'R' und leer
+                        const nextState = isRed ? '' : 'R';
                         handleUpdateCard({ Eskalation: nextState });
                       }}
                       title={t('kanban.escalationToggle')}
