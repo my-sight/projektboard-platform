@@ -88,6 +88,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
     } = useKanbanData(boardId, permissions, viewMode, setViewMode, setDensity);
 
     const { kpis, distribution, kpiBadgeCount } = useKanbanKPIs(rows, inferStage);
+    const { convertDbToCard } = useKanbanUtils(cols, viewMode);
 
     // --- Loading & Initialization ---
 
@@ -137,7 +138,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         if (error) throw error;
         if (data) {
           console.log('Loaded archived cards:', data);
-          setArchivedCards(data as any[]);
+          const converted = data.map(convertDbToCard);
+          setArchivedCards(converted);
         }
       } catch (e) {
         console.error('Error loading archive:', e);
@@ -194,15 +196,10 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
       const sourceId = source.droppableId; // stage or stage|swimlane
       const destId = destination.droppableId;
 
-      // This logic is complex and depends on the view. 
-      // Simplified: We update the card's stage/position and let optimistic update handle it.
-      // But we need to correctly interpret the dropId.
-
       const draggedCard = rows.find(r => idFor(r) === draggableId);
       if (!draggedCard) return;
 
       let newStage = '';
-      // let newSwimlane = '';
 
       if (viewMode === 'columns') {
         newStage = destId;
@@ -210,16 +207,34 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         // split "Stage||Value"
         const parts = destId.split('||');
         newStage = parts[0];
-        // extra = parts[1]; // swimlane or lane value
+      }
+
+      const currentStage = inferStage(draggedCard);
+
+      // Check for unfinished checklist items if changing stage
+      if (newStage && newStage !== currentStage) {
+        const stageTemplates = checklistTemplates[currentStage] || [];
+        if (stageTemplates.length > 0) {
+          const doneItems = draggedCard.ChecklistDone?.[currentStage] || {};
+          const unfinished = stageTemplates.filter(item => !doneItems[item]);
+
+          if (unfinished.length > 0) {
+            const message = t('kanban.checklistUnfinished')
+              .replace('{stage}', currentStage)
+              .replace('{count}', String(unfinished.length))
+              .replace('{items}', unfinished.map(i => ` - ${i}`).join('\n'));
+
+            if (!confirm(message)) {
+              return;
+            }
+          }
+        }
       }
 
       const updates: Partial<ProjectBoardCard> = {};
       if (newStage && newStage !== inferStage(draggedCard)) {
         updates['Board Stage'] = newStage;
       }
-      // Reordering logic (position) is usually handled here by calculating new index
-      // For brevity, we just update stage if changed. 
-      // Real reordering requires finding neighbors.
 
       if (Object.keys(updates).length > 0) {
         patchCard(draggedCard, updates);
@@ -395,7 +410,9 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
             const current = card.StatusHistory || [];
             const date = new Date().toLocaleDateString('de-DE');
             const newEntry = { date, message: { text: '' }, qualitaet: {}, kosten: {}, termine: {} };
-            patchCard(card, { StatusHistory: [newEntry, ...current] });
+            const updatedHistory = [newEntry, ...current];
+            patchCard(card, { StatusHistory: updatedHistory });
+            setSelectedCard({ ...card, StatusHistory: updatedHistory });
           }}
           updateStatusSummary={() => { }} // simplified
           handleTRNeuChange={(card: any, date: string) => patchCard(card, { TR_Neu: date })}

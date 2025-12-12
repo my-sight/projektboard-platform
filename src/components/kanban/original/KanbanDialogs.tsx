@@ -294,7 +294,7 @@ export function EditCardDialog({
                                 newHistory[idx].message.text = e.target.value;
                                 updateStatusHistory(newHistory);
                               }}
-                              onBlur={() => saveCards()}
+                              onBlur={() => patchCard(selectedCard, { StatusHistory: selectedCard.StatusHistory })}
                             />
                           </TableCell>
                         </TableRow>
@@ -321,7 +321,7 @@ export function EditCardDialog({
                                     newHistory[idx][key].text = e.target.value;
                                     updateStatusHistory(newHistory);
                                   }}
-                                  onBlur={() => saveCards()}
+                                  onBlur={() => patchCard(selectedCard, { StatusHistory: selectedCard.StatusHistory })}
                                 />
                               </TableCell>
 
@@ -721,7 +721,7 @@ export function ArchiveDialog({ archiveOpen, setArchiveOpen, archivedCards, rest
                   <TableCell>{card.Teil}</TableCell>
                   <TableCell>{card['Status Kurz']}</TableCell>
                   <TableCell>{card.Verantwortlich}</TableCell>
-                  <TableCell>{card.ArchivedDate || t('kanban.unknown')}</TableCell>
+                  <TableCell>{card.ArchivedDate ? new Date(card.ArchivedDate).toLocaleDateString('de-DE') : t('kanban.unknown')}</TableCell>
                   <TableCell align="right">
                     <Button size="small" variant="outlined" onClick={() => restoreCard(card)} sx={{ mr: 1 }}>
                       ↩️ {t('kanban.restore')}
@@ -773,11 +773,10 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
 
     if (onCreate) {
       console.log('NewCardDialog: Calling onCreate');
-      await onCreate(newCard);
+      const success = await onCreate(newCard);
+      // Only close if success is true (or undefined for backward compat if void)
+      if (success === false) return;
     } else {
-      // Fallback or old logic? Better to just fail or warn if logic is missing.
-      // But for safety, keep optimistic update if onCreate missing?
-      // No, migrating fully.
       console.warn("NewCardDialog: onCreate prop missing!");
     }
 
@@ -862,17 +861,7 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
             slotProps={{ textField: { fullWidth: true } }}
           />
 
-          <FormControlLabel
-            control={(
-              <Checkbox
-                checked={Boolean(newCard['Priorität'])}
-                onChange={(e) =>
-                  setNewCard({ ...newCard, 'Priorität': e.target.checked })
-                }
-              />
-            )}
-            label="Priorität"
-          />
+
 
           <Box sx={{ display: 'flex', gap: 2 }}>
             <StandardDatePicker

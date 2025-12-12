@@ -281,7 +281,10 @@ export function useKanbanData(
     }, [permissions.canEditContent, rows, inferStage]);
 
     const handleCreateCard = useCallback(async (newCardData: any) => {
-        if (!permissions.canEditContent) return false;
+        if (!permissions.canEditContent) {
+            enqueueSnackbar(t('kanban.noPermission'), { variant: 'error' });
+            return false;
+        }
         try {
             const payload = {
                 board_id: boardId,
