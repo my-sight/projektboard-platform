@@ -59,6 +59,8 @@ import { isSuperuserEmail } from '@/constants/superuser';
 // import { buildSupabaseAuthHeaders } from '@/lib/sessionHeaders'; // Removed
 import { StandardDatePicker } from '@/components/common/StandardDatePicker';
 import dayjs from 'dayjs';
+import 'dayjs/locale/de';
+import isoWeek from 'dayjs/plugin/isoWeek';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 // --- Styles & Konstanten ---

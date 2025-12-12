@@ -53,8 +53,15 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { StandardDatePicker } from '@/components/common/StandardDatePicker';
 import dayjs from 'dayjs';
+import 'dayjs/locale/de';
+import isoWeek from 'dayjs/plugin/isoWeek';
+
+dayjs.locale('de');
+dayjs.extend(isoWeek);
 import { useLanguage } from '@/contexts/LanguageContext';
 
 interface Department {
