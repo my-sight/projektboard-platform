@@ -64,7 +64,7 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
         .from('system_settings')
         .select('*')
         .eq('key', 'config')
-        .single();
+        .maybeSingle();
 
       if (record) {
         // Supabase returns the JSON column as object automatically if defined as such, 

@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   // App Router ist seit 13 stabil – kein experimental.appDir mehr nötig
   reactStrictMode: true,
   // turbopack: {}, // Removed to fallback to stable Webpack if issues arise

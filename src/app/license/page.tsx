@@ -13,6 +13,15 @@ export default function LicensePage() {
     const [token, setToken] = useState('');
     const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [msg, setMsg] = useState('');
+    const [debugError, setDebugError] = useState('');
+
+    useEffect(() => {
+        getLicenseStatus().then(s => {
+            if (!s.valid && s.error && s.error !== 'No License Found') {
+                setDebugError(`Validation Error: ${s.error}. Key: ${s.customer || 'none'}`);
+            }
+        });
+    }, []);
 
     const handleSubmit = async () => {
         setStatus('loading');
@@ -71,6 +80,12 @@ export default function LicensePage() {
 
                 {status === 'error' && (
                     <Alert severity="error" sx={{ mb: 2 }}>{msg}</Alert>
+                )}
+
+                {debugError && (
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                        DEBUG: {debugError}
+                    </Alert>
                 )}
 
                 {status === 'success' && (

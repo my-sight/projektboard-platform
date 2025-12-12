@@ -17,9 +17,12 @@ export interface KanbanColumnsViewProps {
   archiveColumn: (columnName: string) => void;
   renderCard: (card: any, index: number) => ReactNode;
   allowDrag: boolean;
+  completedCount?: number;
 }
 
 import { useKanbanAutoScroll } from '@/hooks/useKanbanAutoScroll';
+import { Inventory2 } from '@mui/icons-material';
+import { Button } from '@mui/material';
 
 export function KanbanColumnsView({
   rows,
@@ -31,6 +34,7 @@ export function KanbanColumnsView({
   archiveColumn,
   renderCard,
   allowDrag,
+  completedCount = 0,
 }: KanbanColumnsViewProps) {
   const { t } = useLanguage();
   const { scrollContainerRef, onDragStart: onAutoScrollStart, onDragEnd: onAutoScrollEnd } = useKanbanAutoScroll();
@@ -123,7 +127,13 @@ export function KanbanColumnsView({
                       gap: 1
                     }}
                   >
-                    {col.name} {col.done && '✓'}
+                    {col.name} {col.done && (
+                      <Chip
+                        label={completedCount + colCards.length}
+                        size="small"
+                        sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: 'rgba(76, 175, 80, 0.1)', color: 'success.main' }}
+                      />
+                    )}
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mt: 0.5, minHeight: 20 }}>
 
@@ -138,6 +148,19 @@ export function KanbanColumnsView({
                     )}
                   </Box>
                 </Box>
+
+                {col.done && allowDrag && (
+                  <Button
+                    size="small"
+                    startIcon={<Inventory2 sx={{ fontSize: 16 }} />}
+                    onClick={() => archiveColumn(col.name)}
+                    sx={{ minWidth: 'auto', px: 1, py: 0.2, fontSize: '0.7rem' }}
+                    color="secondary"
+                  >
+                    {t('kanban.archiveAll') || 'Archivieren'}
+                  </Button>
+                )}
+
 
 
               </Box>

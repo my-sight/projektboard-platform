@@ -144,6 +144,20 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
     const [checklistTemplates, setChecklistTemplates] = useState<Record<string, string[]>>(DEFAULT_TEMPLATES);
 
     const [customLabels, setCustomLabels] = useState({ tr: 'TR', sop: 'SOP' });
+    const [completedCount, setCompletedCount] = useState(0);
+
+    const persistCompletedCount = async (count: number) => {
+      setCompletedCount(count);
+      try {
+        const { data } = await supabase.from('kanban_boards').select('settings').eq('id', boardId).single();
+        const currentSettings = data?.settings || {};
+        await supabase.from('kanban_boards').update({
+          settings: { ...currentSettings, completedCount: count }
+        }).eq('id', boardId);
+      } catch (e) {
+        console.error('Failed to persist completed count', e);
+      }
+    };
 
     const inferStage = useCallback((r: ProjectBoardCard) => {
       const s = (r["Board Stage"] || "").trim();
@@ -213,6 +227,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
 
         ampelRed: 0,
         ampelYellow: 0,
+        ampelGreen: 0,
         ampelNeutral: 0,
         yEscalations: [],
         rEscalations: [],
@@ -233,7 +248,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
         // kpis.totalCards is already set to activeCards.length
         if (ampel === 'rot') kpis.ampelRed++;
         else if (ampel === 'gelb') kpis.ampelYellow++;
-        else if (ampel !== 'grün') kpis.ampelNeutral++;
+        else if (ampel === 'grün') kpis.ampelGreen++;
+        else kpis.ampelNeutral++;
 
         const eskalation = String(card.Eskalation || '').toUpperCase();
 
@@ -617,6 +633,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
               sop: s.sopLabel || 'SOP'
             });
           }
+          if (s.completedCount) setCompletedCount(s.completedCount);
           return true;
         }
         return false;
@@ -874,20 +891,28 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
       }
     };
 
-    const archiveColumn = (columnName: string) => {
+    const archiveColumn = async (columnName: string) => {
       if (!permissions.canEditContent) return;
       if (!window.confirm(t('kanban.archiveColumnConfirm').replace('{column}', columnName))) return;
 
-      const updatedRows = rows.map(r => {
-        if (inferStage(r) === columnName) {
-          r["Archived"] = "1";
-          r["ArchivedDate"] = new Date().toLocaleDateString('de-DE');
-        }
-        return r;
-      }).filter(r => r["Archived"] !== "1");
+      const cardsToArchive = rows.filter(r => inferStage(r) === columnName && r["Archived"] !== "1");
+      if (cardsToArchive.length === 0) return;
 
-      setRows(updatedRows);
-      enqueueSnackbar(t('kanban.cardsArchived'), { variant: 'info' });
+      try {
+        await Promise.all(cardsToArchive.map(c =>
+          supabase.from('kanban_cards').update({
+            card_data: { ...c, Archived: "1", ArchivedDate: new Date().toLocaleDateString('de-DE') }
+          }).eq('id', c.id)
+        ));
+
+        await persistCompletedCount(completedCount + cardsToArchive.length);
+
+        setRows(prev => prev.filter(r => inferStage(r) !== columnName));
+        enqueueSnackbar(`${cardsToArchive.length} ${t('kanban.cardsArchived')}`, { variant: 'success' });
+      } catch (e) {
+        console.error(e);
+        enqueueSnackbar(t('kanban.networkError'), { variant: 'error' });
+      }
     };
 
     const addStatusEntry = (card: any) => {
@@ -1123,9 +1148,10 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
               searchTerm={searchTerm}
               onDragEnd={onDragEnd}
               inferStage={inferStage}
-              archiveColumn={() => { }}
+              archiveColumn={archiveColumn}
               renderCard={renderCard}
               allowDrag={permissions.canEditContent}
+              completedCount={completedCount}
             />
           )}
         </Box>

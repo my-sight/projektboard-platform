@@ -47,7 +47,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .eq('id', userId)
+        .maybeSingle();
 
       if (error) {
         console.warn('Error fetching profile:', error);
@@ -68,9 +69,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       supabase.auth.getSession().then(async ({ data: { session } }) => {
         // License Check
         const license = await getLicenseStatus();
+
         if (!license.valid && !window.location.pathname.includes('/license')) {
           window.location.href = '/license';
           return; // Stop here
+        } else {
+
         }
 
         if (session?.user) {
@@ -93,7 +97,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Only fetch profile if not already set or if user changed
         if (!profile || profile.id !== session.user.id) {
           const p = await fetchProfile(session.user.id);
-          setProfile(p);
+          if (!p) {
+            // Stale session (user valid in Auth but missing in DB) -> Logout
+            console.warn('User has no profile (stale session?). Signing out...');
+            await supabase.auth.signOut();
+            setUser(null);
+            setProfile(null);
+          } else {
+            setProfile(p);
+          }
         }
       } else {
         setUser(null);

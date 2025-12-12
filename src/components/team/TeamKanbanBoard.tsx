@@ -287,6 +287,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 }).eq('id', c.rowId)
             ));
 
+            await persistCompletedCount(completedCount + cardsToArchive.length);
             setCards(prev => prev.filter(c => c.status !== 'done'));
             enqueueSnackbar(`${cardsToArchive.length} ${t('teamBoard.tasksArchived') || 'Aufgaben archiviert'}`, { variant: 'success' });
         } catch (e) {
@@ -475,7 +476,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             return { name: m.profile?.full_name || m.profile?.email || '?', count, avatar: getInitials(m.profile?.full_name || m.profile?.email || '') };
         }).sort((a, b) => b.count - a.count);
 
-        return { activeCount: active.length, backlogCount: backlog.length, doneCount: completedCount, overdueCount: overdue.length, importantCount: cards.filter(c => c.important).length, watchCount: cards.filter(c => c.watch).length, memberLoad };
+        const currentDone = cards.filter(c => c.status === 'done').length;
+        return { activeCount: active.length, backlogCount: backlog.length, doneCount: completedCount + currentDone, overdueCount: overdue.length, importantCount: cards.filter(c => c.important).length, watchCount: cards.filter(c => c.watch).length, memberLoad };
     }, [cards, members, completedCount]);
 
     // --- Actions ---
@@ -971,9 +973,22 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                             <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>{t('teamBoard.flow1')}</Box>
                             <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>{t('teamBoard.flow')}</Box>
                             <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                {t('teamBoard.finished')}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    {t('teamBoard.finished')}
+                                    <Chip label={completedCount + cards.filter(c => c.status === 'done').length} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: 'rgba(76, 175, 80, 0.1)', color: 'success.main' }} />
+                                </Box>
                                 {/* Show Archive button for users who can modify */}
-                                {canModify && <Tooltip title={t('teamBoard.archiveAll') || 'Archivieren'}><IconButton size="small" onClick={handleFinishDone}><Inventory2 fontSize="small" color="secondary" /></IconButton></Tooltip>}
+                                {canModify && (
+                                    <Button
+                                        size="small"
+                                        startIcon={<Inventory2 sx={{ fontSize: 16 }} />}
+                                        onClick={handleFinishDone}
+                                        sx={{ minWidth: 'auto', px: 1, py: 0.2, fontSize: '0.7rem' }}
+                                        color="secondary"
+                                    >
+                                        {t('teamBoard.archiveAll') || 'Archivieren'}
+                                    </Button>
+                                )}
                             </Box>
                         </Box>
 
