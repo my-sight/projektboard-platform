@@ -21,6 +21,16 @@ echo "Configuring environment..."
 if [ ! -f .env ]; then
     echo "Generating secure secrets..."
     
+    # Prompt for IP Address
+    echo "----------------------------------------------------------------"
+    echo "IMPORTANT: For the app to work from other computers (e.g. your Mac),"
+    echo "you must provide the IP address of this NUC."
+    echo "If you only use it locally on the NUC, keep 'localhost'."
+    echo "----------------------------------------------------------------"
+    read -p "Enter NUC IP Address [localhost]: " NUC_IP
+    NUC_IP=${NUC_IP:-localhost}
+    echo "Configuring for IP: $NUC_IP"
+    
     # Generate random secrets
     DB_PASS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9')
     JWT_SECRET=$(openssl rand -hex 32)
@@ -71,6 +81,7 @@ if [ ! -f .env ]; then
     echo "POSTGRES_PASSWORD=$DB_PASS" > .env
     echo "JWT_SECRET=$JWT_SECRET" >> .env
     echo "$KEYS" >> .env
+    echo "NEXT_PUBLIC_SUPABASE_URL=http://${NUC_IP}:8000" >> .env
     
     echo "Secrets generated in .env"
 else

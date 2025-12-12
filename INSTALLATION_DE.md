@@ -104,6 +104,7 @@ cd deploy
 
 **Was passiert jetzt?**
 - Das Skript prüft, ob Docker läuft.
+- **NEU:** Es fragt dich nach der **IP-Adresse** des NUC. Drücke ENTER für `localhost` (nur lokal) oder gib die echte IP ein (z.B. `192.168.1.50`), damit Zugriff vom Mac möglich ist.
 - Es generiert **sichere Passwörter** für die Datenbank.
 - Es baut die Anwendung (das kann beim ersten Mal 5-10 Minuten dauern).
 - Es startet alles.

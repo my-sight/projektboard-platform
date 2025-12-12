@@ -8,19 +8,19 @@ export async function checkLicenseServer() {
     const supabase = createClient(supabaseUrl, serviceKey);
 
     try {
-        const { data: { value }, error } = await supabase
+        const { data, error } = await supabase
             .from('system_settings')
             .select('value')
             .eq('key', 'license_key')
-            .single();
+            .maybeSingle();
 
-        if (error || !value || !value.token) {
-            return { valid: false, error: 'No License Found' };
+        if (error || !data?.value?.token) {
+            return { valid: false, error: 'No License Found', expiry: null, customer: null };
         }
 
-        return await verifyLicenseToken(value.token);
+        return await verifyLicenseToken(data.value.token);
     } catch (error) {
         console.error('Server License Check Error:', error);
-        return { valid: false, error: 'Check Failed' };
+        return { valid: false, error: 'Check Failed', expiry: null, customer: null };
     }
 }

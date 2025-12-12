@@ -17,7 +17,7 @@ export async function checkLicenseServerAction() {
             .maybeSingle();
 
         if (!data || !data.value || !data.value.token) {
-            return { valid: false, error: 'No License Found (Server Action)' };
+            return { valid: false, error: 'No License Found (Server Action)', expiry: null, customer: null };
         }
 
         const status = await verifyLicenseToken(data.value.token);
@@ -31,6 +31,6 @@ export async function checkLicenseServerAction() {
 
     } catch (error: any) {
         console.error('License Action Error:', error);
-        return { valid: false, error: error.message || 'Server Action Error' };
+        return { valid: false, error: error.message || 'Server Action Error', expiry: null, customer: null };
     }
 }
