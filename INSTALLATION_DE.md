@@ -3,7 +3,7 @@
 
 Diese Anleitung führt dich Schritt für Schritt durch die Installation der Software auf einem frischen **Intel NUC** (oder jedem anderen Mini-PC).
 
----
+-----
 
 ## 🏗️ 1. Vorab-Checkliste
 Du benötigst:
