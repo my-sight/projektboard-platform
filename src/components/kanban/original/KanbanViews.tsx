@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode } from 'react';
+import React, { ReactNode } from 'react';
 import { DragDropContext, Droppable, DropResult } from '@hello-pangea/dnd';
 import { Box, IconButton, Typography, Paper, Chip } from '@mui/material';
 import { KanbanDensity } from './KanbanCard';
@@ -287,7 +287,7 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
         ))}
 
         {resps.map((resp) => (
-          <>
+          <React.Fragment key={resp}>
             <Paper
               key={`header-${resp}`}
               className="glass"
@@ -344,7 +344,7 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
                 </Droppable>
               );
             })}
-          </>
+          </React.Fragment>
         ))}
       </Box>
     </DragDropContext>
@@ -424,7 +424,7 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
         ))}
 
         {laneNames.map((laneName) => (
-          <>
+          <React.Fragment key={laneName}>
             <Paper
               key={`header-${laneName}`}
               className="glass"
@@ -479,7 +479,7 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
                 </Droppable>
               );
             })}
-          </>
+          </React.Fragment>
         ))}
       </Box>
     </DragDropContext>

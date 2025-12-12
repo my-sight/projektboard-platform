@@ -59,7 +59,8 @@ export function KanbanSettingsDialog({
             setCurrentTemplates(checklistTemplates);
             setLocalCustomLabels(customLabels);
         }
-    }, [open, cols, checklistTemplates, customLabels]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
 
     const handleSave = async () => {
         // We pass the new settings to the parent via onSave
@@ -84,20 +85,32 @@ export function KanbanSettingsDialog({
     };
 
     const addChecklistItem = (colName: string) => {
-        const newT = { ...currentTemplates };
-        if (!newT[colName]) newT[colName] = [];
-        newT[colName].push(`${t('kanban.newEntry')} ${newT[colName].length + 1}`);
-        setCurrentTemplates(newT);
+        const currentList = currentTemplates[colName] || [];
+        const newItem = `${t('kanban.newEntry')} ${currentList.length + 1}`;
+        setCurrentTemplates({
+            ...currentTemplates,
+            [colName]: [...currentList, newItem]
+        });
     };
 
     const updateChecklistItem = (colName: string, idx: number, text: string) => {
-        const newT = { ...currentTemplates };
-        if (newT[colName]) { newT[colName][idx] = text; setCurrentTemplates(newT); }
+        const currentList = currentTemplates[colName] || [];
+        const newList = [...currentList];
+        newList[idx] = text;
+        setCurrentTemplates({
+            ...currentTemplates,
+            [colName]: newList
+        });
     };
 
     const deleteChecklistItem = (colName: string, idx: number) => {
-        const newT = { ...currentTemplates };
-        if (newT[colName]) { newT[colName].splice(idx, 1); setCurrentTemplates(newT); }
+        const currentList = currentTemplates[colName] || [];
+        const newList = [...currentList];
+        newList.splice(idx, 1);
+        setCurrentTemplates({
+            ...currentTemplates,
+            [colName]: newList
+        });
     };
 
     const handleMove = (id: string, dir: 'up' | 'down') => {
@@ -144,7 +157,27 @@ export function KanbanSettingsDialog({
                                         <IconButton onClick={() => handleDelCol(col.id)} disabled={!canManageSettings}><Delete /></IconButton>
                                     </Box>
                                 }>
-                                    <TextField value={col.name} onChange={(e) => { const nc = [...currentCols]; nc[idx].name = e.target.value; setCurrentCols(nc); }} size="small" fullWidth sx={{ mr: 2 }} disabled={!canManageSettings} />
+                                    <TextField
+                                        value={col.name}
+                                        onChange={(e) => {
+                                            const newName = e.target.value;
+                                            const oldName = col.name;
+
+                                            // Update column name
+                                            const nc = currentCols.map((c, i) => i === idx ? { ...c, name: newName } : c);
+                                            setCurrentCols(nc);
+                                            if (oldName !== newName && currentTemplates[oldName]) {
+                                                const newT = { ...currentTemplates };
+                                                newT[newName] = newT[oldName];
+                                                delete newT[oldName];
+                                                setCurrentTemplates(newT);
+                                            }
+                                        }}
+                                        size="small"
+                                        fullWidth
+                                        sx={{ mr: 2 }}
+                                        disabled={!canManageSettings}
+                                    />
                                 </ListItem>
                             ))}
                         </List>
