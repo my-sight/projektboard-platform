@@ -149,7 +149,6 @@ export default function HomePage() {
 
   // Sync state from URL
   useEffect(() => {
-    console.log('DEBUG: URL Sync Effect Triggered. Loading:', loading, 'Boards:', boards.length, 'Params:', searchParams.toString());
     if (!loading && boards.length > 0) {
       const boardId = searchParams.get('boardId');
       const mode = searchParams.get('mode');
@@ -169,8 +168,10 @@ export default function HomePage() {
             setViewMode('board');
           }
         } else {
-          console.warn(`Board ${boardId} not found in loaded boards.`);
-          setMessage(`❌ Board ${boardId} nicht gefunden (Zugriff verweigert oder gelöscht?).`);
+          // Board ID in URL but not found in loaded boards?
+          // This implies 'Access Denied' or 'Deleted'.
+          // We explicitly allow this to fall through to default (List) but logged
+          console.warn(`Sync: Board ${boardId} not found in ${boards.length} loaded boards.`);
         }
       } else {
         // If boardId is missing but we have selectedBoard, it means we are in inconsistent state OR user navigated to root
@@ -209,8 +210,7 @@ export default function HomePage() {
       params.set('mode', newMode);
       if (cardId) params.set('cardId', cardId);
       const targetUrl = `${pathname}?${params.toString()}`;
-      console.log('DEBUG: Navigating to', targetUrl);
-      setMessage(`🚀 Opening ${board.name}...`); // Visually confirm action
+      // Visually confirm action
       router.push(targetUrl);
     }
   };
@@ -316,7 +316,7 @@ export default function HomePage() {
             <Typography variant="h6">{selectedBoard.name || 'Board'}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Typography variant="body2">👋 {user.user_metadata?.full_name || user.email}</Typography>
+            <Typography variant="body2">👋 {profile?.full_name || user.user_metadata?.full_name || user.email}</Typography>
             <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
           </Box>
         </Box>
@@ -338,7 +338,7 @@ export default function HomePage() {
             <Typography variant="h6">{selectedBoard.name || t('home.teamBoard')}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Typography variant="body2">👋 {user.user_metadata?.full_name || user.email}</Typography>
+            <Typography variant="body2">👋 {profile?.full_name || user.user_metadata?.full_name || user.email}</Typography>
             <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
           </Box>
         </Box>

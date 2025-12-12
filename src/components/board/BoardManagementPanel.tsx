@@ -772,28 +772,34 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       data.forEach(entry => {
         // PB date strings can be "YYYY-MM-DD HH:mm:ss.SSSZ" or "YYYY-MM-DD"
         // Robust way: Parse to Date, then to ISO string
+        // Consistent date key generation
         let weekKey = '';
         try {
+          // If it's a date string 'YYYY-MM-DD', just use it? 
+          // Best to normalize using our isoDate helper to match selectedWeek
+          // entry.week_start is from DB (date or timestamptz)
           const d = new Date(entry.week_start || entry.date || new Date());
-          weekKey = d.toISOString().split('T')[0];
+          weekKey = isoDate(d);
         } catch (e) {
-          weekKey = new Date().toISOString().split('T')[0];
+          weekKey = isoDate(new Date());
         }
 
         if (!map[weekKey]) {
           map[weekKey] = {};
         }
-        if (entry.user_id) {
-          // console.log('Mapping entry:', entry.id, 'User:', entry.user_id, 'Week:', weekKey, 'Status:', entry.status);
-          map[weekKey][entry.user_id] = {
+
+        const userId = entry.profile_id || entry.user_id; // Fix: Support profile_id
+
+        if (userId) {
+          map[weekKey][userId] = {
             id: entry.id,
             board_id: entry.board_id,
-            profile_id: entry.user_id,
+            profile_id: userId,
             week_start: entry.week_start,
             status: entry.status
           } as AttendanceRecord;
         } else {
-          console.warn('Entry missing user_id:', entry);
+          console.warn('Entry missing profile_id/user_id:', entry);
         }
       });
       console.log('Attendance Map Keys:', Object.keys(map));
@@ -840,19 +846,21 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       const promises = members.map(async (member) => {
         const present = attendanceDraft[member.profile_id] ?? true;
         const status = present ? 'present' : 'absent';
-        const existing = attendanceByWeek[weekKey]?.[member.profile_id];
 
-        if (existing) {
-          if (existing.status !== status) {
-            await supabase.from('board_attendance').update({ status }).eq('id', existing.id);
-          }
-        } else {
-          await supabase.from('board_attendance').insert({
-            board_id: boardId,
-            user_id: member.profile_id,
-            week_start: new Date(selectedWeek).toISOString(), // Ensure ISO
-            status
-          });
+        // Use upsert for robustness
+        const payload = {
+          board_id: boardId,
+          profile_id: member.profile_id,
+          week_start: isoDate(new Date(selectedWeek)),
+          status
+        };
+        console.log('DEBUG: Upserting Attendance:', payload);
+
+        const { error } = await supabase.from('board_attendance').upsert(payload, { onConflict: 'board_id,profile_id,week_start' });
+
+        if (error) {
+          console.error('Attendance save error', error);
+          throw error;
         }
       });
 

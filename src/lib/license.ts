@@ -125,10 +125,6 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
 };
 
 export const getLicenseStatus = async (): Promise<LicenseStatus> => {
-    // TEMPORARY BYPASS: Always return valid
-    return { valid: true, expiry: '2099-12-31', customer: 'Dev Bypass' };
-
-    /* 
     try {
         const { data } = await supabase
             .from('system_settings')
@@ -144,7 +140,6 @@ export const getLicenseStatus = async (): Promise<LicenseStatus> => {
     } catch (e) {
         return { valid: false, expiry: null, customer: null, error: 'Database Error' };
     }
-    */
 };
 
 export const saveLicenseToken = async (token: string) => {

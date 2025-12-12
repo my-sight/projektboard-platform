@@ -457,40 +457,38 @@ export default function TeamBoardManagementPanel({ boardId, canEdit, memberCanSe
     setAttendanceSaving(true);
     setMessage(null);
     const weekDate = startOfWeek(new Date(selectedWeek));
-    const weekStartStr = weekDate.toISOString().slice(0, 10); // 'YYYY-MM-DD'
+    const weekStartStr = isoDate(weekDate); // Fix: Use local date string to avoid UTC-1 shift (Sunday issue)
 
     try {
       // Iterate and update/create
       // We need to know if it exists. attendanceByWeek has this info (including ID)
       const promises = members.map(async (member) => {
         const status = attendanceDraft[member.profile_id] === false ? 'absent' : 'present';
-        const existing = attendanceByWeek[selectedWeek]?.[member.profile_id];
 
-        if (existing && existing.id && !existing.id.startsWith(boardId)) { // check if real ID
-          if (existing.status !== status) {
-            await supabase.from('board_attendance').update({ status }).eq('id', existing.id);
-          }
-          return { ...existing, status };
-        } else {
-          // Check if exists in DB (double check) or just create
-          // Since we loaded data, we trust existing. If not found, create.
-          const { data: created, error } = await supabase.from('board_attendance').insert({
-            board_id: boardId,
-            user_id: member.profile_id, // Fix: Use user_id field for DB relation
-            week_start: weekDate.toISOString(), // Supabase usually wants ISO string for timestamptz
-            status
-          }).select().single();
+        // Use upsert to handle both creation and updates (and race conditions)
+        // Column is 'profile_id', NOT 'user_id'
+        const { data: saved, error } = await supabase.from('board_attendance').upsert({
+          board_id: boardId,
+          profile_id: member.profile_id,
+          week_start: weekStartStr, // Sending 'YYYY-MM-DD' is safest for 'date' column
+          status
+        }, {
+          onConflict: 'board_id,profile_id,week_start'
+        }).select().single();
 
-          if (error || !created) throw error || new Error('Failed to create attendance');
-
-          return {
-            id: created.id,
-            board_id: created.board_id,
-            profile_id: created.user_id || created.profile_id,
-            week_start: created.week_start,
-            status: created.status
-          } as AttendanceRecord;
+        if (error) {
+          console.error('DEBUG: Upsert Error:', error);
+          throw error;
         }
+        if (!saved) throw new Error('Failed to save attendance');
+
+        return {
+          id: saved.id,
+          board_id: saved.board_id,
+          profile_id: saved.profile_id,
+          week_start: saved.week_start,
+          status: saved.status
+        } as AttendanceRecord;
       });
 
       const results = await Promise.all(promises);

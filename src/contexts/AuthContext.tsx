@@ -74,7 +74,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           window.location.href = '/license';
           return; // Stop here
         } else {
-
+          // License valid or already on license page
         }
 
         if (session?.user) {
