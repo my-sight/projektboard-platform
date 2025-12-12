@@ -157,7 +157,7 @@ export function KanbanColumnsView({
                     sx={{ minWidth: 'auto', px: 1, py: 0.2, fontSize: '0.7rem' }}
                     color="secondary"
                   >
-                    {t('kanban.archiveAll') || 'Archivieren'}
+                    {t('kanban.archiveColumn') || 'Archivieren'}
                   </Button>
                 )}
 

@@ -10,7 +10,7 @@ import { DropResult } from '@hello-pangea/dnd';
 import {
   Assessment, Close, Delete, Add, Settings, ViewHeadline, ViewModule,
   AddCircle, FilterList, Warning, PriorityHigh, ErrorOutline, Star, DeleteOutline,
-  ArrowUpward, ArrowDownward, ArrowCircleRight
+  ArrowUpward, ArrowDownward, ArrowCircleRight, Inventory2
 } from '@mui/icons-material';
 import { useSnackbar } from 'notistack';
 
@@ -501,6 +501,54 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           ...(options?.settingsOverrides || {})
         };
 
+        const overrides = options?.settingsOverrides;
+
+        // Detect column renaming and update cards locally AND in DB
+        if (overrides?.cols && Array.isArray(overrides.cols)) {
+          const newColsList = overrides.cols;
+          const renames: { oldName: string, newName: string }[] = [];
+
+          newColsList.forEach((newCol: any) => {
+            const oldCol = cols.find(c => c.id === newCol.id);
+            if (oldCol && oldCol.name !== newCol.name) {
+              renames.push({ oldName: oldCol.name, newName: newCol.name });
+            }
+          });
+
+          if (renames.length > 0) {
+            // 1. Optimistic Local Update of Rows
+            setRows(prevRows => prevRows.map(card => {
+              const stage = inferStage(card);
+              const rename = renames.find(r => r.oldName === stage);
+              if (rename) {
+                return { ...card, 'Board Stage': rename.newName, stage: rename.newName };
+              }
+              return card;
+            }));
+
+            // 2. DB Update (Async)
+            // We don't await this blocking the UI update, but we await it for data consistency
+            await Promise.all(renames.map(async ({ oldName, newName }) => {
+              console.log(`Migrating cards from '${oldName}' to '${newName}'`);
+              const { error: moveError } = await supabase
+                .from('kanban_cards')
+                .update({ stage: newName })
+                .eq('board_id', boardId)
+                .eq('stage', oldName);
+
+              if (moveError) {
+                console.error('Error migrating cards:', moveError);
+              }
+            }));
+          }
+
+          // 3. Update Columns State Locally
+          setCols(newColsList);
+        }
+
+        if (overrides?.checklistTemplates) setChecklistTemplates(overrides.checklistTemplates);
+        if (overrides?.trLabel && overrides?.sopLabel) setCustomLabels({ tr: overrides.trLabel, sop: overrides.sopLabel });
+
         const updateData: any = { settings };
 
         if (!options?.skipMeta) {
@@ -580,7 +628,11 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
     }, [permissions.canEditContent, rows, inferStage]);
 
     const handleCreateCard = useCallback(async (newCardData: any) => {
-      if (!permissions.canEditContent) return false;
+      console.log('handleCreateCard called', newCardData, permissions);
+      if (!permissions.canEditContent) {
+        console.warn('handleCreateCard: No permission');
+        return false;
+      }
 
       try {
         const payload = {
@@ -588,7 +640,9 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           card_id: crypto.randomUUID(),
           card_data: newCardData,
           stage: newCardData['Board Stage'],
-          position: 0
+          position: 0,
+          project_number: newCardData.Nummer || null,
+          project_name: newCardData.Teil || null
         };
 
         const { data, error } = await supabase
@@ -1119,6 +1173,11 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
                 <Star fontSize="small" color="warning" />
               </IconButton>
             </Tooltip>
+            <Tooltip title={t('kanban.archive') || 'Archiv'}>
+              <IconButton onClick={() => { loadArchivedCards(); setArchiveOpen(true); }}>
+                <Inventory2 fontSize="small" />
+              </IconButton>
+            </Tooltip>
             <Badge badgeContent={kpiBadgeCount} color="error" overlap="circular">
               <IconButton onClick={() => setKpiPopupOpen(true)} title={t('kanban.kpiTitle')}><Assessment fontSize="small" /></IconButton>
             </Badge>
@@ -1172,6 +1231,11 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           canManageSettings={permissions.canManageSettings}
           onSave={saveSettings}
           loadCards={loadCards}
+          onOpenArchive={() => {
+            setSettingsOpen(false);
+            setArchiveOpen(true);
+            loadArchivedCards();
+          }}
         />
         <EditCardDialog
           selectedCard={selectedCard}

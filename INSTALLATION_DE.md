@@ -27,51 +27,69 @@ Wir empfehlen **Ubuntu Server 24.04 LTS** (stabil, sicher, kein unnötiger Schni
 3.  Stecke den Stick in den NUC und starte ihn.
 4.  Wähle im Menü "Install Ubuntu Server".
 5.  Folge den Anweisungen (Sprache, Tastatur, Netzwerk).
-    *   **Wichtig:** Bei der Frage "SSH Setup" -> **[x] Install OpenSSH server** ankreuzen (damit du später vom Mac aus zugreifen kannst).
-    *   (Optional) Bei "Featured Server Snaps" kannst du **Docker** direkt auswählen, dann sparst du dir Schritt 4!
+    *   **Profile Setup:** Hier legst du deinen **Benutzernamen** und dein **Passwort** fest. (Gut merken! Das brauchst du gleich zum Einloggen).
+    *   **Wichtig:** Bei der Frage "SSH Setup" -> **[x] Install OpenSSH server** ankreuzen.
+    *   **SEHR WICHTIG:** Im Schritt "Featured Server Snaps" musst du **[x] docker** auswählen!
+        *   Navigiere mit den Pfeiltasten zu "docker".
+        *   Drücke LEERTASTE zum Auswählen (ein Sternchen * erscheint).
+        *   Das erspart dir später die manuelle Installation!
 
 ---
 
-## 📂 3. Dateien übertragen
-Sobald der NUC läuft und du eingeloggt bist:
+## 📂 3. Dateien übertragen (Per USB-Stick)
 
-1.  Kopiere deinen gesamten Projektordner `projektboard-platform` auf den NUC.
-    *   *Per USB-Stick:* Stick reinstecken, mounten (bei Server etwas fummelig) -> Einfacher:
-    *   *Per Netzwerk (vom Mac aus):*
-        ```bash
-        # Befehl auf deinem Mac Terminal:
-        scp -r /Users/michael/Documents/Kanban/projektboard-platform dein-user@IP-ADRESSE-DES-NUC:/home/dein-user/
-        ```
+Nach dem Neustart siehst du nur schwarzen Text (**Befehlszeile**). Das ist normal!
+1.  Bei `login:` deinen Benutzernamen tippen (Enter).
+2.  Bei `password:` dein Passwort tippen (Enter – **Achtung:** Man sieht keine Sternchen!).
+
+Sobald du eingeloggt bist, müssen wir den USB-Stick manuell einbinden ("mounten").
+
+1.  **Stick vorbereiten:**
+    *   Kopiere den Ordner `projektboard-platform` auf einen USB-Stick (formatiert als **FAT32** oder **ExFAT**).
+    *   Stecke den Stick in den NUC.
+
+2.  **Stick finden:**
+    Gib diesen Befehl ein, um alle Laufwerke zu sehen:
+    ```bash
+    lsblk
+    ```
+    Suche nach deinem Stick. Meistens heißt er `sda1` oder `sdb1` (achte auf die Größe, z.B. "14G").
+
+3.  **Stick einbinden (Mounten):**
+    ```bash
+    # 1. Ordner erstellen, wo der Stick erscheinen soll
+    sudo mkdir -p /media/usb
+
+    # 2. Einbinden (Ersetze 'sdb1' mit deinem Stick-Namen aus Schritt 2)
+    sudo mount /dev/sdb1 /media/usb
+    ```
+
+4.  **Daten kopieren:**
+    Prüfe kurz, wie der Ordner auf dem Stick heißt:
+    ```bash
+    ls /media/usb
+    ```
+    (Du solltest hier `projektboard-platform` sehen).
+
+    Dann kopiere ihn in dein Home-Verzeichnis:
+    ```bash
+    cp -r /media/usb/projektboard-platform ~/
+    ```
+
+5.  **Stick auswerfen:**
+    ```bash
+    sudo umount /media/usb
+    ```
+    Jetzt kannst du den Stick abziehen.
+
+*(Alternative: Wenn du den Stick nicht nutzen willst, kannst du die Dateien auch per `scp` über das Netzwerk senden).*
 
 ---
 
-## 🐳 4. Docker installieren
-(Falls du es bei der Ubuntu-Installation nicht angehakt hast).
+## � 4. ProjektBoard installieren
+(Da du Docker schon bei der Ubuntu-Installation ausgewählt hast, können wir direkt loslegen!)
 
-Führe diese Befehle auf dem **NUC** aus:
-
-```bash
-# 1. System aktualisieren
-sudo apt update && sudo apt upgrade -y
-
-# 2. Docker Installations-Script laden und ausführen (Offizieller Weg)
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-
-# 3. Deinen Benutzer zur Docker-Gruppe hinzufügen (WICHTIG!)
-# "$USER" wird automatisch durch deinen aktuellen Benutzernamen ersetzt.
-# Wenn nach einem Passwort gefragt wird: Es ist dein Ubuntu-Passwort (vom Installieren).
-sudo usermod -aG docker $USER
-
-# 4. Einmal abmelden und wieder anmelden (damit die Gruppen-Rechte greifen)
-exit
-# (Jetzt neu einloggen)
-```
-
----
-
-## 🚀 5. ProjektBoard installieren
-Jetzt wird es ernst. Gehe in den Projektordner auf dem NUC:
+Gehe in den Projektordner auf dem NUC:
 
 ```bash
 # 1. In den Ordner wechseln
@@ -92,7 +110,7 @@ cd deploy
 
 ---
 
-## ✅ 6. Der erste Start
+## ✅ 5. Der erste Start
 Sobald das Skript "Installation Complete" meldet:
 
 1.  Gehe an deinem Mac in den Browser.
@@ -103,7 +121,7 @@ Sobald das Skript "Installation Complete" meldet:
 
 ---
 
-## 🔄 Updates einspielen
+## 🔄 6. Updates einspielen
 Wenn du am Code weiterentwickelt hast:
 1.  Kopiere die neuen Dateien auf den NUC (überschreiben).
 2.  Führe das Update-Skript aus:
@@ -114,8 +132,6 @@ Wenn du am Code weiterentwickelt hast:
 
 **Hinweis zur Datenbank:**
 Das Skript prüft automatisch den Ordner `supabase/migrations`. Wenn du neue Tabellen angelegt hast (und eine Migrations-Datei erstellt hast), werden diese automatisch in die Datenbank eingespielt!
-
-
 
 ---
 

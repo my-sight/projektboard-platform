@@ -24,6 +24,7 @@ interface KanbanSettingsDialogProps {
     canManageSettings: boolean;
     onSave: (options?: any) => Promise<boolean | void>;
     loadCards: () => Promise<boolean>;
+    onOpenArchive: () => void;
 }
 
 export function KanbanSettingsDialog({
@@ -41,7 +42,8 @@ export function KanbanSettingsDialog({
     setBoardDescription,
     canManageSettings,
     onSave,
-    loadCards
+    loadCards,
+    onOpenArchive
 }: KanbanSettingsDialogProps) {
     const { t } = useLanguage();
     const [currentCols, setCurrentCols] = useState(cols);
@@ -60,9 +62,8 @@ export function KanbanSettingsDialog({
     }, [open, cols, checklistTemplates, customLabels]);
 
     const handleSave = async () => {
-        setCols(currentCols);
-        setChecklistTemplates(currentTemplates);
-        setCustomLabels(localCustomLabels);
+        // We pass the new settings to the parent via onSave
+        // The parent (OriginalKanbanBoard) handles the local state updates to ensure correct order (e.g. card migration)
 
         // We update the parent state AND trigger the save
         // NOTE: In the original code, `saveSettings` reads from state. 

@@ -56,7 +56,7 @@ export default function HomePage() {
   const [selectedBoard, setSelectedBoard] = useState<Board | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'management' | 'board' | 'team-management' | 'team-board'>('list');
   const [openCardId, setOpenCardId] = useState<string | null>(null);
-  const { user, loading, signOut, isAdmin: authIsAdmin } = useAuth(); // Assuming isAdmin exposed from context refactor
+  const { user, profile, loading, signOut, isAdmin: authIsAdmin } = useAuth(); // Assuming isAdmin exposed from context refactor
   const boardRef = useRef<OriginalKanbanBoardHandle>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -140,14 +140,16 @@ export default function HomePage() {
   }, [user]);
 
   useEffect(() => {
+    if (loading) return;
     if (!user) { setIsAdmin(false); setIsSuperuser(false); setSelectedBoard(null); setViewMode('list'); return; }
     loadProfile();
     loadBoards();
     loadFavorites();
-  }, [user, loadProfile, loadBoards, loadFavorites]);
+  }, [user, loading, loadProfile, loadBoards, loadFavorites]);
 
   // Sync state from URL
   useEffect(() => {
+    console.log('DEBUG: URL Sync Effect Triggered. Loading:', loading, 'Boards:', boards.length, 'Params:', searchParams.toString());
     if (!loading && boards.length > 0) {
       const boardId = searchParams.get('boardId');
       const mode = searchParams.get('mode');
@@ -155,6 +157,10 @@ export default function HomePage() {
         const board = boards.find(b => b.id === boardId);
         if (board) {
           setSelectedBoard(board);
+
+          const cardId = searchParams.get('cardId');
+          if (cardId) setOpenCardId(cardId);
+
           if (mode === 'team-board' || mode === 'board' || mode === 'management' || mode === 'team-management') {
             setViewMode(mode as any);
           } else if (board.boardType === 'team') {
@@ -162,7 +168,26 @@ export default function HomePage() {
           } else {
             setViewMode('board');
           }
+        } else {
+          console.warn(`Board ${boardId} not found in loaded boards.`);
+          setMessage(`❌ Board ${boardId} nicht gefunden (Zugriff verweigert oder gelöscht?).`);
         }
+      } else {
+        // If boardId is missing but we have selectedBoard, it means we are in inconsistent state OR user navigated to root
+        // But we only run this if boards loaded.
+        // If URL is clean, we should probably ensure we are on list view?
+        // Wait, if (boards.length > 0) runs on every render if boards exist.
+        // We need to be careful NOT to force List view if the user is just navigating.
+        // ACTUALLY: The router sync is 2-way usually. Here we just sync URL -> State.
+        // If URL is '/', boardId is null.
+        // We should explicitly set selectedBoard(null) if boardId is null?
+        // "jetzt springt er bei jedem reload ins board" -> User implies they WANT to be on dashboard but get Board? 
+        // OR they want to be on Board and get Dashboard?
+        // User said: "springt ... ins board" (jumps INTO board).
+        // This implies they were NOT in board. 
+        // If URL has no boardId, we should ensure we are in List mode.
+        setSelectedBoard(null);
+        setViewMode('list');
       }
     }
   }, [loading, boards, searchParams]);
@@ -183,15 +208,33 @@ export default function HomePage() {
       params.set('boardId', boardId);
       params.set('mode', newMode);
       if (cardId) params.set('cardId', cardId);
-      router.push(`${pathname}?${params.toString()}`);
+      const targetUrl = `${pathname}?${params.toString()}`;
+      console.log('DEBUG: Navigating to', targetUrl);
+      setMessage(`🚀 Opening ${board.name}...`); // Visually confirm action
+      router.push(targetUrl);
     }
+  };
+
+  const updateUrlState = (updates: { mode?: string; cardId?: string | null; boardId?: string }) => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (updates.boardId) params.set('boardId', updates.boardId);
+    if (updates.mode) params.set('mode', updates.mode);
+
+    if (updates.cardId === null) params.delete('cardId');
+    else if (updates.cardId) params.set('cardId', updates.cardId);
+
+    const targetUrl = `${pathname}?${params.toString()}`;
+    router.push(targetUrl);
   };
 
   const handleExitBoard = () => {
     setSelectedBoard(null);
     setViewMode('list');
     setOpenCardId(null);
-    router.push(pathname);
+    // Explicitly clear query params by pushing just the pathname
+    // Use replace to avoid cluttering history with the same page
+    router.replace(pathname);
   };
 
   const standardBoards = useMemo(() => boards.filter((board) => board.boardType === 'standard'), [boards]);
@@ -265,7 +308,11 @@ export default function HomePage() {
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', backgroundColor: 'background.paper', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Button variant="outlined" onClick={() => { setViewMode('management'); setOpenCardId(null); }}>← {t('header.backToManagement')}</Button>
+            <Button variant="outlined" onClick={() => {
+              setViewMode('management');
+              setOpenCardId(null);
+              updateUrlState({ mode: 'management', cardId: null });
+            }}>← {t('header.backToManagement')}</Button>
             <Typography variant="h6">{selectedBoard.name || 'Board'}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -284,7 +331,10 @@ export default function HomePage() {
       <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
         <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', backgroundColor: 'background.paper', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Button variant="outlined" onClick={() => setViewMode('team-management')}>← {t('header.backToManagement')}</Button>
+            <Button variant="outlined" onClick={() => {
+              setViewMode('team-management');
+              updateUrlState({ mode: 'team-management' });
+            }}>← {t('header.backToManagement')}</Button>
             <Typography variant="h6">{selectedBoard.name || t('home.teamBoard')}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
@@ -352,7 +402,7 @@ export default function HomePage() {
             {language.toUpperCase()}
           </Button>
           {isAdmin && <Button variant="outlined" onClick={() => (window.location.href = '/admin')}>{t('header.admin')}</Button>}
-          <Typography variant="body2">👋 {user.user_metadata?.full_name || user.email}</Typography>
+          <Typography variant="body2">👋 {profile?.full_name || user.user_metadata?.full_name || user.email}</Typography>
           <Button variant="outlined" onClick={signOut} color="error">{t('header.logout')}</Button>
         </Box>
       </Box>

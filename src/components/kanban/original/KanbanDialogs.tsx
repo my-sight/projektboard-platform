@@ -793,12 +793,15 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
   });
 
   const handleSave = async () => {
+    console.log('NewCardDialog: handleSave called', newCard);
     if (!newCard.Nummer?.trim() || !newCard.Teil?.trim()) {
+      console.warn('NewCardDialog: Validation failed');
       alert(t('kanban.requiredFields'));
       return;
     }
 
     if (onCreate) {
+      console.log('NewCardDialog: Calling onCreate');
       await onCreate(newCard);
     } else {
       // Fallback or old logic? Better to just fail or warn if logic is missing.

@@ -1474,7 +1474,10 @@ BEGIN
   VALUES (
     new.id,
     new.email,
-    new.raw_user_meta_data->>'full_name',
+    CASE
+        WHEN new.email = 'michael@mysight.net' THEN 'Michael'
+        ELSE new.raw_user_meta_data->>'full_name'
+    END,
     CASE 
       WHEN new.email = 'michael@mysight.net' THEN 'superuser'
       ELSE 'user'
