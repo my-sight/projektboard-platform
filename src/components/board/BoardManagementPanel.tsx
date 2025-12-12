@@ -6,56 +6,17 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
-  Chip,
-  Checkbox,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-  FormControl,
-  Grid,
-  IconButton,
-  InputLabel,
-  List,
-  ListItem,
-  MenuItem,
-  Select,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import AddIcon from '@mui/icons-material/Add';
-import CheckIcon from '@mui/icons-material/Check';
-import CloseIcon from '@mui/icons-material/Close';
-import DeleteIcon from '@mui/icons-material/Delete';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
 import { ClientProfile, fetchClientProfiles } from '@/lib/clientProfiles';
-import {
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip as RechartsTooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
-import { StandardDatePicker } from '@/components/common/StandardDatePicker';
+import { EvaluationsView } from './management/EvaluationsView';
+import { EscalationsView } from './management/EscalationsView';
 import dayjs from 'dayjs';
 import 'dayjs/locale/de';
 import isoWeek from 'dayjs/plugin/isoWeek';
@@ -63,86 +24,24 @@ import isoWeek from 'dayjs/plugin/isoWeek';
 dayjs.locale('de');
 dayjs.extend(isoWeek);
 import { useLanguage } from '@/contexts/LanguageContext';
+import { AttendanceView } from './management/AttendanceView';
+import { MembersView } from './management/MembersView';
+import { TopicsView } from './management/TopicsView';
+import { Department, Member, AttendanceRecord, Topic, TopicDraft, KanbanCardRow, EscalationRecord, EscalationView, EscalationDraft, EscalationHistoryEntry } from './management/types';
+import {
+  startOfWeek,
+  isoDate,
+  normalizeWeekValue,
+  expandWeekRange,
+  weekRangeLabel,
+  isoWeekNumber,
+  isoWeekYear,
+  dateFromIsoWeek,
+  formatWeekInputValue,
+  parseWeekInputValue
+} from '@/utils/dateUtils';
 
-interface Department {
-  id: string;
-  name: string;
-}
 
-interface Member {
-  id: string;
-  profile_id: string;
-}
-
-interface AttendanceRecord {
-  id: string;
-  board_id: string;
-  profile_id: string;
-  week_start: string;
-  status: 'present' | 'absent' | string;
-}
-
-interface Topic {
-  id: string;
-  board_id: string;
-  title: string;
-  due_date: string | null;
-  position: number;
-}
-
-interface TopicDraft {
-  title: string;
-  dueDate: string;
-}
-
-interface KanbanCardRow {
-  id: string;
-  card_id: string;
-  card_data: Record<string, unknown>;
-  project_number?: string | null;
-  project_name?: string | null;
-  board_id?: string;
-}
-
-// ✅ UPDATE: Kategorien erweitert auf Y und R
-interface EscalationRecord {
-  id?: string;
-  board_id: string;
-  card_id: string;
-  category: 'LK' | 'SK' | 'Y' | 'R';
-  project_code: string | null;
-  project_name: string | null;
-  reason: string | null;
-  measure: string | null;
-  department_id: string | null;
-  responsible_id: string | null;
-  target_date: string | null;
-  completion_steps: number;
-}
-
-interface EscalationView extends EscalationRecord {
-  title: string;
-  stage?: string | null;
-}
-
-interface EscalationDraft {
-  reason: string;
-  measure: string;
-  department_id: string | null;
-  responsible_id: string | null;
-  target_date: string | null;
-  completion_steps: number;
-}
-
-interface EscalationHistoryEntry {
-  id: string;
-  board_id: string;
-  card_id: string;
-  escalation_id: string | null;
-  changed_at: string;
-  changed_by: string | null;
-  changes?: Record<string, unknown> | null;
-}
 
 interface BoardManagementPanelProps {
   boardId: string;
@@ -183,174 +82,8 @@ const DEFAULT_STAGE_NAMES = [
   'Fertig',
 ];
 
-function startOfWeek(date: Date): Date {
-  const copy = new Date(date);
-  const day = copy.getDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  copy.setDate(copy.getDate() + diff);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
+// Date helpers imported from @/utils/dateUtils
 
-function isoDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function normalizeWeekValue(value: string | null | undefined): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const parsed = new Date(`${value}T00:00:00`);
-
-  if (Number.isNaN(parsed.getTime())) {
-    return null;
-  }
-
-  return isoDate(startOfWeek(parsed));
-}
-
-function expandWeekRange(values: (string | null | undefined)[], ensureWeek?: string): string[] {
-  const normalized = values
-    .map(normalizeWeekValue)
-    .filter((value): value is string => Boolean(value));
-
-  const ensured = normalizeWeekValue(ensureWeek);
-
-  if (ensured) {
-    normalized.push(ensured);
-  }
-
-  if (normalized.length === 0) {
-    const current = isoDate(startOfWeek(new Date()));
-    return [current];
-  }
-
-  const uniqueSorted = Array.from(new Set(normalized)).sort(
-    (a, b) => new Date(`${a}T00:00:00`).getTime() - new Date(`${b}T00:00:00`).getTime(),
-  );
-
-  const firstDate = startOfWeek(new Date(`${uniqueSorted[0]}T00:00:00`));
-  const currentWeek = startOfWeek(new Date());
-  const ensuredDate = ensured ? startOfWeek(new Date(`${ensured}T00:00:00`)) : null;
-  const lastCandidate = startOfWeek(
-    new Date(`${uniqueSorted[uniqueSorted.length - 1]}T00:00:00`),
-  );
-
-  const lastDate = new Date(
-    Math.max(
-      lastCandidate.getTime(),
-      currentWeek.getTime(),
-      ensuredDate?.getTime() ?? -Infinity,
-    ),
-  );
-
-  const result: string[] = [];
-  for (let cursor = new Date(firstDate); cursor.getTime() <= lastDate.getTime();) {
-    result.push(isoDate(cursor));
-    cursor.setDate(cursor.getDate() + 7);
-    cursor.setHours(0, 0, 0, 0);
-  }
-
-  return result;
-}
-
-function weekRangeLabel(weekStart: Date): string {
-  const end = new Date(weekStart);
-  end.setDate(end.getDate() + 4);
-  const startFmt = weekStart.toLocaleDateString('de-DE');
-  const endFmt = end.toLocaleDateString('de-DE');
-  return `${startFmt} – ${endFmt}`;
-}
-
-function isoWeekNumber(date: Date): number {
-  const target = new Date(date.valueOf());
-  const dayNr = (target.getDay() + 6) % 7;
-  target.setDate(target.getDate() - dayNr + 3);
-  const firstThursday = target.valueOf();
-  target.setMonth(0, 1);
-  const dayOfWeek = (target.getDay() + 6) % 7;
-  target.setDate(target.getDate() - dayOfWeek + 3);
-  const weekNumber = 1 + Math.round((firstThursday - target.valueOf()) / 604800000);
-  return weekNumber;
-}
-
-function isoWeekYear(date: Date): number {
-  const target = new Date(date.valueOf());
-  target.setDate(target.getDate() - ((target.getDay() + 6) % 7) + 3);
-  return target.getFullYear();
-}
-
-function dateFromIsoWeek(year: number, week: number): Date {
-  const simple = new Date(year, 0, 4);
-  const simpleDay = simple.getDay() || 7;
-  simple.setDate(simple.getDate() - simpleDay + 1 + (week - 1) * 7);
-  simple.setHours(0, 0, 0, 0);
-  return simple;
-}
-
-function formatWeekInputValue(date: Date): string {
-  const week = isoWeekNumber(date).toString().padStart(2, '0');
-  const year = isoWeekYear(date);
-  return `${year}-W${week}`;
-}
-
-function parseWeekInputValue(value: string): string | null {
-  const trimmed = value.trim();
-  const match = /^([0-9]{4})-W([0-9]{2})$/i.exec(trimmed);
-
-  if (!match) {
-    return null;
-  }
-
-  const [, yearText, weekText] = match;
-  const year = Number(yearText);
-  const week = Number(weekText);
-
-  if (!Number.isFinite(year) || !Number.isFinite(week) || week < 1 || week > 53) {
-    return null;
-  }
-
-  const weekDate = startOfWeek(dateFromIsoWeek(year, week));
-  return isoDate(weekDate);
-}
-
-function CompletionDial({
-  steps,
-  onClick,
-  disabled,
-}: {
-  steps: number;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  const clamped = Math.max(0, Math.min(4, steps || 0));
-  const angle = (clamped / 4) * 360;
-  const background = `conic-gradient(#4caf50 0deg ${angle}deg, #e0e0e0 ${angle}deg 360deg)`;
-  return (
-    <Box
-      onClick={disabled ? undefined : onClick}
-      sx={{
-        width: 40,
-        height: 40,
-        borderRadius: '50%',
-        border: '1px solid',
-        borderColor: 'divider',
-        backgroundImage: background,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        transition: 'transform 0.2s ease',
-        '&:hover': disabled
-          ? undefined
-          : {
-            transform: 'scale(1.05)',
-          },
-      }}
-    />
-  );
-}
 
 function mergeMemberProfiles(members: Member[], profiles: ClientProfile[]): (Member & { profile?: ClientProfile })[] {
   const profileMap = new Map(profiles.map(profile => [profile.id, profile]));
@@ -891,15 +624,19 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         return;
       }
 
-      await supabase.from('board_members').insert({
+      const { error } = await supabase.from('board_members').insert({
         board_id: boardId,
-        profile_id: memberSelect,
-        user_id: memberSelect
+        profile_id: memberSelect
       });
+
+      if (error) {
+        throw error;
+      }
 
       setMemberSelect('');
       await loadBaseData({ skipLoading: true });
     } catch (error) {
+      console.error(error);
       handleError(error, t('boardManagement.addMemberError'));
     }
   };
@@ -915,6 +652,44 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   };
 
 
+
+  const updateTopicDraft = (key: string, updates: Partial<TopicDraft>) => {
+    setTopicDrafts(prev => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        ...updates
+      }
+    }));
+  };
+
+  const createTopic = async () => {
+    const draft = topicDrafts['new'];
+    if (!draft?.title.trim()) return;
+
+    try {
+      const { data, error } = await supabase.from('board_top_topics').insert({
+        board_id: boardId,
+        title: draft.title,
+        due_date: draft.dueDate || null,
+        position: topics.length
+      }).select().single();
+
+      if (error || !data) throw error;
+
+      setTopics(prev => [...prev, data as unknown as Topic]);
+      setTopicDrafts(prev => {
+        const copy = { ...prev };
+        delete copy['new'];
+        return copy;
+      });
+      setMessage(t('boardManagement.topicCreated'));
+      setTimeout(() => setMessage(''), 3000);
+    } catch (e) {
+      console.error(e);
+      setMessage(t('boardManagement.topicCreateError'));
+    }
+  };
 
   const deleteTopic = async (id: string) => {
     if (!canEdit) return;
@@ -1026,7 +801,6 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       } else {
         // Upsert by card_id + board_id
         // Supabase upsert requires a unique constraint. If not present, we can do check-then-insert/update.
-        // Assuming unique constraint on (board_id, card_id) typically exists or we manually check.
         // Let's do manual check to be safe as per PB logic.
         const { data: existing } = await supabase.from('board_escalations')
           .select('id')
@@ -1125,684 +899,61 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     <Stack spacing={3} sx={{ pb: 6 }}>
       {message && <Alert severity={message.startsWith('❌') ? 'error' : 'success'}>{message}</Alert>}
 
-      <Card>
-        <CardContent>
-          <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} flexWrap="wrap">
-            <Box>
-              <Typography variant="h6">👥 {t('boardManagement.boardMembers')}</Typography>
-              <Typography variant="body2" color="text.secondary">
-                {t('boardManagement.boardMembersDesc')}
-              </Typography>
-            </Box>
-            {canEdit && (
-              <Stack direction="row" spacing={1} alignItems="center">
-                <FormControl size="small" sx={{ minWidth: 220 }}>
-                  <InputLabel>{t('boardManagement.addMember')}</InputLabel>
-                  <Select
-                    label={t('boardManagement.addMember')}
-                    value={memberSelect}
-                    onChange={(event) => setMemberSelect(event.target.value)}
-                  >
-                    <MenuItem value="">
-                      <em>{t('boardManagement.select')}</em>
-                    </MenuItem>
-                    {availableProfiles.map(profile => (
-                      <MenuItem key={profile.id} value={profile.id}>
-                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                            {profile.full_name || profile.name || profile.email}
-                          </Typography>
-                          {(profile.department || profile.company) && (
-                            <Typography variant="caption" color="text.secondary">
-                              {profile.department || profile.company}
-                            </Typography>
-                          )}
-                        </Box>
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={addMember}
-                  disabled={!memberSelect}
-                >
-                  {t('boardManagement.add')}
-                </Button>
-              </Stack>
-            )}
-          </Stack>
+      <MembersView
+        members={members}
+        availableProfiles={availableProfiles}
+        memberSelect={memberSelect}
+        onMemberSelectChange={setMemberSelect}
+        onAddMember={addMember}
+        onRemoveMember={removeMember}
+        canEdit={canEdit}
+      />
 
-          <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 3 }}>
-            {members.length === 0 && (
-              <Typography variant="body2" color="text.secondary">
-                {t('boardManagement.noMembers')}
-              </Typography>
-            )}
-            {members.map(member => {
-              const label = member.profile?.full_name || member.profile?.email || 'Unbekannt';
-              const detail = member.profile?.company ? ` (${member.profile.company})` : '';
-              const deletable = canEdit && !isSuperuserEmail(member.profile?.email ?? null);
-              return (
-                <Chip
-                  key={member.id}
-                  label={`${label}${detail}`}
-                  variant="outlined"
-                  onDelete={deletable ? () => removeMember(member.id) : undefined}
-                  sx={{ mr: 1, mb: 1 }}
-                />
-              );
-            })}
-          </Stack>
-        </CardContent>
-      </Card>
+      <AttendanceView
+        members={members}
+        attendanceByWeek={attendanceByWeek}
+        selectedWeek={selectedWeek}
+        selectedWeekDate={selectedWeekDate}
+        historyWeeks={historyWeeks}
+        canEdit={canEdit}
+        attendanceDraft={attendanceDraft}
+        attendanceSaving={attendanceSaving}
+        onSave={saveAttendance}
+        onWeekChange={selectWeek}
+        onWeekOffset={adjustWeek}
+        onWeekInputChange={handleWeekInputChange}
+        onToggleDraft={toggleAttendanceDraft}
+      />
 
-      <Card>
-        <CardContent>
-          <Stack spacing={2}>
-            <Stack
-              direction={{ xs: 'column', md: 'row' }}
-              spacing={2}
-              alignItems={{ md: 'center' }}
-              justifyContent="space-between"
-            >
-              <Box>
-                <Typography variant="h6">🗓️ {t('boardManagement.attendance')}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {t('boardManagement.calendarWeek')} {isoWeekNumber(selectedWeekDate)} · {weekRangeLabel(selectedWeekDate)}
-                </Typography>
-              </Box>
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-                <IconButton onClick={() => adjustWeek(-1)} aria-label="Vorherige Woche">
-                  <ArrowBackIcon />
-                </IconButton>
-                <TextField
-                  type="week"
-                  label={t('boardManagement.calendarWeek')}
-                  size="small"
-                  value={selectedWeekInputValue}
-                  onChange={event => handleWeekInputChange(event.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  sx={{ minWidth: 180 }}
-                />
-                <IconButton onClick={() => adjustWeek(1)} aria-label="Nächste Woche">
-                  <ArrowForwardIcon />
-                </IconButton>
-                {canEdit && (
-                  <Button
-                    variant="contained"
-                    onClick={saveAttendance}
-                    disabled={attendanceSaving || members.length === 0}
-                    sx={{ ml: 1 }}
-                  >
-                    {t('boardManagement.saveButton') || 'Speichern'}
-                  </Button>
-                )}
-              </Stack>
-            </Stack>
+      <TopicsView
+        topics={topics}
+        topicDrafts={topicDrafts}
+        onUpdateDraft={updateTopicDraft}
+        onCreateTopic={createTopic}
+        onDeleteTopic={deleteTopic}
+        canEdit={canEdit}
+      />
 
-            <Box sx={{ overflowX: 'auto' }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ minWidth: 220 }}>{t('boardManagement.member')}</TableCell>
-                    <TableCell align="center" sx={{ minWidth: 160 }}>
-                      <Stack spacing={0.5} alignItems="center">
-                        <Typography variant="subtitle2">
-                          {t('boardManagement.calendarWeek')} {isoWeekNumber(selectedWeekDate)}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {weekRangeLabel(selectedWeekDate)}
-                        </Typography>
-                      </Stack>
-                    </TableCell>
-                    {historyWeeks.map(history => (
-                      <TableCell key={history.week} align="center" sx={{ minWidth: 140 }}>
-                        <Stack spacing={0.5} alignItems="center">
-                          <Button
-                            size="small"
-                            variant={history.week === selectedWeek ? 'contained' : 'text'}
-                            onClick={() => selectWeek(history.week)}
-                          >
-                            {t('boardManagement.calendarWeek')} {isoWeekNumber(history.date)}
-                          </Button>
-                          <Typography variant="caption" color="text.secondary">
-                            {weekRangeLabel(history.date)}
-                          </Typography>
-                        </Stack>
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {members.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={historyWeeks.length + 2}>
-                        <Typography variant="body2" color="text.secondary">
-                          {t('boardManagement.addMembersHint')}
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    members.map(member => {
-                      const profile = member.profile;
-                      const label = profile?.full_name || profile?.email || 'Unbekannt';
-                      const department = profile?.company;
-                      const present = attendanceDraft[member.profile_id] ?? true;
-                      return (
-                        <TableRow key={member.id} hover>
-                          <TableCell>
-                            <Stack spacing={0.25}>
-                              <Typography variant="subtitle2">{label}</Typography>
-                              {department && (
-                                <Typography variant="caption" color="text.secondary">
-                                  {department}
-                                </Typography>
-                              )}
-                            </Stack>
-                          </TableCell>
-                          <TableCell align="center">
-                            <Tooltip title={present ? t('boardManagement.present') : t('boardManagement.absent')}>
-                              <span>
-                                <Checkbox
-                                  checked={present}
-                                  onChange={() => toggleAttendanceDraft(member.profile_id)}
-                                  disabled={!canEdit || attendanceSaving}
-                                  icon={<CloseIcon color="error" />}
-                                  checkedIcon={<CheckIcon color="success" />}
-                                  sx={{ '& .MuiSvgIcon-root': { fontSize: 28 } }}
-                                />
-                              </span>
-                            </Tooltip>
-                          </TableCell>
-                          {historyWeeks.map(history => {
-                            const record = attendanceByWeek[history.week]?.[member.profile_id];
-                            if (!record) {
-                              return (
-                                <TableCell key={history.week} align="center">
-                                  <Typography variant="caption" color="text.secondary">
-                                    —
-                                  </Typography>
-                                </TableCell>
-                              );
-                            }
-                            const wasPresent = record.status !== 'absent';
-                            return (
-                              <TableCell key={history.week} align="center">
-                                {wasPresent ? (
-                                  <CheckIcon color="success" fontSize="small" />
-                                ) : (
-                                  <CloseIcon color="error" fontSize="small" />
-                                )}
-                              </TableCell>
-                            );
-                          })}
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </Box>
-          </Stack>
-        </CardContent>
-      </Card>
+      <EvaluationsView stageChartData={stageChartData} />
 
-      <Card>
-        <CardContent>
-          <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" spacing={2} alignItems={{ xs: 'flex-start', md: 'center' }}>
-            <Box>
-              <Typography variant="h6">⭐ {t('boardManagement.topTopicsTitle')}</Typography>
-              <Typography variant="body2" color="text.secondary">
-                {t('boardManagement.topTopicsDesc')}
-              </Typography>
-            </Box>
-          </Stack>
-
-          <Stack spacing={3} sx={{ mt: 3 }}>
-            {/* Compose Area */}
-            {canEdit && topics.length < 5 && (
-              <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                <Typography variant="subtitle2" sx={{ mb: 2 }}>{t('boardManagement.createTopicTitle')}</Typography>
-                <Stack spacing={2}>
-                  <TextField
-                    fullWidth
-                    multiline
-                    minRows={3}
-                    placeholder={t('boardManagement.topicContent')}
-                    value={topicDrafts['new']?.title || ''}
-                    onChange={(e) => setTopicDrafts(prev => ({ ...prev, 'new': { ...prev['new'], title: e.target.value, dueDate: prev['new']?.dueDate || '' } }))}
-                  />
-                  <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
-                    <StandardDatePicker
-                      label={t('boardManagement.topicDue')}
-                      value={topicDrafts['new']?.dueDate ? dayjs(topicDrafts['new'].dueDate) : null}
-                      onChange={(newValue) => setTopicDrafts(prev => ({ ...prev, 'new': { ...prev['new'], title: prev['new']?.title || '', dueDate: newValue ? newValue.format('YYYY-MM-DD') : '' } }))}
-                      sx={{ width: 200 }}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={async () => {
-                        const draft = topicDrafts['new'];
-                        if (!draft?.title.trim()) return;
-
-                        try {
-                          const { data, error } = await supabase.from('board_top_topics').insert({
-                            board_id: boardId,
-                            title: draft.title,
-                            due_date: draft.dueDate || null,
-                            position: topics.length
-                          }).select().single();
-
-                          if (error || !data) throw error;
-
-                          setTopics(prev => [...prev, data as unknown as Topic]);
-                          setTopicDrafts(prev => {
-                            const copy = { ...prev };
-                            delete copy['new'];
-                            return copy;
-                          });
-                          setMessage(t('boardManagement.topicCreated'));
-                          setTimeout(() => setMessage(''), 3000);
-                        } catch (e) {
-                          console.error(e);
-                          setMessage(t('boardManagement.topicCreateError'));
-                        }
-                      }}
-                      disabled={!topicDrafts['new']?.title.trim()}
-                    >
-                      {t('boardManagement.saveButton')}
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Box>
-            )}
-
-            {/* List Area */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('boardManagement.currentTopicsTitle')}</Typography>
-              {topics.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">{t('boardManagement.noTopicsCaptured')}</Typography>
-              ) : (
-                <Stack spacing={1}>
-                  {topics.map((topic) => (
-                    <Card key={topic.id} variant="outlined">
-                      <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                        <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
-                          <Box>
-                            <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{topic.title}</Typography>
-                            {topic.due_date && (
-                              <Chip
-                                label={`${t('boardManagement.dueLabel')}: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
-                                size="small"
-                                color={dayjs(topic.due_date).isBefore(dayjs(), 'day') ? 'error' : (dayjs(topic.due_date).isSame(dayjs(), 'day') || dayjs(topic.due_date).isSame(dayjs().add(1, 'day'), 'day') ? 'warning' : 'default')}
-                                variant={dayjs(topic.due_date).isBefore(dayjs(), 'day') || dayjs(topic.due_date).isSame(dayjs(), 'day') || dayjs(topic.due_date).isSame(dayjs().add(1, 'day'), 'day') ? 'filled' : 'outlined'}
-                                sx={{ mt: 1, height: 20, fontSize: '0.75rem' }}
-                              />
-                            )}
-                          </Box>
-                          {canEdit && (
-                            <IconButton size="small" color="error" onClick={() => deleteTopic(topic.id)}>
-                              <DeleteIcon fontSize="small" />
-                            </IconButton>
-                          )}
-                        </Stack>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </Stack>
-              )}
-            </Box>
-          </Stack>
-        </CardContent>
-      </Card >
-
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            📈 {t('boardManagement.projectsPerPhase')}
-          </Typography>
-          {stageChartData.length === 0 ? (
-            <Typography variant="body2" color="text.secondary">
-              {t('boardManagement.noProjectData')}
-            </Typography>
-          ) : (
-            <Box sx={{ width: '100%', height: 260 }}>
-              <ResponsiveContainer>
-                <LineChart data={stageChartData} margin={{ top: 16, right: 24, bottom: 8, left: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="stage" angle={-15} textAnchor="end" height={60} interval={0} />
-                  <YAxis allowDecimals={false} />
-                  <RechartsTooltip
-                    formatter={(value: number | string) => [`${value} Projekte`, 'Anzahl']}
-                  />
-                  <Line type="monotone" dataKey="count" stroke="#1976d2" strokeWidth={2} dot />
-                </LineChart>
-              </ResponsiveContainer>
-            </Box>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>
-            🚨 {t('boardManagement.escalationsTitle')}
-          </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
-            {t('boardManagement.escalationsDesc')}
-          </Typography>
-          {!escalationSchemaReady && (
-            <Alert severity="warning" sx={{ mt: 2 }}>
-              {ESCALATION_SCHEMA_HELP}
-            </Alert>
-          )}
-          <Divider sx={{ my: 2 }} />
-          {/* ✅ UPDATE: Y und R statt LK/SK durchlaufen */}
-          {(['Y', 'R'] as const).map(category => {
-            const entries = filteredEscalations[category];
-            const title = category === 'Y' ? t('boardManagement.yEscalations') : t('boardManagement.rEscalations');
-            return (
-              <Box key={category} sx={{ mb: category === 'Y' ? 3 : 0 }}>
-                <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                  {title}
-                </Typography>
-                {entries.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    {category === 'Y'
-                      ? t('boardManagement.noYEscalations')
-                      : t('boardManagement.noREscalations')}
-                  </Typography>
-                ) : (
-                  <Stack spacing={2} sx={{ mb: 2 }}>
-                    {entries.map(entry => {
-                      const responsible = entry.responsible_id ? profileById.get(entry.responsible_id) : undefined;
-                      const department = departmentName(entry.department_id);
-                      const targetLabel = entry.target_date
-                        ? new Date(entry.target_date).toLocaleDateString('de-DE')
-                        : 'Kein Termin';
-                      return (
-                        <Box
-                          key={entry.card_id}
-                          sx={{
-                            border: '1px solid',
-                            borderColor: 'divider',
-                            borderRadius: 2,
-                            p: 2,
-                          }}
-                        >
-                          <Stack
-                            direction={{ xs: 'column', md: 'row' }}
-                            spacing={2}
-                            justifyContent="space-between"
-                            alignItems={{ xs: 'flex-start', md: 'center' }}
-                          >
-                            <Box>
-                              <Typography variant="subtitle2">
-                                {entry.project_code || entry.project_name
-                                  ? `${entry.project_code ?? ''}${entry.project_code && entry.project_name ? ' – ' : ''}${entry.project_name ?? ''}`
-                                  : entry.title}
-                              </Typography>
-                              {entry.stage && (
-                                <Typography variant="body2" color="text.secondary">
-                                  {t('boardManagement.phase')}: {entry.stage}
-                                </Typography>
-                              )}
-                            </Box>
-                            <Stack direction="row" spacing={2} alignItems="center">
-                              <Tooltip title={t('boardManagement.progressTooltip')}>
-                                <Box>
-                                  <CompletionDial steps={entry.completion_steps ?? 0} onClick={() => { }} disabled />
-                                </Box>
-                              </Tooltip>
-                              <Button
-                                variant="outlined"
-                                onClick={() => openEscalationEditor(entry)}
-                                disabled={!canEditEscalations || !escalationSchemaReady}
-                              >
-                                {t('boardManagement.edit')}
-                              </Button>
-                            </Stack>
-                          </Stack>
-                          <Grid container spacing={2} sx={{ mt: 1 }}>
-                            <Grid item xs={12} md={6}>
-                              <Typography variant="caption" color="text.secondary">
-                                {t('boardManagement.reason')}
-                              </Typography>
-                              <Typography variant="body2">
-                                {entry.reason || t('boardManagement.noReason')}
-                              </Typography>
-                            </Grid>
-                            <Grid item xs={12} md={6}>
-                              <Typography variant="caption" color="text.secondary">
-                                {t('boardManagement.measure')}
-                              </Typography>
-                              <Typography variant="body2">
-                                {entry.measure || t('boardManagement.noMeasure')}
-                              </Typography>
-                            </Grid>
-                            <Grid item xs={12} md={4}>
-                              <Typography variant="caption" color="text.secondary">
-                                {t('boardManagement.department')}
-                              </Typography>
-                              <Typography variant="body2">
-                                {department || t('boardManagement.noDepartment')}
-                              </Typography>
-                            </Grid>
-                            <Grid item xs={12} md={4}>
-                              <Typography variant="caption" color="text.secondary">
-                                {t('boardManagement.responsibility')}
-                              </Typography>
-                              <Typography variant="body2">
-                                {responsible
-                                  ? `${responsible.full_name || responsible.email}${responsible.company ? ` • ${responsible.company}` : ''}`
-                                  : t('boardManagement.noResponsibility')}
-                              </Typography>
-                            </Grid>
-                            <Grid item xs={12} md={4}>
-                              <Typography variant="caption" color="text.secondary">
-                                {t('boardManagement.targetDate')}
-                              </Typography>
-                              <Typography variant="body2">
-                                {targetLabel}
-                              </Typography>
-                            </Grid>
-                          </Grid>
-                          {(() => {
-                            const historyEntries = escalationHistory[entry.card_id] ?? [];
-                            if (!historyEntries.length) {
-                              return null;
-                            }
-                            const profileLookup = new Map(profiles.map(profile => [profile.id, profile]));
-                            return (
-                              <Box sx={{ mt: 1.5 }}>
-                                <Typography variant="caption" color="text.secondary">
-                                  {t('boardManagement.history')}
-                                </Typography>
-                                {/* --- ÄNDERUNG: Nur noch den neuesten Eintrag anzeigen --- */}
-                                <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-                                  {historyEntries.slice(0, 1).map(history => {
-                                    const author = profileLookup.get(history.changed_by ?? '') ?? null;
-                                    const authorLabel = author
-                                      ? author.full_name || author.email || 'Unbekannt'
-                                      : t('boardManagement.unknown');
-                                    const changedAt = new Date(history.changed_at);
-                                    return (
-                                      <Typography key={history.id} variant="body2">
-                                        {changedAt.toLocaleString('de-DE')} – {authorLabel}
-                                      </Typography>
-                                    );
-                                  })}
-                                  {historyEntries.length > 1 && (
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                      {t('boardManagement.olderEntries').replace('{n}', String(historyEntries.length - 1))}
-                                    </Typography>
-                                  )}
-                                </Stack>
-                              </Box>
-                            );
-                          })()}
-                        </Box>
-                      );
-                    })}
-                  </Stack>
-                )}
-                {/* ✅ Trennlinie nach Y (ehemals LK) */}
-                {category === 'Y' && <Divider sx={{ my: 2 }} />}
-              </Box>
-            );
-          })}
-        </CardContent>
-      </Card>
-
-      <Dialog open={escalationDialogOpen} onClose={closeEscalationEditor} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          {t('boardManagement.editEscalation')}
-          {editingEscalation && (
-            <Typography variant="body2" color="text.secondary">
-              {editingEscalation.project_code || editingEscalation.project_name
-                ? `${editingEscalation.project_code ?? ''}${editingEscalation.project_code && editingEscalation.project_name ? ' – ' : ''}${editingEscalation.project_name ?? ''}`
-                : editingEscalation.title}
-            </Typography>
-          )}
-        </DialogTitle>
-        <DialogContent dividers>
-          {escalationDraft ? (
-            <Stack spacing={2}>
-              <TextField
-                label={t('boardManagement.reason')}
-                value={escalationDraft.reason}
-                onChange={(event) => updateEscalationDraft({ reason: event.target.value })}
-                fullWidth
-                multiline
-                minRows={3}
-                disabled={!canEditEscalations}
-              />
-              <TextField
-                label={t('boardManagement.measure')}
-                value={escalationDraft.measure}
-                onChange={(event) => updateEscalationDraft({ measure: event.target.value })}
-                fullWidth
-                multiline
-                minRows={3}
-                disabled={!canEditEscalations}
-              />
-              <FormControl fullWidth size="small" disabled={!canEditEscalations}>
-                <InputLabel>{t('boardManagement.department')}</InputLabel>
-                <Select
-                  value={escalationDraft.department_id ?? ''}
-                  label={t('boardManagement.department')}
-                  onChange={(event) =>
-                    updateEscalationDraft({
-                      department_id: event.target.value ? String(event.target.value) : null,
-                      responsible_id: null,
-                    })
-                  }
-                >
-                  <MenuItem value="">
-                    <em>{t('boardManagement.none')}</em>
-                  </MenuItem>
-                  {departments.map(department => (
-                    <MenuItem key={department.id} value={department.id}>
-                      {department.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl fullWidth size="small" disabled={!canEditEscalations}>
-                <InputLabel>{t('boardManagement.responsibility')}</InputLabel>
-                <Select
-                  value={escalationDraft.responsible_id ?? ''}
-                  label={t('boardManagement.responsibility')}
-                  onChange={(event) =>
-                    updateEscalationDraft({
-                      responsible_id: event.target.value ? String(event.target.value) : null,
-                    })
-                  }
-                >
-                  <MenuItem value="">
-                    <em>{t('boardManagement.none')}</em>
-                  </MenuItem>
-                  {responsibleOptions(escalationDraft.department_id ?? null).map(option => (
-                    <MenuItem key={option.id} value={option.id}>
-                      {option.full_name || option.email}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <StandardDatePicker
-                label={t('boardManagement.targetDate')}
-                value={escalationDraft.target_date ? dayjs(escalationDraft.target_date) : null}
-                onChange={(newValue) => updateEscalationDraft({ target_date: newValue ? newValue.format('YYYY-MM-DD') : null })}
-                disabled={!canEditEscalations}
-              />
-              <Stack direction="row" spacing={2} alignItems="center">
-                <Tooltip title={t('boardManagement.progress')}>
-                  <Box>
-                    <CompletionDial
-                      steps={escalationDraft.completion_steps ?? 0}
-                      onClick={cycleDraftCompletion}
-                      disabled={!canEditEscalations}
-                    />
-                  </Box>
-                </Tooltip>
-                <Typography variant="body2">{escalationDraft.completion_steps ?? 0} / 4 {t('boardManagement.steps')}</Typography>
-              </Stack>
-              {escalationHistoryReady && editingEscalation && (
-                (() => {
-                  const historyEntries = escalationHistory[editingEscalation.card_id] ?? [];
-                  if (!historyEntries.length) return null;
-                  const profileLookup = new Map(profiles.map(profile => [profile.id, profile]));
-                  return (
-                    <Box>
-                      <Divider sx={{ my: 1.5 }} />
-                      <Typography variant="subtitle2">{t('boardManagement.changeHistory')}</Typography>
-                      <List dense>
-                        {historyEntries.map(history => {
-                          const author = profileLookup.get(history.changed_by ?? '') ?? null;
-                          const authorLabel = author
-                            ? author.full_name || author.email || 'Unbekannt'
-                            : t('boardManagement.unknown');
-                          const changedAt = new Date(history.changed_at);
-                          return (
-                            <ListItem key={history.id} sx={{ py: 0 }}>
-                              <Typography variant="body2">
-                                {changedAt.toLocaleString('de-DE')} – {authorLabel}
-                              </Typography>
-                            </ListItem>
-                          );
-                        })}
-                      </List>
-                    </Box>
-                  );
-                })()
-              )}
-            </Stack>
-          ) : (
-            <Typography variant="body2">{t('boardManagement.noEscalationSelected')}</Typography>
-          )}
-        </DialogContent>
-
-        {/* Button zum Leeren der Felder */}
-        <DialogActions sx={{ justifyContent: 'space-between' }}>
-          <Button
-            variant="outlined"
-            color="warning"
-            onClick={handleClearEscalationFields}
-            disabled={!canEditEscalations}
-          >
-            🧹 {t('boardManagement.clearFields')}
-          </Button>
-
-          <Box>
-            <Button onClick={closeEscalationEditor} sx={{ mr: 1 }}>{t('common.cancel')}</Button>
-            <Button onClick={saveEscalation} variant="contained" disabled={!canEditEscalations}>
-              {t('common.save')}
-            </Button>
-          </Box>
-        </DialogActions>
-      </Dialog>
+      <EscalationsView
+        filteredEscalations={filteredEscalations}
+        profiles={profiles}
+        departments={departments}
+        escalationHistory={escalationHistory}
+        canEdit={canEdit}
+        schemaReady={escalationSchemaReady}
+        schemaHelpText={ESCALATION_SCHEMA_HELP}
+        dialogOpen={escalationDialogOpen}
+        editingEscalation={editingEscalation}
+        draft={escalationDraft}
+        onOpenEditor={openEscalationEditor}
+        onCloseEditor={closeEscalationEditor}
+        onUpdateDraft={updateEscalationDraft}
+        onSave={saveEscalation}
+        onClearFields={handleClearEscalationFields}
+        onCycleCompletion={cycleDraftCompletion}
+      />
     </Stack>
   );
 }
