@@ -75,14 +75,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       // 1. Initial Session Load
       supabase.auth.getSession().then(async ({ data: { session } }) => {
         // License Check
-        const license = await getLicenseStatus();
-
-        if (!license.valid && !window.location.pathname.includes('/license')) {
-          window.location.href = '/license';
-          return; // Stop here
-        } else {
-          // License valid or already on license page
-        }
+        // License Check moved to Middleware (src/middleware.ts) for stability
+        // const license = await getLicenseStatus();
+        // console.log('License Status (Client View):', license);
 
         if (session?.user) {
           setUser(session.user);

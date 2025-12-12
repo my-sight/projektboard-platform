@@ -572,11 +572,12 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandle, OriginalKanban
           .update(updateData)
           .eq('id', boardId)
           .select()
-          .single();
+          .maybeSingle();
 
         if (error) throw error;
         if (!record) {
-          enqueueSnackbar(formatPocketBaseActionError('Einstellungen speichern', { message: 'Not found' }), { variant: 'error' });
+          // enqueueSnackbar(formatPocketBaseActionError('Einstellungen speichern', { message: 'Not found' }), { variant: 'error' });
+          console.warn('Board Settings save: Board not found or no permission (Row missing)');
           return false;
         }
 

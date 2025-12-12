@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Box, Button, Typography, CircularProgress, useTheme } from '@mui/material';
+import { DashboardCustomize } from '@mui/icons-material';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -83,8 +84,8 @@ export default function BoardPage() {
             {/* Navigation Header */}
             <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', backgroundColor: 'background.paper', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Button variant="outlined" onClick={handleSettings}>
-                        ⚙️ {t('header.management') || 'Management'}
+                    <Button variant="outlined" onClick={handleSettings} startIcon={<DashboardCustomize />}>
+                        Boardmanagement
                     </Button>
                     <Button variant="outlined" onClick={handleBack}>
                         🏠 Dashboard
@@ -93,7 +94,7 @@ export default function BoardPage() {
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                     <Typography variant="body2">👋 {profile?.full_name || user?.email}</Typography>
-                    <Button variant="outlined" onClick={signOut} color="error">🚪</Button>
+                    {/* <Button variant="outlined" onClick={signOut} color="error">🚪</Button> */}
                 </Box>
             </Box>
 

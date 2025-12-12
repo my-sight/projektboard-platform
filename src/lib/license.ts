@@ -12,12 +12,12 @@ export interface LicenseStatus {
 function pemToArrayBuffer(pem: string): ArrayBuffer {
     const b64Lines = pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
     const str = atob(b64Lines);
-    const buf = new ArrayBuffer(str.length);
-    const bufView = new Uint8Array(buf);
-    for (let i = 0, strLen = str.length; i < strLen; i++) {
-        bufView[i] = str.charCodeAt(i);
+    const len = str.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = str.charCodeAt(i);
     }
-    return buf;
+    return bytes.buffer;
 }
 
 // Helper to convert Base64URL to binary
@@ -49,15 +49,13 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
         let isValid = false;
         let payloadString = '';
 
-        if (typeof window !== 'undefined') {
-            // Browser Environment
-            if (!window.crypto || !window.crypto.subtle) {
-                console.error('Web Crypto API not available. Secure Context (HTTPS or localhost) required.');
-                throw new Error('Insecure Context: Please use http://localhost:3000');
-            }
+        // Check for Web Crypto API (Browser or Edge Runtime)
+        const webCrypto = typeof crypto !== 'undefined' ? crypto :
+            (typeof window !== 'undefined' && window.crypto) ? window.crypto : null;
 
-            console.log('Using Web Crypto API (Browser)');
-            const cryptoKey = await window.crypto.subtle.importKey(
+        if (webCrypto && webCrypto.subtle) {
+            console.log('Using Web Crypto API (Browser/Edge)');
+            const cryptoKey = await webCrypto.subtle.importKey(
                 "spki",
                 keyBuffer,
                 { name: "Ed25519" },
@@ -70,19 +68,19 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
             const dataToVerify = new TextEncoder().encode(payloadString);
             const signatureBuffer = base64ToArrayBuffer(signatureB64);
 
-            isValid = await window.crypto.subtle.verify(
+            isValid = await webCrypto.subtle.verify(
                 { name: "Ed25519" },
                 cryptoKey,
                 signatureBuffer,
                 dataToVerify
             );
         } else {
-            // Node.js fallback (Server Side)
+            // Node.js fallback (Server Side non-Edge)
             try {
-                const crypto = await import('crypto');
+                const nodeCrypto = await import('crypto');
                 console.log('Using Node.js Crypto (Server)');
 
-                const pKey = crypto.createPublicKey({
+                const pKey = nodeCrypto.createPublicKey({
                     key: Buffer.from(LICENSE_PUBLIC_KEY),
                     format: 'pem',
                     type: 'spki'
@@ -91,7 +89,7 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
                 payloadString = Buffer.from(payloadB64, 'base64url').toString('utf8');
                 const signatureBuffer = Buffer.from(signatureB64, 'base64url');
 
-                isValid = crypto.verify(
+                isValid = nodeCrypto.verify(
                     null,
                     Buffer.from(payloadString),
                     pKey,
@@ -99,7 +97,7 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
                 );
             } catch (err: any) {
                 console.error('Node crypto error', err);
-                throw new Error(`Node Crypto Error: ${err.message}`);
+                throw new Error(`Crypto API not available: ${err.message}`);
             }
         }
 
@@ -124,21 +122,14 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
     }
 };
 
+import { checkLicenseServerAction } from '@/app/actions/license';
+
 export const getLicenseStatus = async (): Promise<LicenseStatus> => {
     try {
-        const { data } = await supabase
-            .from('system_settings')
-            .select('value')
-            .eq('key', 'license_key')
-            .maybeSingle();
-
-        if (!data || !data.value || !data.value.token) {
-            return { valid: false, expiry: null, customer: null, error: 'No License Found' };
-        }
-
-        return await verifyLicenseToken(data.value.token);
-    } catch (e) {
-        return { valid: false, expiry: null, customer: null, error: 'Database Error' };
+        // Use Server Action directly
+        return await checkLicenseServerAction();
+    } catch (e: any) {
+        return { valid: false, expiry: null, customer: null, error: `Action Error: ${e.message}` };
     }
 };
 
