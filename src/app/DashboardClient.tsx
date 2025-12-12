@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Box,
@@ -21,10 +21,27 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Alert
+  Alert,
+  Grid,
+  Chip,
+  Tooltip,
+  useTheme,
+  alpha
 } from '@mui/material';
-import { Star, StarBorder, Add, DashboardCustomize, Dashboard, Delete } from '@mui/icons-material';
+import {
+  Star,
+  StarBorder,
+  Add,
+  DashboardCustomize,
+  Delete,
+  RocketLaunch,
+  Assignment,
+  Person,
+  Logout,
+  AdminPanelSettings
+} from '@mui/icons-material';
 import { useAuth } from '@/contexts/AuthContext';
+import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import PersonalDashboard from '@/components/dashboard/PersonalDashboard';
 import { supabase } from '@/lib/supabaseClient';
@@ -42,13 +59,14 @@ interface Board {
 
 export default function DashboardClient() {
   const router = useRouter();
-  const { user, profile, refreshProfile, signOut, loading } = useAuth();
-  // const [loading, setLoading] = useState(true); // Removed local state shadowing
+  const theme = useTheme();
+  const { user, profile, refreshProfile, signOut, loading: authLoading } = useAuth();
   const { language, setLanguage, t } = useLanguage();
+  const { config } = useSystemConfig();
 
   const [boards, setBoards] = useState<Board[]>([]);
-  // Auth / Role State
   const [isAdmin, setIsAdmin] = useState(false);
+  const [loadingData, setLoadingData] = useState(true);
 
   // UI State
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -61,71 +79,80 @@ export default function DashboardClient() {
   const [favoriteBoardIds, setFavoriteBoardIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState('');
 
-  // Styles
-  const scrollContainerSx = {
-    display: 'flex',
-    flexWrap: 'nowrap',
-    gap: 3,
-    overflowX: 'auto',
-    pb: 2,
-    scrollSnapType: 'x mandatory',
-    '&::-webkit-scrollbar': { height: 8 },
-    '&::-webkit-scrollbar-thumb': { backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 4 },
-  };
-
-  const itemSx = {
-    flex: '0 0 auto',
-    width: { xs: '85vw', sm: '350px' },
-    scrollSnapAlign: 'start'
-  };
-
-  useEffect(() => {
-    if (!loading && !user) {
-      window.location.href = '/login'; // Or router.push
-    }
-  }, [loading, user]);
-
-  useEffect(() => {
-    if (user) {
-      loadBoards();
-      loadFavorites();
-      checkRoles();
-    }
-  }, [user]);
-
-  const checkRoles = async () => {
-    if (!user) return;
-    const isSuper = isSuperuserEmail(user.email);
-    const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-    setIsAdmin(isSuper || data?.role === 'admin');
-  };
-
-  const loadBoards = async () => {
+  // --- DATA LOADING ---
+  const loadDashboardData = useCallback(async () => {
     if (!user) return;
     try {
-      const { data, error } = await supabase.from('kanban_boards').select('*');
-      if (data) {
-        const mapped = data.map(b => ({
+      // 1. Check Roles
+      const isSuper = isSuperuserEmail(user.email);
+      const { data: profileData } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      setIsAdmin(isSuper || profileData?.role === 'admin');
+
+      // 2. Load Boards
+      const { data: boardData } = await supabase.from('kanban_boards').select('*');
+      if (boardData) {
+        const mapped = boardData.map(b => ({
           ...b,
           boardType: b.settings?.boardType === 'team' ? 'team' : 'standard'
         }));
-        // Sort by Created At Desc
         mapped.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setBoards(mapped);
       }
+
+      // 3. Load Favorites
+      const { data: favData } = await supabase.from('board_favorites').select('board_id').eq('user_id', user.id);
+      if (favData) {
+        setFavoriteBoardIds(new Set(favData.map(f => f.board_id)));
+      }
     } catch (e) {
-      console.error(e);
+      console.error('Error loading dashboard data:', e);
+    } finally {
+      setLoadingData(false);
     }
-  };
+  }, [user]);
 
-  const loadFavorites = async () => {
-    if (!user) return;
-    const { data } = await supabase.from('board_favorites').select('board_id').eq('user_id', user.id);
-    if (data) {
-      setFavoriteBoardIds(new Set(data.map(f => f.board_id)));
+  // --- EFFECTS ---
+
+  // Initial Load & Auth Check
+  useEffect(() => {
+    if (!authLoading) {
+      if (!user) {
+        console.log('[DashboardClient] No user. Redirecting to /login');
+        router.push('/login');
+      } else {
+        loadDashboardData();
+      }
     }
-  };
+  }, [authLoading, user, loadDashboardData, router]);
 
+  // Failsafe Timeout
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (loadingData) {
+        console.warn('[DashboardClient] Timeout: Force disabling loading state.');
+        setLoadingData(false);
+      }
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [loadingData]);
+
+  // Auto-Refresh on Focus
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && user) {
+        console.log('🔄 Dashboard Active: Refreshing data...');
+        loadDashboardData();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('focus', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('focus', onVisibilityChange);
+    };
+  }, [user, loadDashboardData]);
+
+  // --- ACTIONS ---
   const createBoard = async () => {
     if (!newBoardName.trim() || !user || !isAdmin) return;
     try {
@@ -142,7 +169,7 @@ export default function DashboardClient() {
       setCreateDialogOpen(false);
       setNewBoardName('');
       setNewBoardDescription('');
-      loadBoards();
+      loadDashboardData();
       setTimeout(() => setMessage(''), 3000);
     } catch (e) { setMessage('❌ Error creating board'); }
   };
@@ -150,7 +177,6 @@ export default function DashboardClient() {
   const deleteBoard = async () => {
     if (!boardToDelete || !isAdmin || !user?.email) return;
     try {
-      // Verify Password by attempting re-login (without persisting session change if possible, but simplest is check error)
       const { error: authError } = await supabase.auth.signInWithPassword({
         email: user.email,
         password: deletePassword
@@ -183,211 +209,237 @@ export default function DashboardClient() {
     }
   };
 
-  const standardBoards = useMemo(() => boards.filter(b => b.boardType === 'standard'), [boards]);
-  const teamBoards = useMemo(() => boards.filter(b => b.boardType === 'team'), [boards]);
-
-  // Derived Navigation Handlers
   const handleOpenBoard = (boardId: string) => router.push(`/boards/${boardId}`);
   const handleOpenSettings = (e: React.MouseEvent, board: Board) => {
     e.stopPropagation();
     router.push(`/boards/${board.id}/settings`);
   };
 
-  if (loading || !user) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}><Typography>Loading...</Typography></Box>;
+  const favoriteBoards = useMemo(() => boards.filter(b => favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
+  const standardBoards = useMemo(() => boards.filter(b => b.boardType === 'standard' && !favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
+  const teamBoards = useMemo(() => boards.filter(b => b.boardType === 'team' && !favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
+
+  if (authLoading || (loadingData && !boards.length)) {
+    return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <Typography variant="h6" color="text.secondary">Lade Dashboard...</Typography>
+    </Box>;
   }
 
+  if (!user && !authLoading) return null;
+
+  // Render Helper
+  const renderBoardCard = (board: Board) => (
+    <Grid item xs={12} sm={6} md={4} lg={3} key={board.id}>
+      <Card
+        sx={{
+          height: '100%',
+          display: 'flex',
+          flexDirection: 'column',
+          transition: 'transform 0.2s, box-shadow 0.2s',
+          '&:hover': {
+            transform: 'translateY(-2px)',
+            boxShadow: 4,
+            cursor: 'pointer',
+            borderColor: 'primary.main'
+          }
+        }}
+        onClick={() => handleOpenBoard(board.id)}
+        variant="outlined"
+      >
+        <CardContent sx={{ flexGrow: 1, p: 1.5, '&:last-child': { pb: 1.5 } }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+            <Typography variant="h6" fontWeight={600} noWrap title={board.name} sx={{ fontSize: '1rem' }}>
+              {board.name}
+            </Typography>
+            <IconButton
+              size="small"
+              onClick={(e) => toggleFavorite(e, board.id)}
+              sx={{ mt: -0.5, mr: -0.5 }}
+            >
+              {favoriteBoardIds.has(board.id) ? <Star color="warning" fontSize="small" /> : <StarBorder fontSize="small" />}
+            </IconButton>
+          </Box>
+          <Chip
+            label={board.boardType === 'team' ? 'Team' : 'Projekt'}
+            size="small"
+            sx={{ mb: 1, height: 20, fontSize: '0.7rem', backgroundColor: board.boardType === 'team' ? alpha(theme.palette.secondary.main, 0.1) : alpha(theme.palette.primary.main, 0.1) }}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+            fontSize: '0.8rem',
+            lineHeight: 1.3
+          }}>
+            {board.description || 'Keine Beschreibung'}
+          </Typography>
+        </CardContent>
+        <Divider />
+        <CardActions sx={{ justifyContent: 'space-between', px: 1.5, py: 0.5 }}>
+          {/* Left: Delete */}
+          {isAdmin ? (
+            <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); setBoardToDelete(board); setDeleteDialogOpen(true); }} title={t('delete')}>
+              <Delete fontSize="small" />
+            </IconButton>
+          ) : <Box />}
+
+          {/* Center: Settings */}
+          {isAdmin && (
+            <IconButton size="small" onClick={(e) => handleOpenSettings(e, board)} title={t('settings')}>
+              <DashboardCustomize fontSize="small" />
+            </IconButton>
+          )}
+
+          {/* Right: Open */}
+          <IconButton color="primary" onClick={() => handleOpenBoard(board.id)} title={t('open')}>
+            <RocketLaunch fontSize="small" />
+          </IconButton>
+        </CardActions>
+      </Card>
+    </Grid>
+  );
+
+  // --- RENDER ---
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 4 }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <Button variant="outlined" onClick={() => setLanguage(language === 'de' ? 'en' : 'de')} sx={{ minWidth: 40, fontWeight: 700 }}>
+    <Container maxWidth="xl" sx={{ py: 4 }}>
+      {/* Header Bar */}
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        mb: 4,
+        p: 2,
+        bgcolor: 'background.paper',
+        borderRadius: 2,
+        boxShadow: 1
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Typography variant="h5" fontWeight={700} color="primary">
+            {config.appName || 'ProjektBoard'}
+          </Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
+          <Button variant="outlined" size="small" onClick={() => setLanguage(language === 'de' ? 'en' : 'de')}>
             {language.toUpperCase()}
           </Button>
-          {isAdmin && <Button variant="outlined" onClick={() => router.push('/admin')}>{t('header.admin')}</Button>}
-          <Typography variant="body2">👋 {profile?.full_name || user.email}</Typography>
-          <Button variant="outlined" onClick={signOut} color="error">{t('header.logout')}</Button>
+          {isAdmin && (
+            <Tooltip title="Administration">
+              <IconButton onClick={() => router.push('/admin')} color="primary">
+                <AdminPanelSettings />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Chip
+            avatar={<Box component={Person} sx={{ color: 'inherit !important' }} />}
+            label={profile?.full_name || user?.email || ''}
+            variant="outlined"
+            onClick={() => { }}
+          />
+          <Tooltip title={t('header.logout')}>
+            <IconButton onClick={signOut} color="error">
+              <Logout />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Box>
 
-      {message && <Alert severity={message.includes('❌') ? 'error' : 'success'} sx={{ mb: 2 }}>{message}</Alert>}
+      {message && <Alert severity={message.includes('❌') ? 'error' : 'success'} sx={{ mb: 3 }}>{message}</Alert>}
 
-      {/* Personal Dashboard Widget */}
-      {/* We need to update PersonalDashboard to accept a simple onOpenBoard which works with ID */}
-      <PersonalDashboard onOpenBoard={(boardId, cardId) => {
-        const url = `/boards/${boardId}${cardId ? `?cardId=${cardId}` : ''}`;
-        router.push(url);
-      }} />
-
-      <Divider sx={{ my: 6 }} />
-
-      {/* Favorites */}
-      {favoriteBoardIds.size > 0 && (
-        <>
-          <Typography variant="h5" sx={{ mb: 2, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Star color="warning" /> {t('home.favorites')}
-          </Typography>
-          <Box sx={scrollContainerSx}>
-            {boards.filter(b => favoriteBoardIds.has(b.id)).map(board => (
-              <Box key={board.id} sx={itemSx}>
-                <BoardCard
-                  board={board}
-                  isFav={true}
-                  isAdmin={isAdmin}
-                  onOpen={() => handleOpenBoard(board.id)}
-                  onSettings={(e) => handleOpenSettings(e, board)}
-                  onDelete={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}
-                  onToggleFav={toggleFavorite}
-                  t={t}
-                />
-              </Box>
-            ))}
-          </Box>
-          <Divider sx={{ my: 6 }} />
-        </>
-      )}
-
-      {/* Standard Boards */}
-      <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>{t('home.projectBoards')}</Typography>
-      <Box sx={scrollContainerSx}>
-        {isAdmin && (
-          <Box sx={itemSx}>
-            <Card
-              sx={{ height: 180, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed #ccc', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0,0,0,0.02)' } }}
-              onClick={() => { setNewBoardType('standard'); setCreateDialogOpen(true); }}
-            >
-              <Typography variant="h6" color="text.secondary"><span>+</span> {t('home.newBoard')}</Typography>
-            </Card>
-          </Box>
-        )}
-        {standardBoards.map(board => (
-          <Box key={board.id} sx={itemSx}>
-            <BoardCard
-              board={board}
-              isFav={favoriteBoardIds.has(board.id)}
-              isAdmin={isAdmin}
-              onOpen={() => handleOpenBoard(board.id)}
-              onSettings={(e) => handleOpenSettings(e, board)}
-              onDelete={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}
-              onToggleFav={toggleFavorite}
-              t={t}
-            />
-          </Box>
-        ))}
+      {/* Personal Dashboard */}
+      <Box sx={{ mb: 6 }}>
+        <PersonalDashboard onOpenBoard={(boardId, cardId) => {
+          const url = `/boards/${boardId}${cardId ? `?cardId=${cardId}` : ''}`;
+          router.push(url);
+        }} />
       </Box>
 
-      {/* Team Boards */}
-      <Typography variant="h5" sx={{ mt: 5, mb: 2, fontWeight: 600 }}>{t('home.teamBoards')}</Typography>
-      <Box sx={scrollContainerSx}>
-        {isAdmin && (
-          <Box sx={itemSx}>
-            <Card
-              sx={{ height: 180, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '2px dashed #ccc', cursor: 'pointer', '&:hover': { borderColor: 'primary.main', bgcolor: 'rgba(0,0,0,0.02)' } }}
-              onClick={() => { setNewBoardType('team'); setCreateDialogOpen(true); }}
-            >
-              <Typography variant="h6" color="text.secondary"><span>+</span> {t('home.newTeamBoard')}</Typography>
-            </Card>
-          </Box>
-        )}
-        {teamBoards.map(board => (
-          <Box key={board.id} sx={itemSx}>
-            <BoardCard
-              board={board}
-              isFav={favoriteBoardIds.has(board.id)}
-              isAdmin={isAdmin}
-              onOpen={() => handleOpenBoard(board.id)}
-              onSettings={(e) => handleOpenSettings(e, board)}
-              onDelete={() => { setBoardToDelete(board); setDeleteDialogOpen(true); }}
-              onToggleFav={toggleFavorite}
-              t={t}
-            />
-          </Box>
-        ))}
+      <Divider sx={{ my: 4 }} />
+
+      {/* Favorites Section */}
+      {favoriteBoards.length > 0 && (
+        <Box sx={{ mb: 6 }}>
+          <Typography variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+            <Star color="warning" /> Favoriten
+          </Typography>
+          <Grid container spacing={3}>
+            {favoriteBoards.map(renderBoardCard)}
+          </Grid>
+          <Divider sx={{ my: 4 }} />
+        </Box>
+      )}
+
+
+      {/* Team Boards Section */}
+      <Box sx={{ mb: 6 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <RocketLaunch color="secondary" /> Team Boards
+          </Typography>
+          {isAdmin && (
+            <Button startIcon={<Add />} variant="outlined" color="primary" onClick={() => { setNewBoardType('team'); setCreateDialogOpen(true); }}>
+              {t('home.newBoard')}
+            </Button>
+          )}
+        </Box>
+
+        <Grid container spacing={3}>
+          {teamBoards.map(renderBoardCard)}
+          {teamBoards.length === 0 && <Grid item xs={12}><Typography color="text.secondary">Keine weiteren Team Boards vorhanden.</Typography></Grid>}
+        </Grid>
+      </Box>
+
+      {/* Standard Boards Section */}
+      <Box sx={{ mb: 6 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Assignment color="primary" /> Projekt Boards
+          </Typography>
+          {isAdmin && (
+            <Button startIcon={<Add />} variant="outlined" color="primary" onClick={() => { setNewBoardType('standard'); setCreateDialogOpen(true); }}>
+              {t('home.newBoard')}
+            </Button>
+          )}
+        </Box>
+
+        <Grid container spacing={3}>
+          {standardBoards.map(renderBoardCard)}
+          {standardBoards.length === 0 && <Grid item xs={12}><Typography color="text.secondary">Keine weiteren Projekt Boards vorhanden.</Typography></Grid>}
+        </Grid>
       </Box>
 
       {/* Dialogs */}
       <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)}>
-        <DialogTitle>{t('home.createBoard')}</DialogTitle>
+        <DialogTitle>{t('home.newBoard')}</DialogTitle>
         <DialogContent>
-          <TextField autoFocus margin="dense" label={t('home.name')} fullWidth value={newBoardName} onChange={e => setNewBoardName(e.target.value)} />
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>{t('home.type')}</InputLabel>
-            <Select value={newBoardType} label={t('home.type')} onChange={e => setNewBoardType(e.target.value as any)}>
-              <MenuItem value="standard">{t('home.projectBoard')}</MenuItem>
-              <MenuItem value="team">{t('home.teamBoard')}</MenuItem>
+          <TextField autoFocus margin="dense" label={t('home.boardName')} fullWidth value={newBoardName} onChange={(e) => setNewBoardName(e.target.value)} />
+          <TextField margin="dense" label={t('home.boardDescription')} fullWidth multiline rows={3} value={newBoardDescription} onChange={(e) => setNewBoardDescription(e.target.value)} />
+          <FormControl fullWidth margin="dense">
+            <InputLabel>Typ</InputLabel>
+            <Select value={newBoardType} label="Typ" onChange={(e) => setNewBoardType(e.target.value as any)}>
+              <MenuItem value="standard">Standard (Projekt)</MenuItem>
+              <MenuItem value="team">Team (Backlog/Flow)</MenuItem>
             </Select>
           </FormControl>
-          <TextField margin="dense" label={t('home.description')} fullWidth multiline rows={3} value={newBoardDescription} onChange={e => setNewBoardDescription(e.target.value)} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setCreateDialogOpen(false)}>{t('home.cancel')}</Button>
-          <Button onClick={createBoard} variant="contained">{t('home.create')}</Button>
+          <Button onClick={() => setCreateDialogOpen(false)}>{t('cancel')}</Button>
+          <Button onClick={createBoard} variant="contained">{t('create')}</Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={deleteDialogOpen} onClose={() => { setDeleteDialogOpen(false); setDeletePassword(''); }}>
-        <DialogTitle>{t('home.deleteBoardTitle')}</DialogTitle>
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>{t('home.deleteBoard')}</DialogTitle>
         <DialogContent>
-          <Typography gutterBottom>{t('home.deleteBoardConfirm').replace('{name}', boardToDelete?.name || '')}</Typography>
-          <TextField
-            autoFocus
-            margin="dense"
-            label={t('common.password') || 'Password'}
-            type="password"
-            fullWidth
-            variant="outlined"
-            value={deletePassword}
-            onChange={(e) => setDeletePassword(e.target.value)}
-          />
+          <Typography>{t('home.deleteConfirm')}</Typography>
+          <TextField margin="dense" label={t('form.password')} type="password" fullWidth value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => { setDeleteDialogOpen(false); setDeletePassword(''); }}>{t('home.cancel')}</Button>
-          <Button onClick={deleteBoard} color="error" variant="contained" disabled={!deletePassword}>{t('home.delete')}</Button>
+          <Button onClick={() => setDeleteDialogOpen(false)}>{t('cancel')}</Button>
+          <Button onClick={deleteBoard} color="error" variant="contained">{t('delete')}</Button>
         </DialogActions>
       </Dialog>
-
     </Container>
-  );
-}
-
-// Sub-component for clean rendering
-function BoardCard({ board, isFav, isAdmin, onOpen, onSettings, onDelete, onToggleFav, t }: any) {
-  return (
-    <Card sx={{ height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'transform 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 3 } }}>
-      <CardContent sx={{ position: 'relative' }}>
-        <IconButton
-          onClick={(e) => onToggleFav(e, board.id)}
-          sx={{ position: 'absolute', top: 8, right: 8, color: isFav ? 'warning.main' : 'action.disabled' }}
-        >
-          {isFav ? <Star /> : <StarBorder />}
-        </IconButton>
-        <Typography variant="h6" noWrap title={board.name} sx={{ pr: 4 }}>{board.name}</Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-          {board.description || t('home.noDescription')}
-        </Typography>
-      </CardContent>
-      <CardActions sx={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', px: 2, pb: 2 }}>
-        <Box sx={{ justifySelf: 'start' }}>
-          {isAdmin && (
-            <IconButton size="small" color="error" onClick={onDelete}>
-              <Delete />
-            </IconButton>
-          )}
-        </Box>
-
-        <Box sx={{ justifySelf: 'center' }}>
-          <IconButton size="small" onClick={onSettings} color="primary">
-            <DashboardCustomize />
-          </IconButton>
-        </Box>
-
-        <Box sx={{ justifySelf: 'end' }}>
-          <IconButton size="small" onClick={onOpen} color="primary">
-            <Dashboard />
-          </IconButton>
-        </Box>
-      </CardActions>
-    </Card>
   );
 }
