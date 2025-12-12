@@ -12,6 +12,11 @@ Du benötigst:
 - [ ] Einen zweiten USB-Stick (oder Netzwerkzugriff) für die Projekt-Dateien.
 - [ ] Eine Internetverbindung (WLAN oder Kabel) am NUC.
 
+**Empfohlene Hardware:**
+*   **Minimum:** Intel/AMD Dual-Core, 4GB RAM, 32GB SSD (Nur für kleine Tests/Demos).
+*   **Empfohlen:** Intel i3/i5 (oder neuer), **8GB RAM**, 128GB SSD (Für stabilen Dauerbetrieb).
+*   **Hinweis:** 4GB RAM sind das absolute Minimum. Mit 8GB läuft das System deutlich flüssiger und stabiler, da die Datenbank und der Server Speicher benötigen.
+
 ---
 
 ## 💿 2. Betriebssystem installieren
@@ -110,8 +115,7 @@ Wenn du am Code weiterentwickelt hast:
 **Hinweis zur Datenbank:**
 Das Skript prüft automatisch den Ordner `supabase/migrations`. Wenn du neue Tabellen angelegt hast (und eine Migrations-Datei erstellt hast), werden diese automatisch in die Datenbank eingespielt!
 
-Adresse der Datenbank:
-http://localhost:54323
+
 
 ---
 
@@ -133,4 +137,30 @@ Damit das System dauerhaft läuft, benötigst du eine **Lizenz**. Ohne diese spe
 
 ---
 
+
+---
+
+## 🛠️ 8. Tägliche Arbeit (Entwicklung)
+
+Wenn du am Projekt arbeitest, brauchst du zwei Dinge:
+
+1.  **Datenbank (im Hintergrund)**:
+    *   Starten: `npm run db:start`
+    *   Stoppen: `npm run db:stop`
+    *   Erreichbar unter: http://localhost:54323
+    *   *(Muss nur einmal gestartet werden, läuft dann meistens weiter)*
+
+2.  **Webseite (Frontend)**:
+    *   Starten: `npm run dev`
+    *   Erreichbar unter: [http://localhost:3000]
+
+
+**Wenn mal gar nichts geht (Alles aus):**
+1.  Docker Desktop starten
+2.  `npm run db:start` (Warten bis "Started" kommt)
+3.  `npm run dev`
+
+---
+
 **Viel Erfolg! 🥳**
+
