@@ -841,7 +841,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             <Draggable key={card.cardId} draggableId={card.cardId} index={index} isDragDisabled={!canModify}>
                 {(prov, snap) => (
                     <Card
-                        ref={(el) => { prov.innerRef(el); (cardRef as React.MutableRefObject<HTMLElement | null>).current = el; }}
+                        id={`card-${card.cardId}`}
+                        ref={prov.innerRef}
                         {...prov.draggableProps} {...prov.dragHandleProps}
                         sx={{
                             mb: 1,
@@ -919,9 +920,18 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         );
     };
 
-    // Ref für Auto-Scroll
-    const cardRef = useRef<HTMLDivElement>(null);
-    useEffect(() => { if (highlightCardId && cardRef.current) cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, [highlightCardId]);
+    // Auto-Scroll Logic for Highlighted Card
+    useEffect(() => {
+        if (highlightCardId) {
+            // Short timeout to ensure DOM is ready
+            setTimeout(() => {
+                const el = document.getElementById(`card-${highlightCardId}`);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            }, 100);
+        }
+    }, [highlightCardId, filteredCards]);
 
     if (loading) return <LinearProgress sx={{ mt: 4 }} />;
     // if (!supabase) return <Card><CardContent><SupabaseConfigNotice /></CardContent></Card>; // Removed

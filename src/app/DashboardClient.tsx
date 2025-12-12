@@ -215,7 +215,10 @@ export default function DashboardClient() {
 
       {/* Personal Dashboard Widget */}
       {/* We need to update PersonalDashboard to accept a simple onOpenBoard which works with ID */}
-      <PersonalDashboard onOpenBoard={(boardId) => router.push(`/boards/${boardId}`)} />
+      <PersonalDashboard onOpenBoard={(boardId, cardId) => {
+        const url = `/boards/${boardId}${cardId ? `?cardId=${cardId}` : ''}`;
+        router.push(url);
+      }} />
 
       <Divider sx={{ my: 6 }} />
 

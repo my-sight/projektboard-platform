@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Box, Button, Typography, CircularProgress, useTheme } from '@mui/material';
 import { DashboardCustomize } from '@mui/icons-material';
 import { supabase } from '@/lib/supabaseClient';
@@ -20,6 +20,8 @@ interface Board {
 export default function BoardPage() {
     const { id } = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const highlightCardId = searchParams.get('cardId');
     const { user, profile, refreshProfile, signOut } = useAuth();
     const { t } = useLanguage();
     const [board, setBoard] = useState<Board | null>(null);
@@ -104,7 +106,7 @@ export default function BoardPage() {
                     <TeamKanbanBoard
                         boardId={board.id}
                         onExit={handleBack}
-                    // highlightCardId can be added later by reading query params if needed
+                        highlightCardId={highlightCardId}
                     />
                 ) : (
                     <OriginalKanbanBoard
@@ -113,6 +115,7 @@ export default function BoardPage() {
                         onArchiveCountChange={setArchivedCount}
                         onKpiCountChange={setKpiCount}
                         onExit={handleBack}
+                        highlightCardId={highlightCardId}
                     />
                 )}
             </Box>
