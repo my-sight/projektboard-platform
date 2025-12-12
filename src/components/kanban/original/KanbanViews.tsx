@@ -95,8 +95,8 @@ export function KanbanColumnsView({
               key={col.id}
               className="glass"
               sx={{
-                minWidth: 320,
-                width: 320,
+                minWidth: 300,
+                width: 300,
                 display: 'flex',
                 flexDirection: 'column',
                 maxHeight: 'calc(100vh - 140px)',
@@ -258,7 +258,7 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
         ref={scrollContainerRef}
         sx={{
           display: 'grid',
-          gridTemplateColumns: `200px ${stages.map(() => '320px').join(' ')}`,
+          gridTemplateColumns: `200px ${stages.map(() => '300px').join(' ')}`,
           gap: 2,
           p: 2,
           alignItems: 'start',
@@ -395,7 +395,7 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
         ref={scrollContainerRef}
         sx={{
           display: 'grid',
-          gridTemplateColumns: `200px ${stages.map(() => '320px').join(' ')}`,
+          gridTemplateColumns: `200px ${stages.map(() => '300px').join(' ')}`,
           gap: 2,
           p: 2,
           alignItems: 'start',

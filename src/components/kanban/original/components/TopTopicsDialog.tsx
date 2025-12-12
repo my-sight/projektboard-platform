@@ -7,6 +7,10 @@ import { Star, DeleteOutline, AddCircle } from '@mui/icons-material';
 import { supabase } from '@/lib/supabaseClient';
 import { StandardDatePicker } from '@/components/common/StandardDatePicker';
 import dayjs from 'dayjs';
+import isoWeek from 'dayjs/plugin/isoWeek';
+
+dayjs.extend(isoWeek);
+
 import { TopTopic } from '../types';
 
 interface TopTopicsDialogProps {

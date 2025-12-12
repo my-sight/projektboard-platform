@@ -296,7 +296,12 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           idFor={idFor}
           users={users}
           canModify={canModifyBoard}
-          highlighted={highlightCardId === idFor(card)}
+          highlighted={
+            highlightCardId === idFor(card) ||
+            highlightCardId === card.id ||
+            highlightCardId === card.card_id ||
+            highlightCardId === card.UID
+          }
           checklistTemplates={checklistTemplates}
 
           trLabel={customLabels.tr}

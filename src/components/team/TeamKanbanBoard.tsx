@@ -61,6 +61,8 @@ import { StandardDatePicker } from '@/components/common/StandardDatePicker';
 import dayjs from 'dayjs';
 import 'dayjs/locale/de';
 import isoWeek from 'dayjs/plugin/isoWeek';
+dayjs.extend(isoWeek);
+
 import { useLanguage } from '@/contexts/LanguageContext';
 
 // --- Styles & Konstanten ---
@@ -71,13 +73,13 @@ const blinkAnimation = keyframes`
 `;
 
 const COL_WIDTHS = {
-    member: '250px',
-    flow1: '320px',
-    flow: '320px',
-    done: '320px'
+    member: '200px',
+    flow1: '260px',
+    flow: '260px',
+    done: '260px'
 };
 const MIN_CARD_HEIGHT = 100;
-const BACKLOG_WIDTH = 320;
+const BACKLOG_WIDTH = 260;
 
 interface BoardMember { id: string; profile_id: string; }
 interface MemberWithProfile extends BoardMember { profile: ClientProfile | null; }
