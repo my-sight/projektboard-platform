@@ -70,6 +70,8 @@ export function KanbanSettingsDialog({
         // NOTE: In the original code, `saveSettings` reads from state. 
         // Since state updates are async, passing overrides is safer.
         const success = await onSave({
+            boardName,
+            boardDescription,
             settingsOverrides: {
                 cols: currentCols,
                 checklistTemplates: currentTemplates,

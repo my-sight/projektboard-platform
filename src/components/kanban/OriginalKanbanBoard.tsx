@@ -101,8 +101,9 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
       onKpiCountChange?.(kpiBadgeCount);
     }, [kpiBadgeCount, onKpiCountChange]);
 
+    // 1. Data Loading Effect (Stable, only on Board ID change)
     useEffect(() => {
-      const init = async () => {
+      const loadData = async () => {
         const loadedUsers = await fetchClientProfiles();
         setUsers(loadedUsers);
 
@@ -110,12 +111,21 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           loadCards(),
           loadSettings(),
           loadTopTopics(),
-          resolvePermissions(loadedUsers),
-          loadBoardMembers()
+          loadBoardMembers() // This was in init before
         ]);
       };
-      if (boardId) init();
-    }, [boardId, loadCards, loadSettings, loadTopTopics, resolvePermissions]);
+      if (boardId) loadData();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [boardId]);
+
+    // 2. Permission Resolution Effect (Triggers when user/auth changes)
+    useEffect(() => {
+      const resolve = async () => {
+        const loadedUsers = await fetchClientProfiles();
+        resolvePermissions(loadedUsers);
+      };
+      if (boardId && user) resolve();
+    }, [boardId, user, resolvePermissions]);
 
     const loadBoardMembers = async () => {
       try {
@@ -340,6 +350,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           onOpenArchive={handleOpenArchive}
           onNewCard={() => setNewCardOpen(true)}
           canModify={canModifyBoard || isSuperForce}
+          canManageSettings={permissions.canManageSettings}
           kpiBadgeCount={kpiBadgeCount}
         />
 

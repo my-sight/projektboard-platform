@@ -124,7 +124,7 @@ export function useKanbanData(
         }
     }, [boardId]);
 
-    const saveSettings = useCallback(async (options?: { skipMeta?: boolean; settingsOverrides?: any }) => {
+    const saveSettings = useCallback(async (options?: { skipMeta?: boolean; settingsOverrides?: any; boardName?: string; boardDescription?: string }) => {
         if (!permissions.canManageSettings) {
             console.error('saveSettings blocked: No permission');
             enqueueSnackbar(t('kanban.noPermission') || 'Keine Berechtigung', { variant: 'error' });
@@ -207,9 +207,13 @@ export function useKanbanData(
             const updateData: any = { settings };
 
             if (!options?.skipMeta) {
-                const trimmedName = boardName.trim();
+                // Use options passed from dialog if available (to avoid stale closure), else fallback to state
+                const nameToUse = options?.boardName !== undefined ? options.boardName : boardName;
+                const descToUse = options?.boardDescription !== undefined ? options.boardDescription : boardDescription;
+
+                const trimmedName = nameToUse.trim();
                 updateData.name = trimmedName || boardMeta?.name;
-                updateData.description = boardDescription.trim() || null;
+                updateData.description = descToUse.trim() || null;
             }
 
             console.log('Attempting to save board settings:', { boardId, updateData });
@@ -249,7 +253,7 @@ export function useKanbanData(
 
     const patchCard = useCallback(async (card: ProjectBoardCard, changes: Partial<ProjectBoardCard>) => {
         if (!permissions.canEditContent) {
-            enqueueSnackbar(t('kanban.noPermission'), { variant: 'error' });
+            enqueueSnackbar(t('kanban.noPermission') || 'Keine Berechtigung', { variant: 'error' });
             return;
         }
 
@@ -330,8 +334,8 @@ export function useKanbanData(
         if (!boardId) return;
 
         const channel = supabase
-            .channel(`kanban_cards_${boardId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_cards', filter: `board_id=eq.${boardId}` }, (payload) => {
+            .channel(`kanban_cards_${boardId} `)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_cards', filter: `board_id = eq.${boardId} ` }, (payload) => {
                 const { eventType, new: newRecord, old: oldRecord } = payload;
 
                 if (eventType === 'INSERT') {

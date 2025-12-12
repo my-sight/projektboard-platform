@@ -32,6 +32,7 @@ interface KanbanHeaderProps {
     onOpenArchive: () => void;
     onNewCard: () => void;
     canModify: boolean;
+    canManageSettings: boolean;
     kpiBadgeCount: number;
 }
 
@@ -51,6 +52,7 @@ export function KanbanHeader({
     onOpenArchive,
     onNewCard,
     canModify,
+    canManageSettings,
     kpiBadgeCount
 }: KanbanHeaderProps) {
     const { t } = useLanguage();
@@ -183,22 +185,40 @@ export function KanbanHeader({
 
                 {/* Actions */}
                 <Tooltip title={t('kanban.topTopicsTitle')}>
-                    <IconButton onClick={onOpenTopTopics}>
+                    <IconButton onClick={onOpenTopTopics} sx={{ color: '#ed6c02' }}>
                         <Star />
                     </IconButton>
                 </Tooltip>
 
-                <Tooltip title={t('kanban.settings')}>
-                    <IconButton onClick={onOpenSettings}>
-                        <Settings />
+                <Tooltip title={t('kanban.kpis')}>
+                    <IconButton onClick={onOpenKpis} sx={{ color: '#009688' }}>
+                        {kpiBadgeCount > 0 ? (
+                            <Box sx={{ position: 'relative', display: 'flex' }}>
+                                <Assessment />
+                                <Box sx={{
+                                    position: 'absolute',
+                                    top: -2,
+                                    right: -2,
+                                    width: 8,
+                                    height: 8,
+                                    bgcolor: 'error.main',
+                                    borderRadius: '50%',
+                                    border: '1px solid white'
+                                }} />
+                            </Box>
+                        ) : (
+                            <Assessment />
+                        )}
                     </IconButton>
                 </Tooltip>
 
-                <Tooltip title={t('kanban.kpis')}>
-                    <IconButton onClick={onOpenKpis} color={kpiBadgeCount > 0 ? 'warning' : 'default'}>
-                        <Assessment />
-                    </IconButton>
-                </Tooltip>
+                {canManageSettings && (
+                    <Tooltip title={t('kanban.settings')}>
+                        <IconButton onClick={onOpenSettings}>
+                            <Settings />
+                        </IconButton>
+                    </Tooltip>
+                )}
 
 
 

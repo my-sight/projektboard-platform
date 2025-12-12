@@ -692,7 +692,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   };
 
   const deleteTopic = async (id: string) => {
-    if (!canEdit) return;
+    // Check permission - loosened for User Request to allow everyone to manage topics
+    if (!canEdit && !canManageTopics) return;
     try {
       await supabase.from('board_top_topics').delete().eq('id', id);
       setTopics(prev => prev.filter(t => t.id !== id));
@@ -717,11 +718,13 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
     });
   };
 
-  const canEditEscalations = memberCanSee;
-
   /* useEffect(() => {
     // Auth subscription not strictly needed here with useAuth
   }, []); */
+
+  // USER REQUEST: Allow everyone (who can see the panel) to edit escalations and top topics
+  const canEditEscalations = true;
+  const canManageTopics = true;
 
   const openEscalationEditor = (entry: EscalationView) => {
     setEditingEscalation(entry);
@@ -931,7 +934,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         onUpdateDraft={updateTopicDraft}
         onCreateTopic={createTopic}
         onDeleteTopic={deleteTopic}
-        canEdit={canEdit}
+        canEdit={canManageTopics}
       />
 
       <EvaluationsView stageChartData={stageChartData} />
@@ -941,7 +944,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         profiles={profiles}
         departments={departments}
         escalationHistory={escalationHistory}
-        canEdit={canEdit}
+        canEdit={canEditEscalations}
         schemaReady={escalationSchemaReady}
         schemaHelpText={ESCALATION_SCHEMA_HELP}
         dialogOpen={escalationDialogOpen}
