@@ -220,6 +220,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 .single();
             if (error) throw error;
 
+            setBoardName(record.name);
+            setBoardDescription(record.description || '');
+
             const s = record.settings || {};
             setBoardSettings(s);
             setIsHomeBoard(!!s.isHomeBoard);
@@ -263,19 +266,22 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const saveBoardSettings = async () => {
         const nextSettings = { ...boardSettings, isHomeBoard };
         try {
-            const { error } = await supabase.from('kanban_boards').update({
+            const { data, error } = await supabase.from('kanban_boards').update({
                 name: boardName,
                 description: boardDescription,
                 settings: nextSettings
-            }).eq('id', boardId);
+            }).eq('id', boardId).select();
 
             if (error) throw error;
+            if (!data || data.length === 0) {
+                throw new Error("Speichern fehlgeschlagen: Keine Schreibrechte oder Board nicht gefunden.");
+            }
 
             setSettingsOpen(false);
-            enqueueSnackbar(t('teamBoard.settingsSaved'), { variant: 'success' });
-            enqueueSnackbar(t('teamBoard.settingsSaved'), { variant: 'success' });
+            enqueueSnackbar(t('teamBoard.settingsSaved') || 'Einstellungen gespeichert', { variant: 'success' });
         } catch (e) {
-            enqueueSnackbar(t('teamBoard.saveFailed'), { variant: 'error' });
+            console.error('FAILED TO SAVE BOARD SETTINGS:', e);
+            enqueueSnackbar(t('teamBoard.saveFailed') + ': ' + (e instanceof Error ? e.message : String(e)), { variant: 'error' });
         }
     };
 
@@ -421,6 +427,15 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const evaluatePermissions = useCallback(async (profiles: ClientProfile[], currentMembers: MemberWithProfile[]) => {
         if (!user) { console.warn('No auth model found'); return; }
         setCurrentUser(user);
+
+        // PRIO 1: SUPERUSER FORCE
+        if (user.email && isSuperuserEmail(user.email)) {
+            console.log('⚡️ Superuser detected (TeamBoard):', user.email);
+            setCanModify(true);
+            setCanConfigure(true);
+            return;
+        }
+
         // console.log('Evaluating permissions for:', user.email, user.id);
 
         let userProfile: any = profile;
@@ -940,20 +955,26 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     return (
         <Box sx={{ p: 2, bgcolor: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Chip icon={<FilterList />} label={t('teamBoard.mine')} clickable onClick={() => setFilters(p => ({ ...p, mine: !p.mine }))} color={filters.mine ? "primary" : "default"} />
-                    <Chip icon={<Warning />} label={t('teamBoard.overdue')} clickable onClick={() => setFilters(p => ({ ...p, overdue: !p.overdue }))} color={filters.overdue ? "error" : "default"} />
-                    <Chip icon={<PriorityHigh />} label={t('teamBoard.important')} clickable onClick={() => setFilters(p => ({ ...p, important: !p.important }))} color={filters.important ? "warning" : "default"} />
-                    <Chip icon={<AccessTime />} label={t('teamBoard.watch')} clickable onClick={() => setFilters(p => ({ ...p, watch: !p.watch }))} color={filters.watch ? "info" : "default"} />
+            {/* Header Row: Title & Actions */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Box>
+                    <Typography variant="h5" fontWeight="bold">{boardName || 'Team Board'}</Typography>
+                    {boardDescription && <Typography variant="body2" color="text.secondary">{boardDescription}</Typography>}
                 </Box>
 
                 <Box sx={{ display: 'flex', gap: 1 }}>
                     <Tooltip title={t('teamBoard.topTopics')}><IconButton onClick={() => { setTopTopicsOpen(true); }}><Star color="warning" /></IconButton></Tooltip>
                     <Tooltip title={t('teamBoard.kpis')}><IconButton onClick={() => setKpiOpen(true)}><Assessment color="primary" /></IconButton></Tooltip>
-                    {/* Show Settings only for Admin/BoardAdmin/Superuser */}
-                    {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title={t('teamBoard.boardSettings')}><Settings /></IconButton>}
+                    {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title={t('teamBoard.boardSettings')} color="default"><Settings /></IconButton>}
                 </Box>
+            </Box>
+
+            {/* Filter Row */}
+            <Box sx={{ display: 'flex', gap: 1 }}>
+                <Chip icon={<FilterList />} label={t('teamBoard.mine')} clickable onClick={() => setFilters(p => ({ ...p, mine: !p.mine }))} color={filters.mine ? "primary" : "default"} />
+                <Chip icon={<Warning />} label={t('teamBoard.overdue')} clickable onClick={() => setFilters(p => ({ ...p, overdue: !p.overdue }))} color={filters.overdue ? "error" : "default"} />
+                <Chip icon={<PriorityHigh />} label={t('teamBoard.important')} clickable onClick={() => setFilters(p => ({ ...p, important: !p.important }))} color={filters.important ? "warning" : "default"} />
+                <Chip icon={<AccessTime />} label={t('teamBoard.watch')} clickable onClick={() => setFilters(p => ({ ...p, watch: !p.watch }))} color={filters.watch ? "info" : "default"} />
             </Box>
 
             {isHomeBoard && <Alert severity="info" sx={{ py: 0 }}>{t('teamBoard.homeBoardInfo')}</Alert>}
@@ -976,38 +997,45 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
                     {/* SWIMLANES (Mit fixen Spaltenbreiten) */}
                     <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', borderRadius: 1, border: '1px solid var(--line)', overflow: 'hidden' }}>
-                        <Box sx={{
-                            display: 'grid',
-                            gridTemplateColumns: `${COL_WIDTHS.member} ${COL_WIDTHS.flow1} ${COL_WIDTHS.flow} ${COL_WIDTHS.done}`,
-                            borderBottom: '1px solid var(--line)',
-                            bgcolor: 'rgba(0,0,0,0.02)',
-                            minWidth: 'fit-content' // Verhindert Quetschen
-                        }}>
-                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary' }}>{t('teamBoard.employees')}</Box>
-                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>{t('teamBoard.flow1')}</Box>
-                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)' }}>{t('teamBoard.flow')}</Box>
-                            <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                    {t('teamBoard.finished')}
-                                    <Chip label={completedCount + cards.filter(c => c.status === 'done').length} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: 'rgba(76, 175, 80, 0.1)', color: 'success.main' }} />
-                                </Box>
-                                {/* Show Archive button for users who can modify */}
-                                {canModify && (
-                                    <Button
-                                        size="small"
-                                        startIcon={<Inventory2 sx={{ fontSize: 16 }} />}
-                                        onClick={handleFinishDone}
-                                        sx={{ minWidth: 'auto', px: 1, py: 0.2, fontSize: '0.7rem' }}
-                                        color="secondary"
-                                    >
-                                        {t('teamBoard.archiveAll') || 'Archivieren'}
-                                    </Button>
-                                )}
-                            </Box>
-                        </Box>
-
-                        <Box sx={{ flex: 1, overflowY: 'auto', overflowX: 'auto' }}>
+                        <Box sx={{ flex: 1, overflow: 'auto' }}>
                             <Box sx={{ minWidth: 'fit-content' }}>
+                                {/* Header Row */}
+                                <Box sx={{
+                                    display: 'grid',
+                                    gridTemplateColumns: `${COL_WIDTHS.member} ${COL_WIDTHS.flow1} ${COL_WIDTHS.flow} ${COL_WIDTHS.done}`,
+                                    borderBottom: '1px solid var(--line)',
+                                    bgcolor: 'rgba(0,0,0,0.02)',
+                                    position: 'sticky',
+                                    top: 0,
+                                    zIndex: 10,
+                                    backdropFilter: 'blur(5px)'
+                                }}>
+                                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', bgcolor: 'var(--panel)' }}>{t('teamBoard.employees')}</Box>
+                                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', bgcolor: 'var(--panel)' }}>{t('teamBoard.flow1')}</Box>
+                                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', bgcolor: 'var(--panel)' }}>{t('teamBoard.flow')}</Box>
+                                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'var(--panel)' }}>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            {t('teamBoard.finished')}
+                                            <Chip label={completedCount + cards.filter(c => c.status === 'done').length} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: 'rgba(76, 175, 80, 0.1)', color: 'success.main' }} />
+                                        </Box>
+                                        <Tooltip title={t('teamBoard.archive') || 'Archiv'}>
+                                            <IconButton
+                                                onClick={handleFinishDone}
+                                                sx={{
+                                                    p: 0.5,
+                                                    color: 'primary.main',
+                                                    bgcolor: 'rgba(25, 118, 210, 0.1)',
+                                                    '&:hover': { bgcolor: 'rgba(25, 118, 210, 0.2)' },
+                                                    flexShrink: 0
+                                                }}
+                                            >
+                                                <Inventory2 sx={{ fontSize: 20 }} />
+                                            </IconButton>
+                                        </Tooltip>
+                                    </Box>
+                                </Box>
+
+                                {/* Rows */}
                                 {memberColumns.map(({ member, flow1, flow, done }) => {
                                     const isCollapsed = collapsedLanes[member.id];
                                     return (
@@ -1117,10 +1145,12 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                         multiline
                         minRows={3}
                     />
-                    <Box sx={{ mt: 2 }}>
-                        <Button variant="outlined" startIcon={<Inventory2 />} onClick={() => { setSettingsOpen(false); setArchiveOpen(true); loadArchive(); }}>
-                            {t('teamBoard.openArchive') || 'Archiv öffnen'}
-                        </Button>
+                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-start' }}>
+                        <Tooltip title={t('teamBoard.openArchive') || 'Archiv öffnen'}>
+                            <IconButton onClick={() => { setSettingsOpen(false); setArchiveOpen(true); loadArchive(); }}>
+                                <Inventory2 />
+                            </IconButton>
+                        </Tooltip>
                     </Box>
                 </DialogContent>
                 <DialogActions sx={{ justifyContent: 'space-between' }}>

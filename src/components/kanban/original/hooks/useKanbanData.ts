@@ -125,7 +125,11 @@ export function useKanbanData(
     }, [boardId]);
 
     const saveSettings = useCallback(async (options?: { skipMeta?: boolean; settingsOverrides?: any }) => {
-        if (!permissions.canManageSettings) return false;
+        if (!permissions.canManageSettings) {
+            console.error('saveSettings blocked: No permission');
+            enqueueSnackbar(t('kanban.noPermission') || 'Keine Berechtigung', { variant: 'error' });
+            return false;
+        }
 
         try {
             const settings = {
@@ -208,6 +212,8 @@ export function useKanbanData(
                 updateData.description = boardDescription.trim() || null;
             }
 
+            console.log('Attempting to save board settings:', { boardId, updateData });
+
             const { data: record, error } = await supabase
                 .from('kanban_boards')
                 .update(updateData)
@@ -215,7 +221,15 @@ export function useKanbanData(
                 .select()
                 .maybeSingle();
 
-            if (error) throw error;
+            if (error) {
+                console.error('Supabase update error:', error);
+                throw error;
+            }
+
+            if (!record) {
+                console.error('Supabase update returned no data (RLS check failed?)');
+                throw new Error("Update successful but no data returned. Check RLS policies.");
+            }
 
             if (record) {
                 setBoardMeta(record);
@@ -226,7 +240,8 @@ export function useKanbanData(
                 enqueueSnackbar(t('kanban.settingsSaved'), { variant: 'success' });
             }
             return true;
-        } catch (error) {
+        } catch (error: any) {
+            console.error('saveSettings execution error:', error);
             enqueueSnackbar(formatPocketBaseActionError('Einstellungen speichern', error), { variant: 'error' });
             return false;
         }

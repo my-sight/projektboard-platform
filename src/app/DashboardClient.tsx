@@ -115,42 +115,25 @@ export default function DashboardClient() {
 
   // Initial Load & Auth Check
   useEffect(() => {
-    if (!authLoading) {
-      if (!user) {
-        console.log('[DashboardClient] No user. Redirecting to /login');
-        router.push('/login');
-      } else {
-        loadDashboardData();
-      }
+    // If we have a user, load data immediately, don't wait for authLoading to finish (it might be background revalidating)
+    if (user) {
+      loadDashboardData();
+    } else if (!authLoading && !user) {
+      // Only redirect if we definitely know there is no user and loading is done
+      console.log('[DashboardClient] No user. Redirecting to /login');
+      router.push('/login');
     }
   }, [authLoading, user, loadDashboardData, router]);
 
-  // Failsafe Timeout
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (loadingData) {
-        console.warn('[DashboardClient] Timeout: Force disabling loading state.');
-        setLoadingData(false);
-      }
-    }, 5000);
-    return () => clearTimeout(timer);
-  }, [loadingData]);
+  // Loading State Logic:
+  // Only show generic loader if:
+  // 1. Auth is truly loading AND we have no user yet
+  // 2. OR Data is loading AND we have no data yet
+  const showLoader = (authLoading && !user) || (loadingData && boards.length === 0);
 
-  // Auto-Refresh on Focus
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && user) {
-        console.log('🔄 Dashboard Active: Refreshing data...');
-        loadDashboardData();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('focus', onVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('focus', onVisibilityChange);
-    };
-  }, [user, loadDashboardData]);
+  const favoriteBoards = useMemo(() => boards.filter(b => favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
+  const standardBoards = useMemo(() => boards.filter(b => b.boardType === 'standard' && !favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
+  const teamBoards = useMemo(() => boards.filter(b => b.boardType === 'team' && !favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
 
   // --- ACTIONS ---
   const createBoard = async () => {
@@ -215,11 +198,7 @@ export default function DashboardClient() {
     router.push(`/boards/${board.id}/settings`);
   };
 
-  const favoriteBoards = useMemo(() => boards.filter(b => favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
-  const standardBoards = useMemo(() => boards.filter(b => b.boardType === 'standard' && !favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
-  const teamBoards = useMemo(() => boards.filter(b => b.boardType === 'team' && !favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
-
-  if (authLoading || (loadingData && !boards.length)) {
+  if (showLoader) {
     return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
       <Typography variant="h6" color="text.secondary">Lade Dashboard...</Typography>
     </Box>;

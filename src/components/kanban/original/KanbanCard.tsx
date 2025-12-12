@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useEffect, useMemo, useRef } from 'react';
+import { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Chip, IconButton, Typography, Card, CardContent, Avatar, Tooltip } from '@mui/material';
 import { Draggable } from '@hello-pangea/dnd';
 import { CheckCircle, AccessTime, Warning, PriorityHigh, UnfoldMore, UnfoldLess, ArrowCircleRight } from '@mui/icons-material';
@@ -112,9 +112,13 @@ export function KanbanCard({
   const doneChecklist = templateTasks.filter(task => card.ChecklistDone?.[stage]?.[task]).length;
   const hasChecklist = totalChecklist > 0;
 
-  let currentSize: LayoutDensity = density;
-  if (card.Collapsed === 'large') currentSize = 'large';
-  else if (card.Collapsed === 'compact') currentSize = 'compact';
+  // use local state for size to allow temporary override, but sync with global density on change
+  const [currentSize, setCurrentSize] = useState<LayoutDensity>(density);
+
+  // If global density changes, reset local overrides
+  useEffect(() => {
+    setCurrentSize(density);
+  }, [density]);
 
   // Dynamic Styles based on status
   let borderColor = alpha(theme.palette.divider, 0.1);
@@ -143,21 +147,22 @@ export function KanbanCard({
   };
 
   const renderTRChip = (label: string, value: string | Date | undefined, type: 'original' | 'new'): ReactNode => {
-    if (!value) return null;
-    const date = new Date(value);
-    if (isNaN(date.getTime())) return null;
-
-    const color = type === 'original' ? 'info' : 'success';
-
-    return (
-      <Chip
-        label={`${label}: ${date.toLocaleDateString('de-DE')}`}
-        size="small"
-        color={color}
-        variant="outlined"
-        sx={{ fontSize: '0.65rem', height: 20 }}
-      />
-    );
+    if (value) {
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        const color = type === 'original' ? 'info' : 'success';
+        return (
+          <Chip
+            label={`${label}: ${date.toLocaleDateString('de-DE')}`}
+            size="small"
+            color={color}
+            variant="outlined"
+            sx={{ fontSize: '0.65rem', height: 20 }}
+          />
+        );
+      }
+    }
+    return null;
   };
 
   return (
@@ -283,7 +288,7 @@ export function KanbanCard({
                     <IconButton
                       size="small"
                       sx={{ p: 0.25 }}
-                      onClick={(e) => { e.stopPropagation(); handleUpdateCard({ Collapsed: currentSize === 'large' ? '' : 'large' }); }}
+                      onClick={(e) => { e.stopPropagation(); setCurrentSize(currentSize === 'large' ? 'compact' : 'large'); }}
                     >
                       {currentSize === 'large' ? <UnfoldLess fontSize="small" /> : <UnfoldMore fontSize="small" />}
                     </IconButton>

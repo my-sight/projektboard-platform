@@ -5,7 +5,7 @@ import {
     Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
     Typography, TextField, IconButton, Tabs, Tab, List, ListItem, Card
 } from '@mui/material';
-import { Settings, Close, ArrowUpward, ArrowDownward, Delete, Add } from '@mui/icons-material';
+import { Settings, Close, ArrowUpward, ArrowDownward, Delete, Add, Inventory2 } from '@mui/icons-material';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 interface KanbanSettingsDialogProps {
@@ -141,6 +141,11 @@ export function KanbanSettingsDialog({
                         <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
                             <TextField label="TR Label" value={localCustomLabels.tr} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, tr: e.target.value }))} fullWidth size="small" disabled={!canManageSettings} />
                             <TextField label="SOP Label" value={localCustomLabels.sop} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, sop: e.target.value }))} fullWidth size="small" disabled={!canManageSettings} />
+                        </Box>
+                        <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-start' }}>
+                            <Button variant="outlined" startIcon={<Inventory2 />} onClick={() => { onClose(); onOpenArchive(); }}>
+                                {t('kanban.openArchive') || 'Archiv öffnen'}
+                            </Button>
                         </Box>
                     </Box>
                 )}

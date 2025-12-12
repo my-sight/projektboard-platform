@@ -28,8 +28,18 @@ export function useKanbanPermissions(boardId: string, user: any, profile: any) {
                 return;
             }
 
+            const email = user.email || '';
+
+            // PRIO 1: HARDCODED SUPERUSER CHECK (Synchron & Immediate)
+            if (isSuperuserEmail(email) || email === 'admin@kanban.local') {
+                console.log(`[KanbanPermissions] ⚡️ SUPERUSER DETECTED: ${email}`);
+                setCanModifyBoard(true);
+                setPermissions({ canEditContent: true, canManageSettings: true, canManageAttendance: true });
+                setLoadingPermissions(false); // Stop loading immediately
+                return;
+            }
+
             const authUserId = user.id;
-            const email = user.email ?? '';
 
             let userProfile = profile;
             if (!userProfile && loadedUsers) {
@@ -37,8 +47,9 @@ export function useKanbanPermissions(boardId: string, user: any, profile: any) {
             }
 
             const globalRole = String(userProfile?.role ?? '').toLowerCase();
-            const isSuper = isSuperuserEmail(email) || globalRole === 'superuser' || email === 'admin@kanban.local';
-            const isGlobalAdmin = isSuper || globalRole === 'admin';
+            const isGlobalAdmin = globalRole === 'superuser' || globalRole === 'admin';
+
+            console.log(`[KanbanPermissions] User: ${email}, Global: ${globalRole}, IsGlobalAdmin: ${isGlobalAdmin}`);
 
             if (isGlobalAdmin) {
                 setCanModifyBoard(true);
@@ -70,6 +81,8 @@ export function useKanbanPermissions(boardId: string, user: any, profile: any) {
 
             const isMember = !!memberRow;
             const memberRole = memberRow?.role;
+
+            console.log(`[KanbanPermissions] Owner: ${isOwner} (${boardRow?.owner_id}), BoardAdmin: ${isBoardAdmin}, MemberRole: ${memberRole}`);
 
             if (isOwner || isBoardAdmin || (isMember && memberRole === 'admin')) {
                 setCanModifyBoard(true);

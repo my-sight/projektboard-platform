@@ -200,11 +200,7 @@ export function KanbanHeader({
                     </IconButton>
                 </Tooltip>
 
-                <Tooltip title={t('kanban.archive')}>
-                    <IconButton onClick={onOpenArchive}>
-                        <Inventory2 />
-                    </IconButton>
-                </Tooltip>
+
 
                 {canModify && (
                     <Button

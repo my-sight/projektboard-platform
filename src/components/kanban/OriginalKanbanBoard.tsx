@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/lib/supabaseClient';
 import { fetchClientProfiles } from '@/lib/clientProfiles';
+import { isSuperuserEmail } from '@/constants/superuser';
 
 // Types
 import { ProjectBoardCard, LayoutDensity, ViewMode } from '@/types';
@@ -77,8 +78,12 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
     const [boardMembers, setBoardMembers] = useState<any[]>([]);
     const [archivedCards, setArchivedCards] = useState<ProjectBoardCard[]>([]);
 
-    // Custom Hooks
-    const { permissions, canModifyBoard, resolvePermissions } = useKanbanPermissions(boardId, user, profile);
+    const isSuperForce = user?.email ? isSuperuserEmail(user.email) : false;
+    const { permissions: rawPermissions, canModifyBoard, resolvePermissions } = useKanbanPermissions(boardId, user, profile);
+
+    const permissions = isSuperForce
+      ? { canEditContent: true, canManageSettings: true, canManageAttendance: true }
+      : rawPermissions;
 
     const {
       rows, setRows, cols, lanes, checklistTemplates, setChecklistTemplates,
@@ -128,23 +133,27 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
 
     const loadArchivedCards = async () => {
       try {
-        // Query JSONB column card_data for Archived field
+        console.log('Loading archive for board:', boardId);
+        // Load ALL cards for this board and filter for archived ones in JS to avoid JSON syntax pitfalls
         const { data, error } = await supabase
           .from('kanban_cards')
           .select('*')
-          .eq('board_id', boardId)
-          .filter('card_data->>Archived', 'eq', '1');
+          .eq('board_id', boardId);
 
         if (error) throw error;
+
         if (data) {
-          console.log('Loaded archived cards:', data);
-          const converted = data.map(convertDbToCard);
+          const archived = data.filter(r => {
+            const d = r.card_data || {};
+            return d.Archived === '1' || d.archived === true || d.archived === 'true';
+          });
+          console.log('Found archived cards:', archived.length);
+          const converted = archived.map(convertDbToCard);
           setArchivedCards(converted);
         }
       } catch (e) {
         console.error('Error loading archive:', e);
-        // Fallback: try loading all and filtering in memory if JSON filter fails (e.g. older PG version issues?)
-        // But Supabase should support arrow operators.
+        enqueueSnackbar('Fehler beim Laden des Archivs', { variant: 'error' });
       }
     };
 
@@ -330,7 +339,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           onOpenTopTopics={() => setTopTopicsOpen(true)}
           onOpenArchive={handleOpenArchive}
           onNewCard={() => setNewCardOpen(true)}
-          canModify={canModifyBoard}
+          canModify={canModifyBoard || isSuperForce}
           kpiBadgeCount={kpiBadgeCount}
         />
 
@@ -352,7 +361,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           setBoardName={setBoardName}
           boardDescription={boardDescription}
           setBoardDescription={setBoardDescription}
-          canManageSettings={permissions.canManageSettings}
+          canManageSettings={permissions.canManageSettings || isSuperForce}
           onSave={saveSettings}
           loadCards={loadCards}
           onOpenArchive={handleOpenArchive}
