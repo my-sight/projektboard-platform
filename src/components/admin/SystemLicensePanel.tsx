@@ -45,10 +45,10 @@ export default function SystemLicensePanel() {
         try {
             await saveLicenseToken(token.trim());
             await loadStatus();
-            setMsg('License updated successfully!');
+            setMsg('Lizenz erfolgreich aktualisiert!');
             setToken('');
         } catch (e: any) {
-            setMsg('Error: ' + e.message);
+            setMsg('Fehler: ' + e.message);
         } finally {
             setLoading(false);
         }
@@ -66,27 +66,27 @@ export default function SystemLicensePanel() {
         <Paper sx={{ p: 3, mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <VpnKey sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography variant="h6">System License</Typography>
+                <Typography variant="h6">System-Lizenz</Typography>
             </Box>
 
             <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
                     <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>Current Status</Typography>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>Aktueller Status</Typography>
 
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Customer:</Typography>
-                            <Typography>{status.customer || 'Unknown'}</Typography>
+                            <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Kunde:</Typography>
+                            <Typography>{status.customer || 'Unbekannt'}</Typography>
                         </Box>
 
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Expires:</Typography>
-                            <Typography>{status.expiry || 'Never'}</Typography>
+                            <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Gültig bis:</Typography>
+                            <Typography>{status.expiry || 'Nie'}</Typography>
                         </Box>
 
                         {status.maxUsers && (
                             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                                <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Users:</Typography>
+                                <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Benutzer:</Typography>
                                 <Typography>
                                     {userCount !== null ? `${userCount} / ` : ''}{status.maxUsers}
                                 </Typography>
@@ -97,14 +97,14 @@ export default function SystemLicensePanel() {
                             {status.valid ? (
                                 <Chip
                                     icon={<CheckCircle />}
-                                    label={`Valid (${getDaysRemaining()} days left)`}
+                                    label={`Gültig (${getDaysRemaining()} Tage verbleibend)`}
                                     color="success"
                                     variant="outlined"
                                 />
                             ) : (
                                 <Chip
                                     icon={<Warning />}
-                                    label="Invalid / Expired"
+                                    label="Ungültig / Abgelaufen"
                                     color="error"
                                     variant="filled"
                                 />
@@ -114,11 +114,11 @@ export default function SystemLicensePanel() {
                 </Grid>
 
                 <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle2" gutterBottom>Update License</Typography>
+                    <Typography variant="subtitle2" gutterBottom>Lizenz aktualisieren</Typography>
                     <TextField
                         fullWidth
                         size="small"
-                        placeholder="Paste new license token here..."
+                        placeholder="Lizenzschlüssel hier einfügen..."
                         value={token}
                         onChange={(e) => setToken(e.target.value)}
                         multiline
@@ -131,15 +131,15 @@ export default function SystemLicensePanel() {
                         disabled={loading || !token}
                         startIcon={<Cached />}
                     >
-                        Update License
+                        Lizenz speichern
                     </Button>
                     {msg && (
-                        <Alert severity={msg.startsWith('Error') ? 'error' : 'success'} sx={{ mt: 1 }}>
-                            {msg}
+                        <Alert severity={msg.startsWith('Error') || msg.startsWith('Fehler') ? 'error' : 'success'} sx={{ mt: 1 }}>
+                            {msg.replace('License updated successfully!', 'Lizenz erfolgreich aktualisiert!').replace('Error:', 'Fehler:')}
                         </Alert>
                     )}
                 </Grid>
             </Grid>
-        </Paper >
+        </Paper>
     );
 }
