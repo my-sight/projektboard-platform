@@ -264,11 +264,10 @@ export default function DashboardClient() {
           ) : <Box />}
 
           {/* Center: Settings */}
-          {isAdmin && (
-            <IconButton size="small" onClick={(e) => handleOpenSettings(e, board)} title={t('settings')}>
-              <DashboardCustomize fontSize="small" />
-            </IconButton>
-          )}
+
+          <IconButton size="small" onClick={(e) => handleOpenSettings(e, board)} title={t('settings')}>
+            <DashboardCustomize fontSize="small" />
+          </IconButton>
 
           {/* Right: Open */}
           <IconButton color="primary" onClick={() => handleOpenBoard(board.id)} title={t('open')}>

@@ -49,7 +49,7 @@ export function TopTopicsDialog({
     const handleDateAccept = async (index: number, newValue: dayjs.Dayjs | null) => {
         if (!newValue) return;
         const d = newValue.format('YYYY-MM-DD');
-        const kw = `${newValue.year()}-W${newValue.isoWeek()}`;
+        const kw = `${newValue.isoWeekYear()}-W${newValue.isoWeek()}`;
         const topic = localTopics[index];
         const updated = { ...topic, due_date: d, calendar_week: kw };
         const newTopics = [...localTopics];
@@ -115,7 +115,17 @@ export function TopTopicsDialog({
                                     onChange={(newValue) => handleDateAccept(index, newValue)}
                                 />
                             </Box>
-                            <Chip label={topic.calendar_week ? `KW ${topic.calendar_week.split('-W')[1]}` : 'KW -'} />
+                            <Chip
+                                label={(() => {
+                                    if (topic.calendar_week && topic.calendar_week.includes('-W')) {
+                                        return `KW ${topic.calendar_week.split('-W')[1]}`;
+                                    }
+                                    if (topic.due_date) {
+                                        return `KW ${dayjs(topic.due_date).isoWeek()}`;
+                                    }
+                                    return 'KW -';
+                                })()}
+                            />
                             <IconButton color="error" onClick={() => handleDelete(topic.id)}><DeleteOutline /></IconButton>
                         </Box>
                     ))}

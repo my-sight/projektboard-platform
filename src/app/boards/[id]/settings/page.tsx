@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Box, Button, Typography, CircularProgress, Container } from '@mui/material';
+import { SpaceDashboard, RocketLaunch } from '@mui/icons-material';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -77,9 +78,9 @@ export default function BoardSettingsPage() {
     return (
         <Container maxWidth="lg" sx={{ py: 4 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-                <Button variant="outlined" onClick={handleBackToDashboard}>← Dashboard</Button>
+                <Button variant="outlined" onClick={handleBackToDashboard} startIcon={<SpaceDashboard />}>Dashboard</Button>
                 <Typography variant="h5">Boardmanagement - {board.name}</Typography>
-                <Button variant="contained" onClick={handleBackToBoard}>📋 {t('header.toBoard') || 'Back to Board'}</Button>
+                <Button variant="outlined" onClick={handleBackToBoard} startIcon={<RocketLaunch />}>{t('header.toBoard') || 'Zum Board'}</Button>
             </Box>
 
             {board.boardType === 'team' ? (
