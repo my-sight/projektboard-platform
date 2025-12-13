@@ -63,14 +63,20 @@ export async function POST(req: NextRequest) {
         const license = await checkLicenseServer();
 
         if (license.valid && typeof license.maxUsers === 'number') {
-            const { count, error: countError } = await supabaseAdmin
+            // Fetch all emails to count (filtering locally to correctly handle superuser check logic)
+            const { data: profiles, error: countError } = await supabaseAdmin
                 .from('profiles')
-                .select('*', { count: 'exact', head: true });
+                .select('email');
 
-            if (!countError && count !== null && count >= license.maxUsers) {
-                return NextResponse.json({
-                    error: `Lizenzlimit erreicht. Maximale Benutzeranzahl: ${license.maxUsers}`
-                }, { status: 403 });
+            if (!countError && profiles) {
+                const { isSuperuserEmail } = await import('@/constants/superuser');
+                const currentCount = profiles.filter(p => !isSuperuserEmail(p.email)).length;
+
+                if (currentCount >= license.maxUsers) {
+                    return NextResponse.json({
+                        error: `Lizenzlimit erreicht. Maximale Benutzeranzahl: ${license.maxUsers}`
+                    }, { status: 403 });
+                }
             }
         }
         // --- LICENSE CHECK END ---

@@ -51,6 +51,7 @@ import {
 import { isSuperuserEmail } from '@/constants/superuser';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
+import { getLicenseStatus } from '@/lib/license';
 
 // --- TYPEN ---
 interface UserProfile {
@@ -180,6 +181,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const [message, setMessage] = useState('');
   const { user: currentUser } = useAuth(); // Removed session if not in context
   const currentUserId = currentUser?.id || null;
+  const [maxUsers, setMaxUsers] = useState<number | null>(null);
 
   // Tabs
   const [currentTab, setCurrentTab] = useState(0);
@@ -285,6 +287,10 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
       setMessage('Fehler beim Laden der Daten: ' + error.message);
     } finally {
       setLoading(false);
+      // Load License implicitly
+      getLicenseStatus().then(status => {
+        if (status.valid && status.maxUsers) setMaxUsers(status.maxUsers);
+      }).catch(() => { });
     }
   };
 
@@ -590,7 +596,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
         </Box>
 
         <Grid container spacing={2}>
-          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="primary">{users.length}</Typography><Typography variant="caption">Benutzer</Typography></CardContent></Card></Grid>
+          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="primary">{users.length} {maxUsers ? <span style={{ fontSize: '0.6em', opacity: 0.7 }}>/ {maxUsers}</span> : ''}</Typography><Typography variant="caption">Benutzer</Typography></CardContent></Card></Grid>
           <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="success.main">{users.filter(u => u.is_active).length}</Typography><Typography variant="caption">Aktiv</Typography></CardContent></Card></Grid>
           <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="info.main">{departments.length}</Typography><Typography variant="caption">Abteilungen</Typography></CardContent></Card></Grid>
           <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="warning.main">{users.filter(u => u.role === 'admin').length}</Typography><Typography variant="caption">Admins</Typography></CardContent></Card></Grid>

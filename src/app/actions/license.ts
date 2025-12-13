@@ -26,6 +26,7 @@ export async function checkLicenseServerAction() {
             valid: status.valid,
             expiry: status.expiry,
             customer: status.customer,
+            maxUsers: status.maxUsers,
             error: status.error
         };
 

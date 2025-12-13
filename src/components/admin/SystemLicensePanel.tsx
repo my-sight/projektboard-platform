@@ -31,8 +31,12 @@ export default function SystemLicensePanel() {
         const s = await getLicenseStatus();
         setStatus(s);
         if (s.valid && s.maxUsers) {
-            const { count } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
-            setUserCount(count);
+            const { data: profiles } = await supabase.from('profiles').select('email');
+            if (profiles) {
+                const { isSuperuserEmail } = await import('@/constants/superuser');
+                const currentCount = profiles.filter(p => !isSuperuserEmail(p.email)).length;
+                setUserCount(currentCount);
+            }
         }
     };
 
