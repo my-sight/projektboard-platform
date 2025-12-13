@@ -142,8 +142,10 @@ Damit das System dauerhaft läuft, benötigst du eine **Lizenz**. Ohne diese spe
 1.  **Lizenz generieren (auf deinem Mac):**
     Öffne dein Terminal im Projektordner und führe aus:
     ```bash
-    node scripts/generate_license.js 2026-12-12 "xyz-Firma"
+    node scripts/generate_license.js 2026-12-12 "xyz-Firma" 50
     ```
+    *(Das "50" am Ende ist die maximale Anzahl der Benutzer. Wenn du es weglässt, sind es standardmäßig 50).*
+
     Das Terminal spuckt einen langen Text aus (den "Token"). Kopiere diesen komplett.
 
 2.  **Lizenz eingeben (im Browser):**

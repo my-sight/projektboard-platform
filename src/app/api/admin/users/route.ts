@@ -57,6 +57,24 @@ export async function POST(req: NextRequest) {
 
         if (!email || !password) return NextResponse.json({ error: 'Missing email or password' }, { status: 400 });
 
+        // --- LICENSE CHECK START ---
+        // Verify user limit
+        const { checkLicenseServer } = await import('@/lib/license-server');
+        const license = await checkLicenseServer();
+
+        if (license.valid && typeof license.maxUsers === 'number') {
+            const { count, error: countError } = await supabaseAdmin
+                .from('profiles')
+                .select('*', { count: 'exact', head: true });
+
+            if (!countError && count !== null && count >= license.maxUsers) {
+                return NextResponse.json({
+                    error: `Lizenzlimit erreicht. Maximale Benutzeranzahl: ${license.maxUsers}`
+                }, { status: 403 });
+            }
+        }
+        // --- LICENSE CHECK END ---
+
         // 1. Create Auth User
         const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email,

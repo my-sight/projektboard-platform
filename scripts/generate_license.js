@@ -19,8 +19,8 @@ const args = process.argv.slice(2);
 const expiryDateInput = args[0]; // Format: YYYY-MM-DD
 
 if (!expiryDateInput) {
-    console.error('Usage: node scripts/generate_license.js YYYY-MM-DD [CustomerName]');
-    console.log('Example: node scripts/generate_license.js 2025-12-31 "Acme Corp"');
+    console.error('Usage: node scripts/generate_license.js YYYY-MM-DD [CustomerName] [MaxUsers]');
+    console.log('Example: node scripts/generate_license.js 2025-12-31 "Acme Corp" 100');
     process.exit(1);
 }
 
@@ -34,6 +34,7 @@ if (isNaN(expiryDate.getTime())) {
 const payload = {
     expiry: expiryDate.toISOString().split('T')[0], // YYYY-MM-DD
     customer: args[1] || 'Standard Customer',
+    maxUsers: args[2] ? parseInt(args[2], 10) : 50, // Default 50 users
     created: new Date().toISOString()
 };
 

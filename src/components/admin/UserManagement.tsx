@@ -428,22 +428,43 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const addDepartment = async () => {
     if (!newDepartmentName.trim()) return;
     try {
-      const { data, error } = await supabase.from('departments').insert({ name: newDepartmentName.trim() }).select().single();
-      if (error || !data) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No session');
+
+      const res = await fetch('/api/admin/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ name: newDepartmentName.trim() })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed');
+      }
+      const { data } = await res.json();
+
       setDepartments(prev => [...prev, { id: data.id, name: data.name, created_at: data.created_at }]);
       setDepartmentDialogOpen(false);
       setNewDepartmentName('');
       setMessage('✅ Abteilung erstellt');
-    } catch { setMessage('❌ Fehler'); }
+    } catch (e: any) { setMessage('❌ Fehler: ' + e.message); }
   };
 
   const deleteDepartment = async (id: string) => {
     if (!confirm('Löschen?')) return;
     try {
-      const { error } = await supabase.from('departments').delete().eq('id', id);
-      if (error) throw error;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No session');
+
+      const res = await fetch(`/api/admin/departments?id=${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed');
+      }
       setDepartments(prev => prev.filter(d => d.id !== id));
-    } catch { setMessage('❌ Fehler'); }
+    } catch (e: any) { setMessage('❌ Fehler: ' + e.message); }
   };
 
   const updateBoardAdmin = async (boardId: string, adminId: string) => {
@@ -803,12 +824,28 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
           <Button variant="contained" onClick={async () => {
             if (!editingDepartment || !editDepartmentName.trim()) return;
             try {
-              const { data: updated, error } = await supabase.from('departments').update({ name: editDepartmentName.trim() }).eq('id', editingDepartment.id).select().single();
-              if (error || !updated) throw error;
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session) throw new Error('No session');
+
+              const res = await fetch('/api/admin/departments', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+                body: JSON.stringify({ id: editingDepartment.id, name: editDepartmentName.trim() })
+              });
+
+              if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Failed');
+              }
+              const { data: updated } = await res.json();
+
               setDepartments(prev => prev.map(d => d.id === editingDepartment.id ? { ...d, name: updated.name } : d));
               setEditDepartmentDialogOpen(false);
               setMessage('✅ Abteilung umbenannt');
-            } catch { setMessage('❌ Fehler'); }
+            } catch (err: any) {
+              console.error('Error updating department:', err);
+              setMessage('❌ Fehler: ' + (err.message || 'Unbekannter Fehler'));
+            }
           }}>Speichern</Button>
         </DialogActions>
       </Dialog>

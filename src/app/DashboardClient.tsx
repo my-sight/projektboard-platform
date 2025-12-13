@@ -81,31 +81,45 @@ export default function DashboardClient() {
 
   // --- DATA LOADING ---
   const loadDashboardData = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      setLoadingData(false);
+      return;
+    }
+
     try {
-      // 1. Check Roles
-      const isSuper = isSuperuserEmail(user.email);
-      const { data: profileData } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-      setIsAdmin(isSuper || profileData?.role === 'admin');
+      const fetchData = async () => {
+        // 1. Check Roles
+        const isSuper = isSuperuserEmail(user.email);
+        const { data: profileData } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+        setIsAdmin(isSuper || profileData?.role === 'admin');
 
-      // 2. Load Boards
-      const { data: boardData } = await supabase.from('kanban_boards').select('*');
-      if (boardData) {
-        const mapped = boardData.map(b => ({
-          ...b,
-          boardType: b.settings?.boardType === 'team' ? 'team' : 'standard'
-        }));
-        mapped.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        setBoards(mapped);
-      }
+        // 2. Load Boards
+        const { data: boardData } = await supabase.from('kanban_boards').select('*');
+        if (boardData) {
+          const mapped = boardData.map(b => ({
+            ...b,
+            boardType: b.settings?.boardType === 'team' ? 'team' : 'standard'
+          }));
+          mapped.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+          setBoards(mapped);
+        }
 
-      // 3. Load Favorites
-      const { data: favData } = await supabase.from('board_favorites').select('board_id').eq('user_id', user.id);
-      if (favData) {
-        setFavoriteBoardIds(new Set(favData.map(f => f.board_id)));
-      }
+        // 3. Load Favorites
+        const { data: favData } = await supabase.from('board_favorites').select('board_id').eq('user_id', user.id);
+        if (favData) {
+          setFavoriteBoardIds(new Set(favData.map(f => f.board_id)));
+        }
+      };
+
+      // Race against a timeout to prevent infinite loading
+      await Promise.race([
+        fetchData(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout loading dashboard')), 8000))
+      ]);
+
     } catch (e) {
       console.error('Error loading dashboard data:', e);
+      // Optional: setMessage('Fehler beim Laden der Daten');
     } finally {
       setLoadingData(false);
     }

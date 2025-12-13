@@ -14,10 +14,12 @@ import {
 } from '@mui/material';
 import { VpnKey, CheckCircle, Warning, Cached } from '@mui/icons-material';
 import { saveLicenseToken, getLicenseStatus, LicenseStatus } from '@/lib/license';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function SystemLicensePanel() {
     const [token, setToken] = useState('');
     const [status, setStatus] = useState<LicenseStatus | null>(null);
+    const [userCount, setUserCount] = useState<number | null>(null);
     const [msg, setMsg] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -28,6 +30,10 @@ export default function SystemLicensePanel() {
     const loadStatus = async () => {
         const s = await getLicenseStatus();
         setStatus(s);
+        if (s.valid && s.maxUsers) {
+            const { count } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+            setUserCount(count);
+        }
     };
 
     const handleUpdate = async () => {
@@ -73,6 +79,15 @@ export default function SystemLicensePanel() {
                             <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Expires:</Typography>
                             <Typography>{status.expiry || 'Never'}</Typography>
                         </Box>
+
+                        {status.maxUsers && (
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Users:</Typography>
+                                <Typography>
+                                    {userCount !== null ? `${userCount} / ` : ''}{status.maxUsers}
+                                </Typography>
+                            </Box>
+                        )}
 
                         <Box sx={{ mt: 2 }}>
                             {status.valid ? (
@@ -121,6 +136,6 @@ export default function SystemLicensePanel() {
                     )}
                 </Grid>
             </Grid>
-        </Paper>
+        </Paper >
     );
 }

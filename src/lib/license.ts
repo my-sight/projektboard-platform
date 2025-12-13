@@ -5,6 +5,7 @@ export interface LicenseStatus {
     valid: boolean;
     expiry: string | null;
     customer: string | null;
+    maxUsers?: number;
     error?: string;
 }
 
@@ -111,10 +112,10 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
         // 4. Check Expiry
         const today = new Date().toISOString().split('T')[0];
         if (payload.expiry < today) {
-            return { valid: false, expiry: payload.expiry, customer: payload.customer, error: 'License Expired' };
+            return { valid: false, expiry: payload.expiry, customer: payload.customer, maxUsers: payload.maxUsers, error: 'License Expired' };
         }
 
-        return { valid: true, expiry: payload.expiry, customer: payload.customer };
+        return { valid: true, expiry: payload.expiry, customer: payload.customer, maxUsers: payload.maxUsers };
 
     } catch (e: any) {
         console.error('License Verification Error:', e);
