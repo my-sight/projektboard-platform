@@ -29,10 +29,44 @@ Wir empfehlen **Ubuntu Server 24.04 LTS** (stabil, sicher, kein unnötiger Schni
 5.  Folge den Anweisungen (Sprache, Tastatur, Netzwerk).
     *   **Profile Setup:** Hier legst du deinen **Benutzernamen** und dein **Passwort** fest. (Gut merken! Das brauchst du gleich zum Einloggen).
     *   **Wichtig:** Bei der Frage "SSH Setup" -> **[x] Install OpenSSH server** ankreuzen.
+    *   **Festplattenverschlüsselung (Empfohlen):**
+        *   Wähle bei "Guided storage configuration": **[x] Use an entire disk**
+        *   Setze das Häkchen bei: **[x] Set up this disk as an LVM group**
+        *   Setze das Häkchen bei: **[x] Encrypt the LVM group with LUKS**
+        *   Erstelle eine **Passphrase** (Achtung: NUC bootet jetzt nur noch mit diesem Passwort, bis wir Schritt 2b gemacht haben!).
     *   **SEHR WICHTIG:** Im Schritt "Featured Server Snaps" musst du **[x] docker** auswählen!
         *   Navigiere mit den Pfeiltasten zu "docker".
         *   Drücke LEERTASTE zum Auswählen (ein Sternchen * erscheint).
         *   Das erspart dir später die manuelle Installation!
+
+---
+
+---
+
+## 🔐 2b. Automatischen Start (TPM Binding) einrichten (Optional)
+Damit der NUC **automatisch bootet** (ohne Passworteingabe), aber die Festplatte trotzdem verschlüsselt bleibt (Schutz gegen Diebstahl der Platte), verbinden wir sie mit dem TPM-Chip des NUCs.
+
+1.  Logge dich nach der Installation ein.
+2.  Installiere die nötigen Tools:
+    ```bash
+    sudo apt update
+    sudo apt install clevis clevis-tpm2 clevis-luks clevis-initramfs -y
+    ```
+3.  Verbinde die Festplatte mit dem TPM-Chip:
+    Such zuerst deine verschlüsselte Partition (meist `/dev/sda3` oder `/dev/nvme0n1p3`).
+    ```bash
+    lsblk
+    ```
+    Dann führe das Binding aus (ersetze `/dev/sdaX` mit deinem Laufwerk):
+    ```bash
+    sudo clevis luks bind -d /dev/sda3 tpm2 '{"pcr_bank":"sha256","pcr_ids":"7"}'
+    ```
+    *(Du musst hier noch einmal dein LUKS-Passwort eingeben).*
+4.  Update die Boot-Umgebung:
+    ```bash
+    sudo update-initramfs -u -k 'all'
+    ```
+5.  **Test:** Starte neu (`sudo reboot`). Der NUC sollte jetzt ohne Passwort hochfahren! 🚀
 
 ---
 
