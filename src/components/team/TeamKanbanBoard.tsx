@@ -191,6 +191,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const [topTopicsOpen, setTopTopicsOpen] = useState(false);
     const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
     const [isHomeBoard, setIsHomeBoard] = useState(false);
+    const [tempIsHomeBoard, setTempIsHomeBoard] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [archiveOpen, setArchiveOpen] = useState(false);
     const [boardName, setBoardName] = useState('');
@@ -226,6 +227,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             const s = record.settings || {};
             setBoardSettings(s);
             setIsHomeBoard(!!s.isHomeBoard);
+            setTempIsHomeBoard(!!s.isHomeBoard);
             setCompletedCount(Number(s.teamBoard?.completedCount || 0));
         } catch (e) {
             console.error(e);
@@ -246,8 +248,6 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         }
     }, [boardId, boardSettings]);
 
-
-
     // Initial load for settings dialog
     useEffect(() => {
         if (settingsOpen && boardName === '') {
@@ -264,7 +264,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     }, [settingsOpen, boardId]);
 
     const saveBoardSettings = async () => {
-        const nextSettings = { ...boardSettings, isHomeBoard };
+        const nextSettings = { ...boardSettings, isHomeBoard: tempIsHomeBoard };
         try {
             const { data, error } = await supabase.from('kanban_boards').update({
                 name: boardName,
@@ -277,11 +277,13 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 throw new Error("Speichern fehlgeschlagen: Keine Schreibrechte oder Board nicht gefunden.");
             }
 
+            setBoardSettings(nextSettings); // Update local state immediately
+            setIsHomeBoard(tempIsHomeBoard);
             setSettingsOpen(false);
             enqueueSnackbar(t('teamBoard.settingsSaved') || 'Einstellungen gespeichert', { variant: 'success' });
-        } catch (e) {
-            console.error('FAILED TO SAVE BOARD SETTINGS:', e);
-            enqueueSnackbar(t('teamBoard.saveFailed') + ': ' + (e instanceof Error ? e.message : String(e)), { variant: 'error' });
+        } catch (e: any) {
+            console.error('Fehler beim Speichern der Board-Einstellungen:', e);
+            enqueueSnackbar(`Fehler: ${e.message || 'Unbekannter Fehler'}`, { variant: 'error' });
         }
     };
 
@@ -362,7 +364,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             const mapped = memberList.map((entry: any) => {
                 const userId = entry.user_id || entry.profile_id;
                 const profile = availableProfiles.find((c) => c.id === userId) ?? null;
-                return (profile && (profile.is_active ?? true) && !isSuperuserEmail(profile.email)) ? { ...entry, profile_id: userId, profile } : null;
+                return (profile && (profile.is_active ?? true)) ? { ...entry, profile_id: userId, profile } : null;
             }).filter((e) => e !== null) as MemberWithProfile[];
             setMembers(mapped);
             return mapped;
@@ -1125,7 +1127,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 <DialogTitle>{t('teamBoard.boardSettings')}</DialogTitle>
                 <DialogContent>
                     <FormControlLabel
-                        control={<Switch checked={isHomeBoard} onChange={(e) => setIsHomeBoard(e.target.checked)} />}
+                        control={<Switch checked={tempIsHomeBoard} onChange={(e) => setTempIsHomeBoard(e.target.checked)} />}
                         label={<Box><Typography variant="body1" fontWeight="bold">{t('teamBoard.useAsHomeBoard')}</Typography><Typography variant="caption" color="text.secondary">{t('teamBoard.homeBoardDesc')}</Typography></Box>}
                         sx={{ mt: 2 }}
                     />
