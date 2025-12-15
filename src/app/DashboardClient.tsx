@@ -35,10 +35,12 @@ import {
   DashboardCustomize,
   Delete,
   RocketLaunch,
-  Assignment,
+  Assignment, // Remove if unused, or keep if used elsewhere
   Person,
   Logout,
-  AdminPanelSettings
+  AdminPanelSettings,
+  ViewColumn,
+  Groups
 } from '@mui/icons-material';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
@@ -91,7 +93,7 @@ export default function DashboardClient() {
         // 1. Check Roles
         const isSuper = isSuperuserEmail(user.email);
         const { data: profileData } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-        setIsAdmin(isSuper || profileData?.role === 'admin');
+        setIsAdmin(isSuper || (profileData?.role && profileData.role.toLowerCase() === 'admin'));
 
         // 2. Load Boards
         const { data: boardData } = await supabase.from('kanban_boards').select('*');
@@ -255,7 +257,7 @@ export default function DashboardClient() {
           <Chip
             label={board.boardType === 'team' ? 'Team' : 'Projekt'}
             size="small"
-            sx={{ mb: 1, height: 20, fontSize: '0.7rem', backgroundColor: board.boardType === 'team' ? alpha(theme.palette.secondary.main, 0.1) : alpha(theme.palette.primary.main, 0.1) }}
+            sx={{ mb: 1, height: 20, fontSize: '0.7rem', backgroundColor: alpha(theme.palette.secondary.main, 0.1) }}
           />
           <Typography variant="body2" color="text.secondary" sx={{
             display: '-webkit-box',
@@ -367,7 +369,7 @@ export default function DashboardClient() {
       <Box sx={{ mb: 6 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <RocketLaunch color="secondary" /> Team Boards
+            <Groups color="secondary" /> Team Boards
           </Typography>
           {isAdmin && (
             <Button startIcon={<Add />} variant="outlined" color="primary" onClick={() => { setNewBoardType('team'); setCreateDialogOpen(true); }}>
@@ -386,7 +388,7 @@ export default function DashboardClient() {
       <Box sx={{ mb: 6 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Assignment color="primary" /> Projekt Boards
+            <ViewColumn color="secondary" /> Projekt Boards
           </Typography>
           {isAdmin && (
             <Button startIcon={<Add />} variant="outlined" color="primary" onClick={() => { setNewBoardType('standard'); setCreateDialogOpen(true); }}>

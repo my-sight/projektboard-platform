@@ -97,165 +97,148 @@ export function EscalationsView({
                     <Typography variant="h6" gutterBottom>
                         🚨 {t('boardManagement.escalationsTitle')}
                     </Typography>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                        {t('boardManagement.escalationsDesc')}
-                    </Typography>
                     {!schemaReady && (
                         <Alert severity="warning" sx={{ mt: 2 }}>
                             {schemaHelpText}
                         </Alert>
                     )}
                     <Divider sx={{ my: 2 }} />
-                    {(['Y', 'R'] as const).map(category => {
-                        const entries = filteredEscalations[category];
-                        const title = category === 'Y' ? t('boardManagement.yEscalations') : t('boardManagement.rEscalations');
-                        return (
-                            <Box key={category} sx={{ mb: category === 'Y' ? 3 : 0 }}>
-                                <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                                    {title}
-                                </Typography>
-                                {entries.length === 0 ? (
-                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                        {category === 'Y'
-                                            ? t('boardManagement.noYEscalations')
-                                            : t('boardManagement.noREscalations')}
-                                    </Typography>
-                                ) : (
-                                    <Stack spacing={2} sx={{ mb: 2 }}>
-                                        {entries.map(entry => {
-                                            const responsible = entry.responsible_id ? profileById.get(entry.responsible_id) : undefined;
-                                            const department = departmentName(entry.department_id);
-                                            const targetLabel = entry.target_date
-                                                ? new Date(entry.target_date).toLocaleDateString('de-DE')
-                                                : 'Kein Termin';
-                                            return (
-                                                <Box
-                                                    key={entry.card_id}
-                                                    sx={{
-                                                        border: '1px solid',
-                                                        borderColor: 'divider',
-                                                        borderRadius: 2,
-                                                        p: 2,
-                                                    }}
+                    {filteredEscalations.R.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                            {t('boardManagement.noEscalations')}
+                        </Typography>
+                    ) : (
+                        <Stack spacing={2} sx={{ mb: 2 }}>
+                            {filteredEscalations.R.map(entry => {
+                                const responsible = entry.responsible_id ? profileById.get(entry.responsible_id) : undefined;
+                                const department = departmentName(entry.department_id);
+                                const targetLabel = entry.target_date
+                                    ? new Date(entry.target_date).toLocaleDateString('de-DE')
+                                    : 'Kein Termin';
+                                return (
+                                    <Box
+                                        key={entry.card_id}
+                                        sx={{
+                                            border: '1px solid',
+                                            borderColor: 'divider',
+                                            borderRadius: 2,
+                                            p: 2,
+                                        }}
+                                    >
+                                        <Stack
+                                            direction={{ xs: 'column', md: 'row' }}
+                                            spacing={2}
+                                            justifyContent="space-between"
+                                            alignItems={{ xs: 'flex-start', md: 'center' }}
+                                        >
+                                            <Box>
+                                                <Typography variant="subtitle2">
+                                                    {entry.project_code || entry.project_name
+                                                        ? `${entry.project_code ?? ''}${entry.project_code && entry.project_name ? ' – ' : ''}${entry.project_name ?? ''}`
+                                                        : entry.title}
+                                                </Typography>
+                                                {entry.stage && (
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        {t('boardManagement.phase')}: {entry.stage}
+                                                    </Typography>
+                                                )}
+                                            </Box>
+                                            <Stack direction="row" spacing={2} alignItems="center">
+                                                <Tooltip title={t('boardManagement.progressTooltip')}>
+                                                    <Box>
+                                                        <CompletionDial steps={entry.completion_steps ?? 0} onClick={() => { }} disabled />
+                                                    </Box>
+                                                </Tooltip>
+                                                <Button
+                                                    variant="outlined"
+                                                    onClick={() => onOpenEditor(entry)}
+                                                    disabled={!canEdit || !schemaReady}
                                                 >
-                                                    <Stack
-                                                        direction={{ xs: 'column', md: 'row' }}
-                                                        spacing={2}
-                                                        justifyContent="space-between"
-                                                        alignItems={{ xs: 'flex-start', md: 'center' }}
-                                                    >
-                                                        <Box>
-                                                            <Typography variant="subtitle2">
-                                                                {entry.project_code || entry.project_name
-                                                                    ? `${entry.project_code ?? ''}${entry.project_code && entry.project_name ? ' – ' : ''}${entry.project_name ?? ''}`
-                                                                    : entry.title}
-                                                            </Typography>
-                                                            {entry.stage && (
-                                                                <Typography variant="body2" color="text.secondary">
-                                                                    {t('boardManagement.phase')}: {entry.stage}
+                                                    {t('boardManagement.edit')}
+                                                </Button>
+                                            </Stack>
+                                        </Stack>
+                                        <Grid container spacing={2} sx={{ mt: 1 }}>
+                                            <Grid item xs={12} md={6}>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {t('boardManagement.reason')}
+                                                </Typography>
+                                                <Typography variant="body2">
+                                                    {entry.reason || t('boardManagement.noReason')}
+                                                </Typography>
+                                            </Grid>
+                                            <Grid item xs={12} md={6}>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {t('boardManagement.measure')}
+                                                </Typography>
+                                                <Typography variant="body2">
+                                                    {entry.measure || t('boardManagement.noMeasure')}
+                                                </Typography>
+                                            </Grid>
+                                            <Grid item xs={12} md={4}>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {t('boardManagement.department')}
+                                                </Typography>
+                                                <Typography variant="body2">
+                                                    {department || t('boardManagement.noDepartment')}
+                                                </Typography>
+                                            </Grid>
+                                            <Grid item xs={12} md={4}>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {t('boardManagement.responsibility')}
+                                                </Typography>
+                                                <Typography variant="body2">
+                                                    {responsible
+                                                        ? `${responsible.full_name || responsible.email}${responsible.company ? ` • ${responsible.company}` : ''}`
+                                                        : t('boardManagement.noResponsibility')}
+                                                </Typography>
+                                            </Grid>
+                                            <Grid item xs={12} md={4}>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    {t('boardManagement.targetDate')}
+                                                </Typography>
+                                                <Typography variant="body2">
+                                                    {targetLabel}
+                                                </Typography>
+                                            </Grid>
+                                        </Grid>
+                                        {(() => {
+                                            const historyEntries = escalationHistory[entry.card_id] ?? [];
+                                            if (!historyEntries.length) {
+                                                return null;
+                                            }
+                                            return (
+                                                <Box sx={{ mt: 1.5 }}>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {t('boardManagement.history')}
+                                                    </Typography>
+                                                    <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                                                        {historyEntries.slice(0, 1).map(history => {
+                                                            const author = profileById.get(history.changed_by ?? '') ?? null;
+                                                            const authorLabel = author
+                                                                ? author.full_name || author.email || 'Unbekannt'
+                                                                : t('boardManagement.unknown');
+                                                            const changedAt = new Date(history.changed_at);
+                                                            return (
+                                                                <Typography key={history.id} variant="body2">
+                                                                    {changedAt.toLocaleString('de-DE')} – {authorLabel}
                                                                 </Typography>
-                                                            )}
-                                                        </Box>
-                                                        <Stack direction="row" spacing={2} alignItems="center">
-                                                            <Tooltip title={t('boardManagement.progressTooltip')}>
-                                                                <Box>
-                                                                    <CompletionDial steps={entry.completion_steps ?? 0} onClick={() => { }} disabled />
-                                                                </Box>
-                                                            </Tooltip>
-                                                            <Button
-                                                                variant="outlined"
-                                                                onClick={() => onOpenEditor(entry)}
-                                                                disabled={!canEdit || !schemaReady}
-                                                            >
-                                                                {t('boardManagement.edit')}
-                                                            </Button>
-                                                        </Stack>
+                                                            );
+                                                        })}
+                                                        {historyEntries.length > 1 && (
+                                                            <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                                                {t('boardManagement.olderEntries').replace('{n}', String(historyEntries.length - 1))}
+                                                            </Typography>
+                                                        )}
                                                     </Stack>
-                                                    <Grid container spacing={2} sx={{ mt: 1 }}>
-                                                        <Grid item xs={12} md={6}>
-                                                            <Typography variant="caption" color="text.secondary">
-                                                                {t('boardManagement.reason')}
-                                                            </Typography>
-                                                            <Typography variant="body2">
-                                                                {entry.reason || t('boardManagement.noReason')}
-                                                            </Typography>
-                                                        </Grid>
-                                                        <Grid item xs={12} md={6}>
-                                                            <Typography variant="caption" color="text.secondary">
-                                                                {t('boardManagement.measure')}
-                                                            </Typography>
-                                                            <Typography variant="body2">
-                                                                {entry.measure || t('boardManagement.noMeasure')}
-                                                            </Typography>
-                                                        </Grid>
-                                                        <Grid item xs={12} md={4}>
-                                                            <Typography variant="caption" color="text.secondary">
-                                                                {t('boardManagement.department')}
-                                                            </Typography>
-                                                            <Typography variant="body2">
-                                                                {department || t('boardManagement.noDepartment')}
-                                                            </Typography>
-                                                        </Grid>
-                                                        <Grid item xs={12} md={4}>
-                                                            <Typography variant="caption" color="text.secondary">
-                                                                {t('boardManagement.responsibility')}
-                                                            </Typography>
-                                                            <Typography variant="body2">
-                                                                {responsible
-                                                                    ? `${responsible.full_name || responsible.email}${responsible.company ? ` • ${responsible.company}` : ''}`
-                                                                    : t('boardManagement.noResponsibility')}
-                                                            </Typography>
-                                                        </Grid>
-                                                        <Grid item xs={12} md={4}>
-                                                            <Typography variant="caption" color="text.secondary">
-                                                                {t('boardManagement.targetDate')}
-                                                            </Typography>
-                                                            <Typography variant="body2">
-                                                                {targetLabel}
-                                                            </Typography>
-                                                        </Grid>
-                                                    </Grid>
-                                                    {(() => {
-                                                        const historyEntries = escalationHistory[entry.card_id] ?? [];
-                                                        if (!historyEntries.length) {
-                                                            return null;
-                                                        }
-                                                        return (
-                                                            <Box sx={{ mt: 1.5 }}>
-                                                                <Typography variant="caption" color="text.secondary">
-                                                                    {t('boardManagement.history')}
-                                                                </Typography>
-                                                                <Stack spacing={0.5} sx={{ mt: 0.5 }}>
-                                                                    {historyEntries.slice(0, 1).map(history => {
-                                                                        const author = profileById.get(history.changed_by ?? '') ?? null;
-                                                                        const authorLabel = author
-                                                                            ? author.full_name || author.email || 'Unbekannt'
-                                                                            : t('boardManagement.unknown');
-                                                                        const changedAt = new Date(history.changed_at);
-                                                                        return (
-                                                                            <Typography key={history.id} variant="body2">
-                                                                                {changedAt.toLocaleString('de-DE')} – {authorLabel}
-                                                                            </Typography>
-                                                                        );
-                                                                    })}
-                                                                    {historyEntries.length > 1 && (
-                                                                        <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                                                            {t('boardManagement.olderEntries').replace('{n}', String(historyEntries.length - 1))}
-                                                                        </Typography>
-                                                                    )}
-                                                                </Stack>
-                                                            </Box>
-                                                        );
-                                                    })()}
                                                 </Box>
                                             );
-                                        })}
-                                    </Stack>
-                                )}
-                                {category === 'Y' && <Divider sx={{ my: 2 }} />}
-                            </Box>
-                        );
-                    })}
+                                        })()}
+                                    </Box>
+                                );
+                            })}
+                        </Stack>
+                    )}
                 </CardContent>
             </Card>
 

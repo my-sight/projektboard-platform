@@ -237,7 +237,19 @@ export function useKanbanData(
 
             if (record) {
                 setBoardMeta(record);
-                // dispatch event if needed
+
+                // Update local state with overrides to reflect changes immediately
+                if (options?.settingsOverrides) {
+                    const o = options.settingsOverrides;
+                    if (o.cols) setCols(o.cols);
+                    if (o.checklistTemplates) setChecklistTemplates(o.checklistTemplates);
+                    if (o.trLabel !== undefined || o.sopLabel !== undefined) {
+                        setCustomLabels(prev => ({
+                            tr: o.trLabel ?? prev.tr,
+                            sop: o.sopLabel ?? prev.sop
+                        }));
+                    }
+                }
             }
 
             if (!options?.skipMeta) {
