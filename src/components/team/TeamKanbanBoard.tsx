@@ -432,7 +432,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
         // PRIO 1: SUPERUSER FORCE
         if (user.email && isSuperuserEmail(user.email)) {
-            console.log('⚡️ Superuser detected (TeamBoard):', user.email);
+            // console.log('⚡️ Superuser detected (TeamBoard):', user.email);
             setCanModify(true);
             setCanConfigure(true);
             return;
@@ -471,7 +471,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 await loadCards(mems);
                 await loadTopTopics();
                 await evaluatePermissions(profiles, mems);
-                console.log('Init complete. Loading:', false);
+                // console.log('Init complete. Loading:', false);
                 setLoading(false);
             }
         };
@@ -953,7 +953,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     }, [highlightCardId, filteredCards]);
 
     if (loading) return <LinearProgress sx={{ mt: 4 }} />;
-    // if (!supabase) return <Card><CardContent><SupabaseConfigNotice /></CardContent></Card>; // Removed
+
 
     return (
         <Box sx={{ p: 2, bgcolor: 'var(--bg)', height: '100%', display: 'flex', flexDirection: 'column', gap: 2 }}>

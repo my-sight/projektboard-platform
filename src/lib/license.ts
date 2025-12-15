@@ -35,15 +35,15 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> => {
     try {
         const parts = token.trim().split('.');
-        console.log('Verifying Token Parts:', parts.length);
+        // console.log('Verifying Token Parts:', parts.length);
         if (parts.length !== 2) {
             console.error('Token split failed. Token:', token);
             throw new Error('Invalid token format');
         }
 
         const [payloadB64, signatureB64] = parts;
-        console.log('Payload B64:', payloadB64);
-        console.log('Signature B64:', signatureB64);
+        // console.log('Payload B64:', payloadB64);
+        // console.log('Signature B64:', signatureB64);
 
         // 1. Import Public Key
         const keyBuffer = pemToArrayBuffer(LICENSE_PUBLIC_KEY);
@@ -55,7 +55,7 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
             (typeof window !== 'undefined' && window.crypto) ? window.crypto : null;
 
         if (webCrypto && webCrypto.subtle) {
-            console.log('Using Web Crypto API (Browser/Edge)');
+            // console.log('Using Web Crypto API (Browser/Edge)');
             const cryptoKey = await webCrypto.subtle.importKey(
                 "spki",
                 keyBuffer,
@@ -79,7 +79,7 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
             // Node.js fallback (Server Side non-Edge)
             try {
                 const nodeCrypto = await import('crypto');
-                console.log('Using Node.js Crypto (Server)');
+                // console.log('Using Node.js Crypto (Server)');
 
                 const pKey = nodeCrypto.createPublicKey({
                     key: Buffer.from(LICENSE_PUBLIC_KEY),
