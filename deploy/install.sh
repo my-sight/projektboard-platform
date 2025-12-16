@@ -98,6 +98,11 @@ else
     echo -e "${RED}Warning: init_schema.sql not found. Database will be empty.${NC}"
 fi
 
+if [ -f seed_superuser.sql ]; then
+    cp seed_superuser.sql volumes/db/init/99-seed-superuser.sql
+    echo "Superuser seed copied."
+fi
+
 # 4. Build and Start
 echo "Building and starting services..."
 docker compose build
