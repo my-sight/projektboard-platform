@@ -607,6 +607,23 @@ export function EditCardDialog({
                 disabled={!canEdit}
               />
 
+              {lanes && lanes.length > 0 && (
+                <>
+                  <Typography>{t('kanban.lane') || 'Lane'}</Typography>
+                  <Select
+                    size="small"
+                    value={selectedCard.Swimlane || ''}
+                    disabled={!canEdit}
+                    onChange={(e) => handlePatch('Swimlane', e.target.value)}
+                  >
+                    <MenuItem value=""><em>{t('kanban.generalLane') || 'Allgemein'}</em></MenuItem>
+                    {lanes.map((l: string) => (
+                      <MenuItem key={l} value={l}>{l}</MenuItem>
+                    ))}
+                  </Select>
+                </>
+              )}
+
 
             </Box>
 
@@ -821,10 +838,29 @@ export function NewCardDialog({ newCardOpen, setNewCardOpen, cols, lanes, rows, 
             onChange={(e) => setNewCard({ ...newCard, Nummer: e.target.value })}
           />
           <TextField
-            label={t('kanban.title') + " *"}
+            size="small"
+            fullWidth
+            sx={{ mt: 2 }}
+            label={t('kanban.title')}
             value={newCard.Teil}
             onChange={(e) => setNewCard({ ...newCard, Teil: e.target.value })}
           />
+
+          {lanes && lanes.length > 0 && (
+            <FormControl size="small" fullWidth sx={{ mt: 2 }}>
+              <InputLabel>{t('kanban.lane') || 'Lane'}</InputLabel>
+              <Select
+                value={newCard.Swimlane || ''}
+                label={t('kanban.lane') || 'Lane'}
+                onChange={(e) => setNewCard({ ...newCard, Swimlane: e.target.value })}
+              >
+                <MenuItem value=""><em>{t('kanban.generalLane') || 'Allgemein'}</em></MenuItem>
+                {lanes.map((l: string) => (
+                  <MenuItem key={l} value={l}>{l}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
           <FormControl fullWidth>
             <InputLabel>{t('kanban.responsible')}</InputLabel>
             <Select

@@ -328,7 +328,10 @@ export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferSta
                       sx={{
                         bgcolor: snapshot.isDraggingOver ? alpha('#fff', 0.05) : 'background.paper',
                         borderRadius: 2,
-                        minHeight: 140,
+                        minHeight: 260, // Approx 1.8x typical card height
+                        height: '100%',
+                        maxHeight: 'calc(100vh - 200px)',
+                        overflowY: 'auto',
                         p: 1,
                         display: 'flex',
                         flexDirection: 'column',
@@ -398,9 +401,10 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
           gridTemplateColumns: `200px ${stages.map(() => '300px').join(' ')}`,
           gap: 2,
           p: 2,
-          alignItems: 'start',
+          alignItems: 'stretch', // Ensure items fill the track
           overflow: 'auto',
           height: '100%',
+          gridAutoRows: 'auto', // Allow rows to grow as needed
         }}
       >
         <Box />
@@ -431,12 +435,17 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
               sx={{
                 position: 'sticky',
                 left: 0,
-                zIndex: 1,
+                zIndex: 3, // Higher than column headers? No, column headers are usually 2. Row headers need to stay on top of horizontal scroll.
+                // Wait, if we scroll vertical, Col Header (top) stays. If we scroll Horizontal, Row Header (left) stays.
+                // The corner piece needs highest Z.
                 p: 2,
                 display: 'flex',
                 flexDirection: 'column',
                 justifyContent: 'center',
                 borderRadius: 2,
+                alignSelf: 'start', // Don't stretch the header itself if not needed, or 'stretch' if we want it to match row height
+                height: 'auto',
+                minHeight: 100
               }}
             >
               <Typography fontWeight={700} noWrap title={laneName}>{laneName}</Typography>
@@ -463,7 +472,10 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
                       sx={{
                         bgcolor: snapshot.isDraggingOver ? alpha('#fff', 0.05) : 'background.paper',
                         borderRadius: 2,
-                        minHeight: 140,
+                        minHeight: 260,
+                        height: '100%',
+                        maxHeight: 'calc(100vh - 200px)',
+                        overflowY: 'auto',
                         p: 1,
                         display: 'flex',
                         flexDirection: 'column',

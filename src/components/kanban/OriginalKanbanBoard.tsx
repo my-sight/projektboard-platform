@@ -355,7 +355,13 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         />
 
         <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
-          <KanbanColumnsView {...renderBoardProps} />
+          {viewMode === 'swim' ? (
+            <KanbanSwimlaneView {...renderBoardProps} />
+          ) : viewMode === 'lane' ? (
+            <KanbanLaneView {...renderBoardProps} lanes={lanes} />
+          ) : (
+            <KanbanColumnsView {...renderBoardProps} />
+          )}
         </Box>
 
         {/* Dialogs */}
@@ -376,6 +382,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           onSave={saveSettings}
           loadCards={loadCards}
           onOpenArchive={handleOpenArchive}
+          lanes={lanes}
         />
 
         <KanbanKPIDialog

@@ -6,6 +6,7 @@ import { ProjectBoardCard, ViewMode, LayoutDensity } from '@/types';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { KanbanPermissions } from './useKanbanPermissions';
 import { useKanbanUtils } from './useKanbanUtils';
+import { useKanbanRealtime } from './useKanbanRealtime';
 import { DEFAULT_COLS, DEFAULT_TEMPLATES } from '../constants';
 
 export function useKanbanData(
@@ -242,6 +243,7 @@ export function useKanbanData(
                 if (options?.settingsOverrides) {
                     const o = options.settingsOverrides;
                     if (o.cols) setCols(o.cols);
+                    if (o.lanes) setLanes(o.lanes);
                     if (o.checklistTemplates) setChecklistTemplates(o.checklistTemplates);
                     if (o.trLabel !== undefined || o.sopLabel !== undefined) {
                         setCustomLabels(prev => ({
@@ -341,44 +343,8 @@ export function useKanbanData(
     }, [permissions.canEditContent, boardId, enqueueSnackbar, t, convertDbToCard]);
 
 
-    // Realtime Subscription
-    useEffect(() => {
-        if (!boardId) return;
-
-        const channel = supabase
-            .channel(`kanban_cards_${boardId} `)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_cards', filter: `board_id = eq.${boardId} ` }, (payload) => {
-                const { eventType, new: newRecord, old: oldRecord } = payload;
-
-                if (eventType === 'INSERT') {
-                    const newCard = convertDbToCard(newRecord);
-                    setRows(prev => {
-                        if (prev.some(r => idFor(r) === idFor(newCard))) return prev;
-                        return reindexByStage([...prev, newCard]);
-                    });
-                } else if (eventType === 'UPDATE') {
-                    const updatedCard = convertDbToCard(newRecord);
-                    setRows(prev => {
-                        const isArchived = updatedCard["Archived"] === "1";
-                        if (isArchived) return prev.filter(r => idFor(r) !== idFor(updatedCard));
-
-                        const index = prev.findIndex(r => idFor(r) === idFor(updatedCard));
-                        if (index === -1) return reindexByStage([...prev, updatedCard]);
-
-                        const newRows = [...prev];
-                        newRows[index] = updatedCard;
-                        return newRows;
-                    });
-                } else if (eventType === 'DELETE') {
-                    setRows(prev => prev.filter(r => r.id !== oldRecord.id));
-                }
-            })
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [boardId, convertDbToCard, reindexByStage, idFor]);
+    // Realtime Subscription via Hook
+    useKanbanRealtime(boardId, setRows, convertDbToCard);
 
     return {
         rows, setRows,

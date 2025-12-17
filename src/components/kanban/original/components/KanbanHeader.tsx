@@ -120,7 +120,6 @@ export function KanbanHeader({
 
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
                 {/* View Mode */}
-                {/* 
                 <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, display: 'flex' }}>
                     <Tooltip title={t('kanban.viewColumns')}>
                         <IconButton
@@ -137,10 +136,10 @@ export function KanbanHeader({
                             color={viewMode === 'swim' ? 'primary' : 'default'}
                             onClick={() => onViewModeChange('swim')}
                         >
-                            <TableRows sx={{ transform: 'rotate(90deg)' }} />
+                            <TableRows />
                         </IconButton>
                     </Tooltip>
-                    <Tooltip title={t('kanban.viewLanes')}>
+                    <Tooltip title="Lanes">
                         <IconButton
                             size="small"
                             color={viewMode === 'lane' ? 'primary' : 'default'}
@@ -150,7 +149,6 @@ export function KanbanHeader({
                         </IconButton>
                     </Tooltip>
                 </Box>
-                 */}
 
                 {/* Density */}
                 <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, display: 'flex' }}>

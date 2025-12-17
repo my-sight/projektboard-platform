@@ -25,6 +25,7 @@ interface KanbanSettingsDialogProps {
     onSave: (options?: any) => Promise<boolean | void>;
     loadCards: () => Promise<boolean>;
     onOpenArchive: () => void;
+    lanes: string[];
 }
 
 export function KanbanSettingsDialog({
@@ -43,10 +44,12 @@ export function KanbanSettingsDialog({
     canManageSettings,
     onSave,
     loadCards,
-    onOpenArchive
+    onOpenArchive,
+    lanes
 }: KanbanSettingsDialogProps) {
     const { t } = useLanguage();
     const [currentCols, setCurrentCols] = useState(cols);
+    const [currentLanes, setCurrentLanes] = useState(lanes || []);
     const [currentTemplates, setCurrentTemplates] = useState(checklistTemplates);
     const [localCustomLabels, setLocalCustomLabels] = useState(customLabels);
     const [tab, setTab] = useState(0);
@@ -56,11 +59,12 @@ export function KanbanSettingsDialog({
     useEffect(() => {
         if (open) {
             setCurrentCols(cols);
+            setCurrentLanes(lanes || []);
             setCurrentTemplates(checklistTemplates);
             setLocalCustomLabels(customLabels);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open]);
+    }, [open, cols, lanes, checklistTemplates, customLabels]);
 
     const handleSave = async () => {
         // We pass the new settings to the parent via onSave
@@ -74,6 +78,7 @@ export function KanbanSettingsDialog({
             boardDescription,
             settingsOverrides: {
                 cols: currentCols,
+                lanes: currentLanes,
                 checklistTemplates: currentTemplates,
                 trLabel: localCustomLabels.tr,
                 sopLabel: localCustomLabels.sop
@@ -125,6 +130,7 @@ export function KanbanSettingsDialog({
     const handleAddCol = () => { if (newColName.trim()) { setCurrentCols([...currentCols, { id: `c${Date.now()}`, name: newColName, done: false }]); setNewColName(''); } };
     const handleDelCol = (id: string) => { if (confirm(t('kanban.deletePrompt'))) setCurrentCols(currentCols.filter(c => c.id !== id)); };
     const handleToggleDone = (id: string) => { setCurrentCols(currentCols.map(c => c.id === id ? { ...c, done: !c.done } : c)); }
+    const handleDelLane = (idx: number) => { if (confirm(t('kanban.deletePrompt'))) setCurrentLanes(currentLanes.filter((_, i) => i !== idx)); };
 
     return (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
@@ -133,6 +139,7 @@ export function KanbanSettingsDialog({
                 <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
                     <Tab label={t('kanban.metaData')} />
                     <Tab label={t('kanban.columns')} />
+                    <Tab label="Lanes" />
                     <Tab label={t('kanban.checklists')} />
                 </Tabs>
 
@@ -195,7 +202,7 @@ export function KanbanSettingsDialog({
                     </Box>
                 )}
 
-                {tab === 2 && (
+                {tab === 3 && (
                     <Box sx={{ pt: 1, height: '400px', overflowY: 'auto' }}>
                         {currentCols.map((col) => (
                             <Card key={col.id} variant="outlined" sx={{ mb: 2, p: 2 }}>
@@ -214,6 +221,34 @@ export function KanbanSettingsDialog({
                                 <Button startIcon={<Add />} size="small" onClick={() => addChecklistItem(col.name)} disabled={!canManageSettings}>{t('kanban.addItem')}</Button>
                             </Card>
                         ))}
+                    </Box>
+                )}
+
+                {tab === 2 && (
+                    <Box sx={{ pt: 1 }}>
+                        <List dense>
+                            {currentLanes.map((lane, idx) => (
+                                <ListItem key={idx} secondaryAction={
+                                    <IconButton onClick={() => handleDelLane(idx)} disabled={!canManageSettings}><Delete /></IconButton>
+                                }>
+                                    <TextField
+                                        value={lane}
+                                        onChange={(e) => {
+                                            const newLanes = [...currentLanes];
+                                            newLanes[idx] = e.target.value;
+                                            setCurrentLanes(newLanes);
+                                        }}
+                                        size="small"
+                                        fullWidth
+                                        sx={{ mr: 2 }}
+                                        disabled={!canManageSettings}
+                                    />
+                                </ListItem>
+                            ))}
+                        </List>
+                        <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                            <Button variant="contained" startIcon={<Add />} onClick={() => setCurrentLanes([...currentLanes, 'Neue Lane'])} disabled={!canManageSettings}>{t('kanban.add')}</Button>
+                        </Box>
                     </Box>
                 )}
             </DialogContent>
