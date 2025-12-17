@@ -2,6 +2,10 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { translations, Language } from '@/i18n/translations';
+import dayjs from 'dayjs';
+import 'dayjs/locale/de';
+import 'dayjs/locale/en';
+import 'dayjs/locale/pl';
 
 interface LanguageContextType {
     language: Language;
@@ -18,9 +22,10 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
     useEffect(() => {
         const loadLanguage = async () => {
             // Check local storage first for speed
-            const stored = localStorage.getItem('language') as Language;
-            if (stored) {
-                setLanguageState(stored);
+            const stored = localStorage.getItem('language');
+            if (stored && (stored === 'de' || stored === 'en' || stored === 'pl')) {
+                setLanguageState(stored as Language);
+                dayjs.locale(stored);
                 return;
             }
 
@@ -32,6 +37,7 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
     const setLanguage = async (lang: Language) => {
         setLanguageState(lang);
         localStorage.setItem('language', lang);
+        dayjs.locale(lang);
 
         // Optional: Persist to DB if schema supports it (omitted for now)
     };

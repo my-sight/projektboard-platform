@@ -32,7 +32,14 @@ export default function Header() {
 
         <Button
           color="inherit"
-          onClick={() => setLanguage(language === 'de' ? 'en' : 'de')}
+          onClick={() => {
+            const nextLang: Record<string, 'de' | 'en' | 'pl'> = {
+              'de': 'en',
+              'en': 'pl',
+              'pl': 'de'
+            };
+            setLanguage(nextLang[language] || 'de');
+          }}
           sx={{ mr: 2, minWidth: 40, fontWeight: 700 }}
         >
           {language.toUpperCase()}

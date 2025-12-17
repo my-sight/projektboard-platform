@@ -315,7 +315,14 @@ export default function DashboardClient() {
         </Box>
 
         <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
-          <Button variant="outlined" size="small" onClick={() => setLanguage(language === 'de' ? 'en' : 'de')}>
+          <Button variant="outlined" size="small" onClick={() => {
+            const nextLang: Record<string, 'de' | 'en' | 'pl'> = {
+              'de': 'en',
+              'en': 'pl',
+              'pl': 'de'
+            };
+            setLanguage(nextLang[language] || 'de');
+          }}>
             {language.toUpperCase()}
           </Button>
           {isAdmin && (
