@@ -15,6 +15,8 @@ export interface KanbanKPIs {
     ampelNeutral: number;
     rEscalations: ProjectBoardCard[];
     columnDistribution: Record<string, number>;
+    memberDistribution: Record<string, number>;
+    laneDistribution: Record<string, number>;
     totalTrDeviation: number;
     nextTrs: ProjectBoardCard[];
 }
@@ -34,6 +36,8 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
             ampelNeutral: 0,
             rEscalations: [],
             columnDistribution: {},
+            memberDistribution: {},
+            laneDistribution: {},
             totalTrDeviation: 0,
             nextTrs: []
         };
@@ -84,6 +88,17 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
 
             const stage = inferStage(card);
             kpis.columnDistribution[stage] = (kpis.columnDistribution[stage] || 0) + 1;
+
+            const member = card.Verantwortlich ? String(card.Verantwortlich).trim() : 'Unzugewiesen';
+            kpis.memberDistribution[member] = (kpis.memberDistribution[member] || 0) + 1;
+
+            // Simplified lane logic: Assuming "Lane" field or mapped from "Board Lane" if applicable from other logic
+            // Based on previous chats, there are "lanes" in settings mapped to card fields.
+            // Often stored in "Lane" or inferred. Let's check card structure briefly?
+            // Relying on previous knowledge: "Lane" field exists on card as key.
+            // If not directly, I'll allow "Allgemein" or check if `card.Lane` works.
+            const lane = (card as any)["Lane"] ? String((card as any)["Lane"]).trim() : 'Allgemein';
+            kpis.laneDistribution[lane] = (kpis.laneDistribution[lane] || 0) + 1;
         });
 
         // Calculate Next 3 TRs
@@ -118,9 +133,21 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
         return dist;
     }, [kpis.columnDistribution]);
 
+    const memberDistribution = useMemo(() => {
+        const dist = Object.entries(kpis.memberDistribution).map(([name, count]) => ({ name, count: count as number }));
+        dist.sort((a, b) => b.count - a.count); // Descending by count
+        return dist;
+    }, [kpis.memberDistribution]);
+
+    const laneDistribution = useMemo(() => {
+        const dist = Object.entries(kpis.laneDistribution).map(([name, count]) => ({ name, count: count as number }));
+        dist.sort((a, b) => b.count - a.count); // Descending by count
+        return dist;
+    }, [kpis.laneDistribution]);
+
     const kpiBadgeCount = useMemo(() => {
         return kpis.trOverdue.length + kpis.rEscalations.length;
     }, [kpis]);
 
-    return { kpis, distribution, kpiBadgeCount };
+    return { kpis, distribution, memberDistribution, laneDistribution, kpiBadgeCount };
 }

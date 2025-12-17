@@ -12,11 +12,13 @@ interface KanbanKPIDialogProps {
     onClose: () => void;
     kpis: KanbanKPIs;
     distribution: { name: string; count: number }[];
+    memberDistribution: { name: string; count: number }[];
+    laneDistribution: { name: string; count: number }[];
     trLabel: string;
     idFor: (card: any) => string;
 }
 
-export function KanbanKPIDialog({ open, onClose, kpis, distribution, trLabel, idFor }: KanbanKPIDialogProps) {
+export function KanbanKPIDialog({ open, onClose, kpis, distribution, memberDistribution, laneDistribution, trLabel, idFor }: KanbanKPIDialogProps) {
     const { t } = useLanguage();
 
     const percentage = (count: number) => {
@@ -32,7 +34,7 @@ export function KanbanKPIDialog({ open, onClose, kpis, distribution, trLabel, id
             <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Assessment color="primary" />
-                    <Typography variant="h6">{t('kanban.kpis')}</Typography>
+                    <Typography variant="h6">KPI</Typography>
                 </Box>
                 <Button onClick={onClose} startIcon={<Close />}>{t('kanban.close')}</Button>
             </DialogTitle>
@@ -118,36 +120,115 @@ export function KanbanKPIDialog({ open, onClose, kpis, distribution, trLabel, id
                             )}
                         </Grid>
 
-                        <Typography variant="h6" gutterBottom sx={{ mt: 3, color: 'text.secondary' }}>{t('kanban.cardDistribution')}</Typography>
-                        <Card variant="outlined">
-                            <CardContent>
-                                <List dense>
-                                    {distribution.map((item, index) => (
-                                        <ListItem key={index} disableGutters sx={{ py: 0.5 }}>
-                                            <Grid container alignItems="center" spacing={2}>
-                                                <Grid item xs={4}>
-                                                    <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.name}</Typography>
-                                                </Grid>
-                                                <Grid item xs={6}>
-                                                    <Box sx={{ width: '100%', height: '10px', backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: '4px' }}>
-                                                        <Box sx={{
-                                                            width: `${percentage(item.count)}%`,
-                                                            height: '100%',
-                                                            backgroundColor: DEFAULT_COLS.find(c => c.name === item.name)?.done ? '#4caf50' : '#2196f3',
-                                                            borderRadius: '4px',
-                                                            transition: 'width 0.5s ease',
-                                                        }} />
-                                                    </Box>
-                                                </Grid>
-                                                <Grid item xs={2} sx={{ textAlign: 'right' }}>
-                                                    <Typography variant="caption" sx={{ fontWeight: 600 }}>{item.count} ({percentage(item.count)}%)</Typography>
-                                                </Grid>
-                                            </Grid>
-                                        </ListItem>
-                                    ))}
-                                </List>
-                            </CardContent>
-                        </Card>
+                        <Grid container spacing={4} sx={{ mt: 2 }}>
+                            {/* Projekte je Phase */}
+                            <Grid item xs={12}>
+                                <Typography variant="h6" gutterBottom sx={{ color: 'text.secondary' }}>{t('kanban.projectsPerPhase')}</Typography>
+                                <Card variant="outlined">
+                                    <CardContent>
+                                        <List dense>
+                                            {distribution.map((item, index) => (
+                                                <ListItem key={index} disableGutters sx={{ py: 0.5 }}>
+                                                    <Grid container alignItems="center" spacing={2}>
+                                                        <Grid item xs={4}>
+                                                            <Typography variant="body2" sx={{ fontWeight: 500 }}>{item.name}</Typography>
+                                                        </Grid>
+                                                        <Grid item xs={6}>
+                                                            <Box sx={{ width: '100%', height: '10px', backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: '4px' }}>
+                                                                <Box sx={{
+                                                                    width: `${percentage(item.count)}%`,
+                                                                    height: '100%',
+                                                                    backgroundColor: DEFAULT_COLS.find(c => c.name === item.name)?.done ? '#4caf50' : '#2196f3',
+                                                                    borderRadius: '4px',
+                                                                    transition: 'width 0.5s ease',
+                                                                }} />
+                                                            </Box>
+                                                        </Grid>
+                                                        <Grid item xs={2} sx={{ textAlign: 'right' }}>
+                                                            <Typography variant="caption" sx={{ fontWeight: 600 }}>{item.count} ({percentage(item.count)}%)</Typography>
+                                                        </Grid>
+                                                    </Grid>
+                                                </ListItem>
+                                            ))}
+                                        </List>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+
+                            {/* Projekte je Boardmember - Moved to 2nd position as requested */}
+                            <Grid item xs={12}>
+                                <Typography variant="h6" gutterBottom sx={{ color: 'text.secondary' }}>{t('kanban.projectsPerMember')}</Typography>
+                                <Card variant="outlined">
+                                    <CardContent>
+                                        <List dense sx={{ maxHeight: 300, overflowY: 'auto' }}>
+                                            {memberDistribution.map((item, index) => (
+                                                <ListItem key={index} disableGutters sx={{ py: 0.5 }}>
+                                                    <Grid container alignItems="center" spacing={2}>
+                                                        <Grid item xs={4}>
+                                                            <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap title={item.name}>{item.name}</Typography>
+                                                        </Grid>
+                                                        <Grid item xs={6}>
+                                                            <Box sx={{ width: '100%', height: '10px', backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: '4px' }}>
+                                                                <Box sx={{
+                                                                    width: `${percentage(item.count)}%`,
+                                                                    height: '100%',
+                                                                    backgroundColor: '#9c27b0', // Purple for members
+                                                                    borderRadius: '4px',
+                                                                    transition: 'width 0.5s ease',
+                                                                }} />
+                                                            </Box>
+                                                        </Grid>
+                                                        <Grid item xs={2} sx={{ textAlign: 'right' }}>
+                                                            <Typography variant="caption" sx={{ fontWeight: 600 }}>{item.count} ({percentage(item.count)}%)</Typography>
+                                                        </Grid>
+                                                    </Grid>
+                                                </ListItem>
+                                            ))}
+                                            {memberDistribution.length === 0 && (
+                                                <Typography variant="body2" color="text.secondary">Keine Zuordnungen gefunden.</Typography>
+                                            )}
+                                        </List>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+
+                            {/* Projekte je Lane - Moved to 3rd position as requested */}
+                            <Grid item xs={12}>
+                                <Typography variant="h6" gutterBottom sx={{ color: 'text.secondary' }}>{t('kanban.projectsPerLane')}</Typography>
+                                <Card variant="outlined">
+                                    <CardContent>
+                                        <List dense sx={{ maxHeight: 300, overflowY: 'auto' }}>
+                                            {laneDistribution.map((item, index) => (
+                                                <ListItem key={index} disableGutters sx={{ py: 0.5 }}>
+                                                    <Grid container alignItems="center" spacing={2}>
+                                                        <Grid item xs={4}>
+                                                            <Typography variant="body2" sx={{ fontWeight: 500 }} noWrap>{item.name}</Typography>
+                                                        </Grid>
+                                                        <Grid item xs={6}>
+                                                            <Box sx={{ width: '100%', height: '10px', backgroundColor: 'rgba(0,0,0,0.08)', borderRadius: '4px' }}>
+                                                                <Box sx={{
+                                                                    width: `${percentage(item.count)}%`,
+                                                                    height: '100%',
+                                                                    backgroundColor: '#ff9800',
+                                                                    borderRadius: '4px',
+                                                                    transition: 'width 0.5s ease',
+                                                                }} />
+                                                            </Box>
+                                                        </Grid>
+                                                        <Grid item xs={2} sx={{ textAlign: 'right' }}>
+                                                            <Typography variant="caption" sx={{ fontWeight: 600 }}>{item.count} ({percentage(item.count)}%)</Typography>
+                                                        </Grid>
+                                                    </Grid>
+                                                </ListItem>
+                                            ))}
+                                            {laneDistribution.length === 0 && (
+                                                <Typography variant="body2" color="text.secondary">Keine Lane-Informationen gefunden.</Typography>
+                                            )}
+                                        </List>
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                        </Grid>
                     </Grid>
                 </Grid>
             </DialogContent>

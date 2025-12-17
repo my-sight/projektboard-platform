@@ -186,7 +186,10 @@ export const translations = {
             cardDeleted: "Karte endgültig gelöscht",
             archiveColumnConfirm: 'Alle Karten in "{column}" archivieren?',
             cardsArchived: "Karten archiviert",
-            checklistUnfinished: '⚠️ In der Phase "{stage}" sind noch {count} Punkte offen:\n{items}\n\nMöchtest du die Karte trotzdem verschieben?'
+            checklistUnfinished: '⚠️ In der Phase "{stage}" sind noch {count} Punkte offen:\n{items}\n\nMöchtest du die Karte trotzdem verschieben?',
+            projectsPerPhase: "Projekte je Phase",
+            projectsPerLane: "Projekte je Lane",
+            projectsPerMember: "Projekte je Boardmember",
         },
         teamBoard: {
             settingsSaved: 'Einstellungen gespeichert',
@@ -559,7 +562,10 @@ export const translations = {
             cardDeleted: "Card permanently deleted",
             archiveColumnConfirm: 'Archive all cards in "{column}"?',
             cardsArchived: "Cards archived",
-            checklistUnfinished: '⚠️ There are {count} open items in phase "{stage}":\n{items}\n\nDo you still want to move the card?'
+            checklistUnfinished: '⚠️ There are {count} open items in phase "{stage}":\n{items}\n\nDo you still want to move the card?',
+            projectsPerPhase: "Projects per Phase",
+            projectsPerLane: "Projects per Lane",
+            projectsPerMember: "Projects per Board Member"
         },
         teamBoard: {
             settingsSaved: 'Settings saved',

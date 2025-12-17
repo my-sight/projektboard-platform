@@ -92,7 +92,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
       inferStage, idFor
     } = useKanbanData(boardId, permissions, viewMode, setViewMode, setDensity);
 
-    const { kpis, distribution, kpiBadgeCount } = useKanbanKPIs(rows, inferStage);
+    const { kpis, distribution, memberDistribution, laneDistribution, kpiBadgeCount } = useKanbanKPIs(rows, inferStage);
     const { convertDbToCard } = useKanbanUtils(cols, viewMode);
 
     // --- Loading & Initialization ---
@@ -390,6 +390,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           onClose={() => setKpiPopupOpen(false)}
           kpis={kpis}
           distribution={distribution}
+          memberDistribution={memberDistribution}
+          laneDistribution={laneDistribution}
           trLabel={customLabels.tr}
           idFor={idFor}
         />
