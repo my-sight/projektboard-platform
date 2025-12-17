@@ -40,7 +40,9 @@ import {
   Logout,
   AdminPanelSettings,
   ViewColumn,
-  Groups
+  Groups,
+  LightMode,
+  DarkMode
 } from '@mui/icons-material';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
@@ -64,7 +66,7 @@ export default function DashboardClient() {
   const theme = useTheme();
   const { user, profile, refreshProfile, signOut, loading: authLoading } = useAuth();
   const { language, setLanguage, t } = useLanguage();
-  const { config } = useSystemConfig();
+  const { config, toggleMode } = useSystemConfig();
 
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -325,6 +327,9 @@ export default function DashboardClient() {
           }}>
             {language.toUpperCase()}
           </Button>
+          <IconButton onClick={toggleMode} color="inherit">
+            {theme.palette.mode === 'dark' ? <LightMode /> : <DarkMode />}
+          </IconButton>
           {isAdmin && (
             <Tooltip title="Administration">
               <IconButton onClick={() => router.push('/admin')} color="primary">

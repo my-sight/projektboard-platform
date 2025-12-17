@@ -33,6 +33,8 @@ interface SystemConfigContextType {
   refreshConfig: () => Promise<void>;
   isLoading: boolean;
   theme: Theme;
+  mode: 'light' | 'dark';
+  toggleMode: () => void;
 }
 
 export const defaultSettings: SystemConfig = {
@@ -48,7 +50,9 @@ const SystemConfigContext = createContext<SystemConfigContextType>({
   config: defaultSettings,
   refreshConfig: async () => { },
   isLoading: true,
-  theme: createTheme()
+  theme: createTheme(),
+  mode: 'light',
+  toggleMode: () => { }
 });
 
 export const useSystemConfig = () => useContext(SystemConfigContext);
@@ -57,6 +61,25 @@ export const useSystemConfig = () => useContext(SystemConfigContext);
 export function SystemConfigProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<SystemConfig>(defaultSettings);
   const [isLoading, setIsLoading] = useState(true);
+  const [mode, setMode] = useState<'light' | 'dark'>('light');
+
+  // Load mode from localStorage
+  useEffect(() => {
+    const savedMode = localStorage.getItem('theme-mode');
+    if (savedMode === 'dark' || savedMode === 'light') {
+      setMode(savedMode);
+    } else {
+      // System preference fallback could go here
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setMode(prefersDark ? 'dark' : 'light');
+    }
+  }, []);
+
+  const toggleMode = () => {
+    const newMode = mode === 'light' ? 'dark' : 'light';
+    setMode(newMode);
+    localStorage.setItem('theme-mode', newMode);
+  };
 
   const refreshConfig = async () => {
     try {
@@ -104,10 +127,28 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
   // --- THEME GENERIEREN ---
   const theme = createTheme({
     palette: {
-      mode: 'light',
+      mode,
       primary: { main: config.primaryColor },
       secondary: { main: config.secondaryColor },
-      background: { default: '#f4f6f8', paper: '#ffffff' },
+      background: mode === 'dark'
+        ? {
+          default: '#0f172a', // Slate 900
+          paper: '#1e293b',   // Slate 800
+        }
+        : {
+          default: '#f4f6f8',
+          paper: '#ffffff',
+        },
+      text: mode === 'dark'
+        ? {
+          primary: '#f8fafc', // Slate 50
+          secondary: '#94a3b8', // Slate 400
+        }
+        : {
+          primary: '#1c2434', // Darker text for light mode
+          secondary: '#64748b',
+        },
+      divider: mode === 'dark' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(0,0,0,0.12)',
     },
     typography: {
       fontFamily: fonts[config.fontFamily]?.style.fontFamily || 'sans-serif',
@@ -120,7 +161,12 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
     components: {
       MuiButton: {
         styleOverrides: {
-          root: { boxShadow: 'none', '&:hover': { boxShadow: '0 2px 4px rgba(0,0,0,0.15)' } },
+          root: {
+            boxShadow: 'none',
+            '&:hover': {
+              boxShadow: mode === 'dark' ? '0 2px 4px rgba(0,0,0,0.4)' : '0 2px 4px rgba(0,0,0,0.15)'
+            }
+          },
           contained: { borderRadius: 4 }
         },
       },
@@ -128,17 +174,18 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
         styleOverrides: {
           root: {
             borderRadius: 4, // Kantig
-            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-            border: '1px solid rgba(0,0,0,0.08)'
+            boxShadow: mode === 'dark' ? '0 1px 3px rgba(0,0,0,0.3)' : '0 1px 3px rgba(0,0,0,0.08)',
+            border: mode === 'dark' ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)',
+            backgroundImage: 'none'
           },
         },
       },
       MuiAppBar: {
         styleOverrides: {
           root: {
-            boxShadow: '0 1px 0 rgba(0,0,0,0.05)',
-            backgroundColor: '#ffffff',
-            color: '#333'
+            boxShadow: mode === 'dark' ? '0 1px 0 rgba(255,255,255,0.05)' : '0 1px 0 rgba(0,0,0,0.05)',
+            backgroundColor: mode === 'dark' ? '#1e293b' : '#ffffff',
+            color: mode === 'dark' ? '#f8fafc' : '#333'
           }
         }
       },
@@ -149,14 +196,40 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
       },
       MuiDialog: {
         styleOverrides: {
-          paper: { borderRadius: 6 }
+          paper: {
+            borderRadius: 6,
+            backgroundImage: 'none',
+            border: mode === 'dark' ? '1px solid rgba(255,255,255,0.1)' : 'none'
+          }
+        }
+      },
+      MuiCssBaseline: {
+        styleOverrides: {
+          body: {
+            scrollbarColor: mode === 'dark' ? '#334155 #0f172a' : undefined,
+            '&::-webkit-scrollbar, & *::-webkit-scrollbar': {
+              backgroundColor: 'transparent',
+              width: 8,
+              height: 8,
+            },
+            '&::-webkit-scrollbar-thumb, & *::-webkit-scrollbar-thumb': {
+              borderRadius: 8,
+              backgroundColor: mode === 'dark' ? '#334155' : '#cbd5e1',
+              minHeight: 24,
+              border: mode === 'dark' ? '2px solid #0f172a' : '2px solid transparent',
+              backgroundClip: 'content-box'
+            },
+            '&::-webkit-scrollbar-thumb:focus, & *::-webkit-scrollbar-thumb:focus': {
+              backgroundColor: mode === 'dark' ? '#475569' : '#94a3b8',
+            },
+          }
         }
       }
     },
   });
 
   return (
-    <SystemConfigContext.Provider value={{ config, refreshConfig, isLoading, theme }}>
+    <SystemConfigContext.Provider value={{ config, refreshConfig, isLoading, theme, mode, toggleMode }}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         {children}
