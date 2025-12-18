@@ -851,7 +851,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const backlogCards = useMemo(() => filteredCards.filter(c => c.status === 'backlog').sort((a, b) => (a.position ?? 0) - (b.position ?? 0)), [filteredCards]);
 
     const renderCard = (card: TeamBoardCard, index: number) => {
-        const borderColor = highlightCardId === card.cardId ? '#ffc107' : (card.important ? '#d32f2f' : (card.watch ? '#1976d2' : 'rgba(0,0,0,0.12)'));
+        const borderColor = highlightCardId === card.cardId
+            ? theme.palette.warning.main
+            : (card.important ? theme.palette.error.main : (card.watch ? theme.palette.primary.main : theme.palette.divider));
         const isExternal = card.boardId !== boardId;
         const dateStr = card.dueDate ? new Date(card.dueDate).toLocaleDateString('de-DE') : null;
         const isOverdue = card.dueDate ? new Date(card.dueDate) < new Date() : false;
@@ -869,7 +871,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                             border: '1px solid',
                             borderColor,
                             boxShadow: snap.isDragging ? 3 : 1,
-                            bgcolor: isExternal ? '#fafafa' : alpha(theme.palette.background.paper, 0.15),
+                            bgcolor: isExternal
+                                ? (theme.palette.mode === 'dark' ? alpha(theme.palette.common.white, 0.05) : '#fafafa')
+                                : alpha(theme.palette.background.paper, 0.15),
                             minHeight: MIN_CARD_HEIGHT,
                             position: 'relative',
                             // ✅ ANIMATION WIEDERHERGESTELLT
@@ -899,7 +903,20 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
                         <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1 } }}>
                             <Box sx={{ display: 'flex', mb: 1 }}>
-                                <Chip label={card.boardName} size="small" icon={isExternal ? <LinkIcon style={{ fontSize: 12 }} /> : undefined} sx={{ fontSize: '10px', height: 16, px: 0, bgcolor: isExternal ? '#e3f2fd' : 'rgba(0,0,0,0.05)' }} />
+                                <Chip
+                                    label={card.boardName}
+                                    size="small"
+                                    icon={isExternal ? <LinkIcon style={{ fontSize: 12 }} /> : undefined}
+                                    sx={{
+                                        fontSize: '10px',
+                                        height: 16,
+                                        px: 0,
+                                        bgcolor: isExternal
+                                            ? (theme.palette.mode === 'dark' ? alpha(theme.palette.primary.main, 0.2) : '#e3f2fd')
+                                            : alpha(theme.palette.text.primary, 0.05),
+                                        color: theme.palette.text.secondary
+                                    }}
+                                />
                             </Box>
 
                             <Tooltip title={card.description} placement="top-start" enterDelay={700}>
