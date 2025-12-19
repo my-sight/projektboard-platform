@@ -59,8 +59,7 @@ export function useKanbanData(
                 if (s.cols) setCols(s.cols);
                 if (s.lanes) setLanes(s.lanes);
                 if (s.checklistTemplates) setChecklistTemplates(s.checklistTemplates);
-                if (s.viewMode) setViewMode(s.viewMode);
-                if (s.density) setDensity(s.density);
+                /* View mode and density are enforced to columns/compact in OriginalKanbanBoard.tsx */
                 if (s.trLabel || s.sopLabel) {
                     setCustomLabels({
                         tr: s.trLabel || 'TR',

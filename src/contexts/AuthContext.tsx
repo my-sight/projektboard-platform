@@ -142,7 +142,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   // Presence / Single Session Logic
-  const localSessionId = useRef(typeof crypto !== 'undefined' ? crypto.randomUUID() : 'init');
+  const [sessionId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('kanban_session_id');
+      if (saved) return saved;
+      const id = typeof crypto !== 'undefined' && crypto.randomUUID && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+      sessionStorage.setItem('kanban_session_id', id);
+      return id;
+    }
+    return 'init';
+  });
   const presenceChannel = useRef<any>(null);
 
   useEffect(() => {
@@ -161,7 +170,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     const channel = supabase.channel(channelName, {
       config: {
         presence: {
-          key: localSessionId.current,
+          key: sessionId,
         },
       },
     });
@@ -171,19 +180,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        // state is { [key: string]: [ { session_id, online_at, ... } ] }
-
-        // Collect all sessions
         const allSessions: any[] = [];
         Object.values(state).forEach((presences: any) => {
           presences.forEach((p: any) => allSessions.push(p));
         });
 
-        // Find if there is any session NEWER than me
-        const newerSessionExists = allSessions.some(s => s.online_at > myOnlineAt && s.session_id !== localSessionId.current);
+        // SINGLE SESSION ENFORCEMENT
+        // We only kill ourself if there is an OTHER session with a significantly NEWER timestamp.
+        // ID check prevents self-logout after refresh (IDs persist in sessionStorage).
+        // Grace period (5s) prevents logout on small clock skews or rapid refreshes.
+        const GRACE_PERIOD_MS = 5000;
+        const newerSession = allSessions.find(s =>
+          s.session_id !== sessionId &&
+          s.online_at > (myOnlineAt + GRACE_PERIOD_MS)
+        );
 
-        if (newerSessionExists) {
-          console.warn('Newer session detected. Logging out this session.');
+        if (newerSession) {
+          console.warn('Another newer session detected. Reason: Multiple active tabs or devices.', {
+            myTime: myOnlineAt,
+            otherTime: newerSession.online_at,
+            diff: newerSession.online_at - myOnlineAt
+          });
+
           // Enforce logout
           supabase.auth.signOut().then(() => {
             setUser(null);
@@ -195,7 +213,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await channel.track({
-            session_id: localSessionId.current,
+            session_id: sessionId,
             online_at: myOnlineAt,
             device_info: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown'
           });
@@ -207,7 +225,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         supabase.removeChannel(presenceChannel.current);
       }
     };
-  }, [user]);
+  }, [user, sessionId]);
 
   const signOut = async () => {
     if (presenceChannel.current) {

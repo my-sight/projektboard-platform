@@ -104,6 +104,10 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
     // 1. Data Loading Effect (Stable, only on Board ID change)
     useEffect(() => {
       const loadData = async () => {
+        // Force starting view to 'columns' and density to 'compact' on every board load
+        setViewMode('columns');
+        setDensity('compact');
+
         const loadedUsers = await fetchClientProfiles();
         setUsers(loadedUsers);
 
