@@ -3,7 +3,6 @@ services:
   db:
     container_name: supabase-db
     image: supabase/postgres:15.1.0.147
-    hostname: db
     command: postgres -c config_file=/etc/postgresql/postgresql.conf
     restart: always
     healthcheck:
@@ -22,16 +21,13 @@ services:
   rest:
     container_name: supabase-rest
     image: postgrest/postgrest:v12.2.0
-    hostname: rest
     restart: always
     depends_on:
       db:
         condition: service_healthy
-    links:
-      - db:db
     environment:
-      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
-      PGRST_DB_SCHEMAS: public,storage
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET}
       PGRST_DB_USE_LEGACY_GUCS: "false"
@@ -40,28 +36,27 @@ services:
   auth:
     container_name: supabase-auth
     image: supabase/gotrue:v2.158.1
-    hostname: auth
     restart: always
     depends_on:
       db:
         condition: service_healthy
-    links:
-      - db:db
     environment:
       GOTRUE_API_HOST: 0.0.0.0
       GOTRUE_API_PORT: 9999
       API_EXTERNAL_URL: http://${NUC_IP}:8000/auth/v1
       GOTRUE_DB_DRIVER: postgres
-      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres?sslmode=disable
       GOTRUE_SITE_URL: http://${NUC_IP}:3000
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
       GOTRUE_JWT_EXP: 3600
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "false"
+      GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
 
   # 4. API Gateway (Kong)
   kong:
     container_name: supabase-kong
     image: kong:2.8.1
-    hostname: kong
     restart: always
     ports:
       - "8000:8000/tcp"
@@ -69,34 +64,27 @@ services:
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
-      # Kong internal DNS is sensitive; we use the Docker bridge DNS
-      KONG_DNS_RESOLVER: 127.0.0.11
+      KONG_DNS_ORDER: LAST,A,CNAME
       KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
     volumes:
       - ./volumes/api/kong.yml:/var/lib/kong/kong.yml:ro
     depends_on:
       - rest
       - auth
-    links:
-      - rest:rest
-      - auth:auth
 
   # 5. Realtime
   realtime:
     container_name: supabase-realtime
     image: supabase/realtime:v2.28.32
-    hostname: realtime
     restart: always
     depends_on:
       db:
         condition: service_healthy
-    links:
-      - db:db
     environment:
       PORT: 4000
       DB_HOST: db
       DB_PORT: 5432
-      DB_USER: supabase_admin
+      DB_USER: postgres
       DB_PASSWORD: ${POSTGRES_PASSWORD}
       DB_NAME: postgres
       JWT_SECRET: ${JWT_SECRET}
@@ -108,22 +96,16 @@ services:
   storage:
     container_name: supabase-storage
     image: supabase/storage-api:v1.11.13
-    hostname: storage
     restart: always
     depends_on:
       db:
         condition: service_healthy
-      rest:
-        condition: service_started
-    links:
-      - db:db
-      - rest:rest
     environment:
       ANON_KEY: ${ANON_KEY}
       SERVICE_KEY: ${SERVICE_ROLE_KEY}
       POSTGREST_URL: http://rest:3000
       PGRST_JWT_SECRET: ${JWT_SECRET}
-      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
     volumes:
       - ./volumes/storage:/var/lib/storage
@@ -132,12 +114,9 @@ services:
   studio:
     container_name: supabase-studio
     image: supabase/studio:latest
-    hostname: studio
     restart: always
     ports:
       - "3001:3000"
-    links:
-      - kong:kong
     environment:
       STUDIO_PG_META_URL: http://meta:8080
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -150,13 +129,10 @@ services:
   meta:
     container_name: supabase-meta
     image: supabase/postgres-meta:v0.84.2
-    hostname: meta
     restart: always
     depends_on:
       db:
         condition: service_healthy
-    links:
-      - db:db
     environment:
       PG_META_PORT: 8080
       PG_META_DB_HOST: db
@@ -175,13 +151,9 @@ services:
     restart: always
     ports:
       - "3000:3000"
-    hostname: app
     depends_on:
       - kong
       - db
-    links:
-      - kong:kong
-      - kong:supabase-kong
     environment:
       NEXT_PUBLIC_SUPABASE_URL: http://${NUC_IP}:8000
       SUPABASE_URL: http://kong:8000

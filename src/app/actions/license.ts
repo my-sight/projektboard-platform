@@ -61,8 +61,14 @@ export async function saveLicenseTokenAction(token: string) {
             }
         };
     } catch (error: any) {
-        console.error('Save License Action Error:', error);
+        console.error('Save License Action Error Detail:', {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code
+        });
         return { success: false, error: error.message || 'Failed to save license' };
     }
 }
+
 
