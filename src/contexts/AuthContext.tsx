@@ -4,7 +4,6 @@ import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 import { isSuperuserEmail } from '@/constants/superuser';
-import { getLicenseStatus } from '@/lib/license';
 
 export interface Profile {
   id: string;

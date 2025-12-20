@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { Box, Paper, Typography, TextField, Button, Alert, useTheme } from '@mui/material';
 import { VpnKey, CheckCircle } from '@mui/icons-material';
-import { saveLicenseToken, getLicenseStatus } from '@/lib/license';
+import { checkLicenseServerAction, saveLicenseTokenAction } from '@/app/actions/license';
 import { useRouter } from 'next/navigation';
 
 export default function LicensePage() {
@@ -16,8 +16,8 @@ export default function LicensePage() {
     const [debugError, setDebugError] = useState('');
 
     useEffect(() => {
-        getLicenseStatus().then(s => {
-            if (!s.valid && s.error && s.error !== 'No License Found') {
+        checkLicenseServerAction().then(s => {
+            if (!s.valid && s.error && s.error !== 'No License Found' && s.error !== 'No License Found (Server Action)') {
                 setDebugError(`Validation Error: ${s.error}. Key: ${s.customer || 'none'}`);
             }
         });
@@ -29,14 +29,18 @@ export default function LicensePage() {
             // Clean the token: remove headers, whitespace, and take only the base64 part
             let cleanToken = token.trim();
             // Remove common copy-paste artifacts
-            cleanToken = cleanToken.replace(/---.*?---/g, '').trim();
+            cleanToken = cleanToken.replace(/---.*?---/g, '').replace(/\s+/g, '');
             // If user pasted the whole output, try to find the actual token (looks like eyJ...)
             const match = cleanToken.match(/eyJ[a-zA-Z0-9\-_]+\.[a-zA-Z0-9\-_+/=]+/);
             if (match) {
                 cleanToken = match[0];
             }
 
-            await saveLicenseToken(cleanToken);
+            const result = await saveLicenseTokenAction(cleanToken);
+            if (!result.success) {
+                throw new Error(result.error);
+            }
+
             setStatus('success');
             setMsg('License verified successfully! Redirecting...');
             setTimeout(() => {

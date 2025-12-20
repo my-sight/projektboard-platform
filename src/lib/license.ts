@@ -1,5 +1,4 @@
 import { LICENSE_PUBLIC_KEY } from '@/constants/license_public_key';
-import { supabase } from '@/lib/supabaseClient';
 
 export interface LicenseStatus {
     valid: boolean;
@@ -34,18 +33,13 @@ function base64ToArrayBuffer(base64: string): ArrayBuffer {
 
 export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> => {
     try {
+        if (!token) throw new Error('Empty token');
         const parts = token.trim().split('.');
-        // console.log('Verifying Token Parts:', parts.length);
         if (parts.length !== 2) {
-            console.error('Token split failed. Token:', token);
             throw new Error('Invalid token format');
         }
 
         const [payloadB64, signatureB64] = parts;
-        // console.log('Payload B64:', payloadB64);
-        // console.log('Signature B64:', signatureB64);
-
-        // 1. Import Public Key
         const keyBuffer = pemToArrayBuffer(LICENSE_PUBLIC_KEY);
         let isValid = false;
         let payloadString = '';
@@ -53,18 +47,16 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
         // 1. Detect best available Crypto API
         let webCrypto: any = null;
 
-        // Try global crypto (Browser or Node 19+)
         if (typeof crypto !== 'undefined' && (crypto as any).subtle) {
             webCrypto = crypto;
         }
-        // Try window.crypto (Browser)
         else if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
             webCrypto = window.crypto;
         }
-        // Try Node.js webcrypto import
-        else {
+        else if (typeof window === 'undefined') {
             try {
-                const nodeCrypto = await import('node:crypto');
+                const nc = await import('crypto');
+                const nodeCrypto = (nc as any).default || nc;
                 if (nodeCrypto.webcrypto && (nodeCrypto.webcrypto as any).subtle) {
                     webCrypto = nodeCrypto.webcrypto;
                 }
@@ -72,7 +64,6 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
         }
 
         if (webCrypto && webCrypto.subtle) {
-            // console.log('Using Web Crypto API');
             const cryptoKey = await webCrypto.subtle.importKey(
                 "spki",
                 keyBuffer,
@@ -81,7 +72,6 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
                 ["verify"]
             );
 
-            // 2. Verify Signature
             payloadString = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'));
             const dataToVerify = new TextEncoder().encode(payloadString);
             const signatureBuffer = base64ToArrayBuffer(signatureB64);
@@ -92,14 +82,14 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
                 signatureBuffer,
                 dataToVerify
             );
-        } else {
-            // Legacy Node.js fallback (Server Side)
+        } else if (typeof window === 'undefined') {
+            // Server fallback
             try {
-                const nc = await import('node:crypto');
+                const nc = await import('crypto');
                 const nodeCrypto = (nc as any).default || nc;
 
                 if (typeof nodeCrypto.createPublicKey !== 'function') {
-                    throw new Error('Neither Web Crypto nor legacy Node.js crypto.createPublicKey is available');
+                    throw new Error('No compatible Crypto API found on server');
                 }
 
                 const pKey = nodeCrypto.createPublicKey({
@@ -118,19 +108,19 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
                     signatureBuffer
                 );
             } catch (err: any) {
-                console.error('Node crypto error', err);
-                throw new Error(`Crypto API not available: ${err.message}`);
+                throw new Error(`Server Crypto Error: ${err.message}`);
             }
+        } else {
+            // Browser without secure context (HTTP on IP)
+            // We just return invalid here, the UI should use a Server Action instead
+            return { valid: false, expiry: null, customer: null, error: 'Web Crypto requires HTTPS or Localhost' };
         }
 
         if (!isValid) {
             return { valid: false, expiry: null, customer: null, error: 'Invalid Signature' };
         }
 
-        // 3. Parse Payload
         const payload = JSON.parse(payloadString);
-
-        // 4. Check Expiry
         const today = new Date().toISOString().split('T')[0];
         if (payload.expiry < today) {
             return { valid: false, expiry: payload.expiry, customer: payload.customer, maxUsers: payload.maxUsers, error: 'License Expired' };
@@ -139,32 +129,6 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
         return { valid: true, expiry: payload.expiry, customer: payload.customer, maxUsers: payload.maxUsers };
 
     } catch (e: any) {
-        console.error('License Verification Error:', e);
         return { valid: false, expiry: null, customer: null, error: e.message || 'Verification Error' };
     }
-};
-
-import { checkLicenseServerAction } from '@/app/actions/license';
-
-export const getLicenseStatus = async (): Promise<LicenseStatus> => {
-    try {
-        // Use Server Action directly
-        return await checkLicenseServerAction();
-    } catch (e: any) {
-        return { valid: false, expiry: null, customer: null, error: `Action Error: ${e.message}` };
-    }
-};
-
-export const saveLicenseToken = async (token: string) => {
-    const status = await verifyLicenseToken(token);
-    if (!status.valid) throw new Error(status.error);
-
-    // Save to DB
-    const { error } = await supabase.from('system_settings').upsert({
-        key: 'license_key',
-        value: { token, customer: status.customer, expiry: status.expiry }
-    });
-
-    if (error) throw error;
-    return status;
 };

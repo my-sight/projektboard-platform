@@ -51,7 +51,7 @@ import {
 import { isSuperuserEmail } from '@/constants/superuser';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
-import { getLicenseStatus } from '@/lib/license';
+import { checkLicenseServerAction } from '@/app/actions/license';
 
 // --- TYPEN ---
 interface UserProfile {
@@ -288,7 +288,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
     } finally {
       setLoading(false);
       // Load License implicitly
-      getLicenseStatus().then(status => {
+      checkLicenseServerAction().then(status => {
         if (status.valid && status.maxUsers) setMaxUsers(status.maxUsers);
       }).catch(() => { });
     }

@@ -16,6 +16,12 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
+# Check for Buildx (required for modern Docker Compose Bake)
+if ! docker buildx version &> /dev/null; then
+    echo "Docker Buildx not found. Attempting to install plugin..."
+    sudo apt update && sudo apt install docker-buildx-plugin -y
+fi
+
 # 2. Cleanup Host Artifacts (Prevents Mac Symlink Errors)
 echo "Cleaning up host artifacts (node_modules, .next)..."
 rm -rf ../node_modules ../.next
