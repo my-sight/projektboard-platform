@@ -100,6 +100,10 @@ fi
 
 # 4. Build and Start
 echo "Building and starting services..."
+# Export variables for docker compose
+set -a
+source .env
+set +a
 docker compose build
 docker compose up -d
 
