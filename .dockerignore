@@ -1,0 +1,17 @@
+node_modules
+.next
+out
+build
+dist
+*.log
+.git
+.gitignore
+.dockerignore
+deploy
+volumes
+scripts
+*.md
+LICENSE
+.github
+.vscode
+.env*

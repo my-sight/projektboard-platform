@@ -16,6 +16,10 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
+# 2. Cleanup Host Artifacts (Prevents Mac Symlink Errors)
+echo "Cleaning up host artifacts (node_modules, .next)..."
+rm -rf ../node_modules ../.next
+
 # 2. Setup Environment
 echo "Configuring environment..."
 
