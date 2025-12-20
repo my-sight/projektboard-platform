@@ -1,11 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin as supabase } from './supabaseAdmin';
 import { verifyLicenseToken } from './license';
 
 export async function checkLicenseServer() {
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-    const supabase = createClient(supabaseUrl, serviceKey);
 
     try {
         const { data, error } = await supabase

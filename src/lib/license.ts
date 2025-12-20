@@ -78,7 +78,14 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
         } else {
             // Node.js fallback (Server Side non-Edge)
             try {
-                const nodeCrypto = await import('crypto');
+                const cryptoModule = await import('crypto');
+                // Handle both ESM and CommonJS import styles
+                const nodeCrypto = (cryptoModule as any).default || cryptoModule;
+
+                if (!nodeCrypto || typeof nodeCrypto.createPublicKey !== 'function') {
+                    throw new Error('Node.js crypto.createPublicKey is not available in this environment');
+                }
+
                 // console.log('Using Node.js Crypto (Server)');
 
                 const pKey = nodeCrypto.createPublicKey({
