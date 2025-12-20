@@ -50,12 +50,29 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
         let isValid = false;
         let payloadString = '';
 
-        // Check for Web Crypto API (Browser or Edge Runtime)
-        const webCrypto = typeof crypto !== 'undefined' ? crypto :
-            (typeof window !== 'undefined' && window.crypto) ? window.crypto : null;
+        // 1. Detect best available Crypto API
+        let webCrypto: any = null;
+
+        // Try global crypto (Browser or Node 19+)
+        if (typeof crypto !== 'undefined' && (crypto as any).subtle) {
+            webCrypto = crypto;
+        }
+        // Try window.crypto (Browser)
+        else if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+            webCrypto = window.crypto;
+        }
+        // Try Node.js webcrypto import
+        else {
+            try {
+                const nodeCrypto = await import('node:crypto');
+                if (nodeCrypto.webcrypto && (nodeCrypto.webcrypto as any).subtle) {
+                    webCrypto = nodeCrypto.webcrypto;
+                }
+            } catch (e) { }
+        }
 
         if (webCrypto && webCrypto.subtle) {
-            // console.log('Using Web Crypto API (Browser/Edge)');
+            // console.log('Using Web Crypto API');
             const cryptoKey = await webCrypto.subtle.importKey(
                 "spki",
                 keyBuffer,
@@ -76,17 +93,14 @@ export const verifyLicenseToken = async (token: string): Promise<LicenseStatus> 
                 dataToVerify
             );
         } else {
-            // Node.js fallback (Server Side non-Edge)
+            // Legacy Node.js fallback (Server Side)
             try {
-                const cryptoModule = await import('crypto');
-                // Handle both ESM and CommonJS import styles
-                const nodeCrypto = (cryptoModule as any).default || cryptoModule;
+                const nc = await import('node:crypto');
+                const nodeCrypto = (nc as any).default || nc;
 
-                if (!nodeCrypto || typeof nodeCrypto.createPublicKey !== 'function') {
-                    throw new Error('Node.js crypto.createPublicKey is not available in this environment');
+                if (typeof nodeCrypto.createPublicKey !== 'function') {
+                    throw new Error('Neither Web Crypto nor legacy Node.js crypto.createPublicKey is available');
                 }
-
-                // console.log('Using Node.js Crypto (Server)');
 
                 const pKey = nodeCrypto.createPublicKey({
                     key: Buffer.from(LICENSE_PUBLIC_KEY),
