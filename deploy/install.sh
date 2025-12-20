@@ -106,13 +106,25 @@ fi
 
 # 4. Build and Start
 echo "Building and starting services..."
+
+# Final check: Ensure internal networking works
+if [[ "$NEW_IP" == "localhost" || "$NEW_IP" == "127.0.0.1" ]]; then
+    echo -e "${RED}Warning: You are using 'localhost'. The app might not be reachable from other devices.${NC}"
+fi
+
 # Export variables for docker compose
 set -a
 source .env
 set +a
+
+# Use --build to ensure all code changes are picked up
 docker compose build
 docker compose up -d
 
 echo -e "${GREEN}=== Installation Complete ===${NC}"
-echo "App should be running at: http://localhost:3000"
-echo "Supabase Studio: http://localhost:3001"
+echo "----------------------------------------------------------------"
+echo "App should be running at: http://${NEW_IP}:3000"
+echo "License activation should work now via Server Actions."
+echo "If you see 'Name Resolution Failed', please use the IP address"
+echo "instead of a hostname during installation."
+echo "----------------------------------------------------------------"
