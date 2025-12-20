@@ -105,23 +105,30 @@ if [ -f seed_superuser.sql ]; then
 fi
 
 # 4. Build and Start
-echo "Building and starting services..."
-
-# Final check: Ensure internal networking works
-if [[ "$NEW_IP" == "localhost" || "$NEW_IP" == "127.0.0.1" ]]; then
-    echo -e "${RED}Warning: You are using 'localhost'. The app might not be reachable from other devices.${NC}"
-fi
+echo "Building and starting services (Force Refresh)..."
 
 # Export variables for docker compose
 set -a
 source .env
 set +a
 
-# Use --build to ensure all code changes are picked up
-docker compose build
+# Use --no-cache to ENSURE the new code (with Networking fixes) is compiled!
+docker compose build --no-cache
 docker compose up -d
 
+
+echo "Waiting for services to stabilize (Postgres, Kong, App)..."
+sleep 10
+
+# Final check: Internal connectivity
+if curl -s http://localhost:8000/rest/v1/ > /dev/null; then
+    echo -e "${GREEN}Database API (Kong/PostgREST) is reachable.${NC}"
+else
+    echo -e "${RED}Warning: Database API is not responding (503?). It might still be starting up.${NC}"
+fi
+
 echo -e "${GREEN}=== Installation Complete ===${NC}"
+
 echo "----------------------------------------------------------------"
 echo "App should be running at: http://${NEW_IP}:3000"
 echo "License activation should work now via Server Actions."
