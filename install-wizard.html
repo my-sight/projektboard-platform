@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ProjektBoard Setup Wizard</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- html2canvas & jsPDF for PDF export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <style>
+        :root {
+            /* Colors - Dark Mode by default */
+            --bg-color: #0c0e14;
+            --accent-primary: #4aa3ff;
+            --accent-secondary: #19c37d;
+            --text-main: #f0f2f5;
+            --text-dim: #94a3b8;
+            --glass-bg: rgba(20, 24, 33, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --card-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            --transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        body.light-mode {
+            --bg-color: #f8fafc;
+            --accent-primary: #2563eb;
+            --accent-secondary: #059669;
+            --text-main: #1e293b;
+            --text-dim: #64748b;
+            --glass-bg: rgba(255, 255, 255, 0.8);
+            --glass-border: rgba(0, 0, 0, 0.05);
+            --card-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            background-image: url('file:///Users/michael/.gemini/antigravity/brain/fc4e2f69-f460-474e-862e-735fd6948539/wizard_background_1766220754556.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            transition: var(--transition);
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(12, 14, 20, 0.7);
+            z-index: -1;
+            transition: var(--transition);
+        }
+
+        body.light-mode::before {
+            background: rgba(248, 250, 252, 0.85);
+        }
+
+        /* Ambient Background */
+        .ambient-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: radial-gradient(circle at 10% 20%, rgba(74, 163, 255, 0.1) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(25, 195, 125, 0.1) 0%, transparent 40%);
+        }
+
+        /* Container */
+        .wizard-container {
+            width: 100%;
+            max-width: 900px;
+            padding: 2rem;
+            position: relative;
+        }
+
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow: var(--card-shadow);
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Header */
+        header {
+            margin-bottom: 3rem;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            color: var(--text-dim);
+            font-size: 1.125rem;
+        }
+
+        /* Progress Bar */
+        .progress-wrapper {
+            margin-bottom: 3rem;
+        }
+
+        .progress-track {
+            height: 4px;
+            background: var(--glass-border);
+            border-radius: 2px;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--accent-primary);
+            width: 0%;
+            transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 0 20px rgba(74, 163, 255, 0.5);
+        }
+
+        .steps-nav {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1rem;
+        }
+
+        .step-indicator {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-dim);
+            transition: var(--transition);
+        }
+
+        .step-indicator.active {
+            color: var(--accent-primary);
+        }
+
+        /* Content Sections */
+        .step-content {
+            display: none;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .step-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        h2 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        p {
+            line-height: 1.6;
+            color: var(--text-dim);
+            margin-bottom: 1.5rem;
+        }
+
+        /* Components */
+        .checklist {
+            list-style: none;
+            margin-bottom: 2rem;
+        }
+
+        .checklist li {
+            padding: 1rem;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .checklist li:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .checklist input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--accent-secondary);
+        }
+
+        .code-block {
+            background: #000;
+            padding: 1.25rem;
+            border-radius: 12px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.9rem;
+            color: #d1d5db;
+            position: relative;
+            margin-bottom: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .code-block code {
+            display: block;
+            white-space: pre-wrap;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--text-main);
+        }
+
+        input[type="text"],
+        input[type="email"] {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: var(--text-main);
+            outline: none;
+            transition: var(--transition);
+        }
+
+        input:focus {
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            font-size: 0.875rem;
+        }
+
+        .alert-info {
+            background: rgba(74, 163, 255, 0.1);
+            border: 1px solid rgba(74, 163, 255, 0.2);
+            color: #93c5fd;
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            color: #fcd34d;
+        }
+
+        /* Navigation Buttons */
+        .footer-nav {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 3rem;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            border: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--accent-primary);
+            color: white;
+            box-shadow: 0 4px 14px rgba(74, 163, 255, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(74, 163, 255, 0.5);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            border: 1px solid var(--glass-border);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        /* PDF Layout */
+        #pdf-content {
+            padding: 40px;
+            color: #1e293b;
+            background: white;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Toggle Theme */
+        .theme-toggle {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            font-size: 1.25rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .wizard-container {
+                padding: 1rem;
+            }
+
+            .glass-panel {
+                padding: 2rem;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .step-indicator span {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="ambient-bg"></div>
+
+    <div class="wizard-container" id="capture-area">
+        <div class="glass-panel">
+            <button class="theme-toggle" onclick="toggleTheme()" title="Theme wechseln">🌓</button>
+
+            <header>
+                <h1>ProjektBoard Setup</h1>
+                <p class="subtitle">Interaktive Installationsbegleitung</p>
+            </header>
+
+            <div class="progress-wrapper">
+                <div class="progress-track">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="steps-nav">
+                    <div class="step-indicator active"><span>Checklist</span></div>
+                    <div class="step-indicator"><span>System</span></div>
+                    <div class="step-indicator"><span>Security</span></div>
+                    <div class="step-indicator"><span>Deploy</span></div>
+                    <div class="step-indicator"><span>Final</span></div>
+                </div>
+            </div>
+
+            <!-- STEP 1: PREREQUISITES -->
+            <div class="step-content active" id="step1">
+                <h2>📦 1. Vorab-Checkliste</h2>
+                <p>Bevor wir starten, stelle sicher, dass du alles bereit hast. Diese Hardware sichert den reibungslosen
+                    Betrieb.</p>
+
+                <ul class="checklist">
+                    <li><input type="checkbox"> <span>Intel NUC (oder vergleichbarer Mini-PC)</span></li>
+                    <li><input type="checkbox"> <span>USB-Stick (min. 8GB) für Ubuntu</span></li>
+                    <li><input type="checkbox"> <span>USB-Stick mit Projektordner (FAT32/ExFAT)</span></li>
+                    <li><input type="checkbox"> <span>Internetverbindung am NUC (WLAN/LAN)</span></li>
+                </ul>
+
+                <div class="alert alert-info">
+                    <strong>💡 Hardware-Tipp:</strong> 8GB RAM werden dringend empfohlen, damit Datenbank und App
+                    gleichzeitig performant laufen.
+                </div>
+            </div>
+
+            <!-- STEP 2: OS INSTALLATION -->
+            <div class="step-content" id="step2">
+                <h2>💿 2. OS & Docker</h2>
+                <p>Installiere <strong>Ubuntu Server 24.04 LTS</strong> auf dem NUC. Achte auf folgende kritische
+                    Einstellungen während des Setups:</p>
+
+                <div class="alert alert-warning">
+                    <strong>⚠️ Wichtig während der Installation:</strong>
+                    <ul style="margin-left: 1.5rem; margin-top: 0.5rem">
+                        <li>[x] Install OpenSSH server ankreuzen</li>
+                        <li>[x] Docker (Featured Server Snaps) unbedingt auswählen!</li>
+                    </ul>
+                </div>
+
+                <p>Wähle bei der Festplatte <strong>"Use an entire disk"</strong> und aktiviere <strong>LVM &
+                        Verschlüsselung (LUKS)</strong> für maximalen Datenschutz.</p>
+            </div>
+
+            <!-- STEP 3: SECURITY / TPM -->
+            <div class="step-content" id="step3">
+                <h2>🔐 3. TPM-AutoUnlock (Optional)</h2>
+                <p>Damit der NUC nach einem Stromausfall automatisch startet, aber verschlüsselt bleibt, binden wir den
+                    Key an den TPM-Chip.</p>
+
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Kopieren</button>
+                    <code>sudo apt update && sudo apt install clevis clevis-tpm2 clevis-luks -y
+sudo clevis luks bind -d /dev/nvme0n1p3 tpm2 '{"pcr_bank":"sha256","pcr_ids":"7"}'
+sudo update-initramfs -u -k 'all'</code>
+                </div>
+                <p>Hinweis: Prüfe mit <code>lsblk</code>, ob deine Partition wirklich <code>nvme0n1p3</code> heißt.</p>
+            </div>
+
+            <!-- STEP 4: DEPLOYMENT -->
+            <div class="step-content" id="step4">
+                <h2>🚀 4. Deployment</h2>
+                <p>Übertrage den Ordner <code>projektboard-platform</code> auf den NUC und starte den Installer.</p>
+
+                <div class="input-group">
+                    <label>IP-Adresse des NUC (für Zugriff vom Mac)</label>
+                    <input type="text" id="nucIp" placeholder="z.B. 192.168.1.50" oninput="updateCommands()">
+                </div>
+
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Kopieren</button>
+                    <code id="installCommand">cd projektboard-platform/deploy
+chmod +x *.sh
+./install.sh</code>
+                </div>
+
+                <p>Spätere Updates (z.B. nach Code-Änderungen):</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Kopieren</button>
+                    <code>cd projektboard-platform/deploy
+./update.sh</code>
+                </div>
+
+                <p>Während der Installation wirst du nach der IP gefragt. Nutze: <strong
+                        id="ipDisplay">localhost</strong></p>
+            </div>
+
+            <!-- STEP 5: FINAL SETUP -->
+            <div class="step-content" id="step5">
+                <h2>✅ 5. Abschluss & Lizenz</h2>
+                <p>Sobald die Installation durchgelaufen ist, kannst du das System über den Browser deines Macs
+                    erreichen.</p>
+
+                <div class="input-group">
+                    <label>Admin E-Mail Adresse</label>
+                    <input type="email" id="adminEmail" placeholder="admin@firma.de" oninput="updateCommands()">
+                </div>
+
+                <div class="alert alert-info">
+                    <strong>🔗 URL:</strong> <a href="#" id="appLink" target="_blank"
+                        style="color: inherit; text-decoration: underline">http://IP-ADRESSE:3000</a>
+                </div>
+
+                <p>Erzeuge jetzt die Lizenz auf deinem Mac:</p>
+                <div class="code-block">
+                    <button class="copy-btn" onclick="copyCode(this)">Kopieren</button>
+                    <code id="licenseCommand">node scripts/generate_license.js 2026-12-20 "ProjektBoard" 50</code>
+                </div>
+
+                <div style="text-align: center; margin-top: 2rem;">
+                    <button class="btn btn-primary" onclick="exportPDF()" style="width: 100%; justify-content: center;">
+                        📄 Installationsprotokoll als PDF speichern
+                    </button>
+                </div>
+            </div>
+
+            <div class="footer-nav">
+                <button class="btn btn-secondary" id="prevBtn" onclick="moveStep(-1)" disabled>Zurück</button>
+                <button class="btn btn-primary" id="nextBtn" onclick="moveStep(1)">Weiter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden PDF Report Template -->
+    <div id="pdf-template" style="display: none;">
+        <div id="pdf-content">
+            <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px;">ProjektBoard -
+                Installationsprotokoll</h1>
+            <p style="margin-top: 20px;"><strong>Datum:</strong> <span id="pdfDate"></span></p>
+
+            <h3 style="margin-top: 30px;">System-Informationen</h3>
+            <ul>
+                <li><strong>NUC IP:</strong> <span id="pdfIp"></span></li>
+                <li><strong>Admin Email:</strong> <span id="pdfEmail"></span></li>
+                <li><strong>Status:</strong> Bereit für Betrieb</li>
+            </ul>
+
+            <h3 style="margin-top: 30px;">Wichtige Befehle (Backup)</h3>
+            <p><strong>Installation:</strong><br><code>./install.sh</code></p>
+            <p><strong>Update:</strong><br><code>./update.sh</code></p>
+            <p><strong>Restart:</strong><br><code>docker compose restart</code></p>
+
+            <div style="margin-top: 50px; padding: 20px; background: #f8fafc; border-radius: 8px;">
+                <p style="font-size: 0.8rem; color: #64748b;">Dieses Dokument wurde automatisch vom Setup-Wizard
+                    generiert.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 1;
+        const totalSteps = 5;
+
+        function updateProgress() {
+            const fill = document.getElementById('progressFill');
+            const percent = ((currentStep - 1) / (totalSteps - 1)) * 100;
+            fill.style.width = percent + '%';
+
+            const indicators = document.querySelectorAll('.step-indicator');
+            indicators.forEach((ind, idx) => {
+                if (idx < currentStep) ind.classList.add('active');
+                else ind.classList.remove('active');
+            });
+        }
+
+        function moveStep(delta) {
+            document.getElementById('step' + currentStep).classList.remove('active');
+            currentStep += delta;
+            document.getElementById('step' + currentStep).classList.add('active');
+
+            document.getElementById('prevBtn').disabled = currentStep === 1;
+            document.getElementById('nextBtn').innerText = currentStep === totalSteps ? 'Fertig' : 'Weiter';
+            if (currentStep > totalSteps) {
+                // Logic for finishing wizard if needed
+                currentStep = totalSteps;
+                document.getElementById('step' + currentStep).classList.add('active');
+            }
+
+            updateProgress();
+        }
+
+        function updateCommands() {
+            const ip = document.getElementById('nucIp').value || 'IP-ADRESSE';
+            const email = document.getElementById('adminEmail').value || 'admin@firma.de';
+
+            document.getElementById('ipDisplay').innerText = ip;
+            document.getElementById('appLink').href = `http://${ip}:3000`;
+            document.getElementById('appLink').innerText = `http://${ip}:3000`;
+
+            // PDF fields
+            document.getElementById('pdfIp').innerText = ip;
+            document.getElementById('pdfEmail').innerText = email;
+            document.getElementById('pdfDate').innerText = new Date().toLocaleString();
+        }
+
+        function copyCode(btn) {
+            const code = btn.nextElementSibling.innerText;
+            navigator.clipboard.writeText(code);
+            const originalText = btn.innerText;
+            btn.innerText = 'Kopiert!';
+            btn.style.background = '#19c37d';
+            setTimeout(() => {
+                btn.innerText = originalText;
+                btn.style.background = '';
+            }, 2000);
+        }
+
+        function toggleTheme() {
+            document.body.classList.toggle('light-mode');
+        }
+
+        async function exportPDF() {
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const template = document.getElementById('pdf-content');
+
+            // Show template temporarily for capturing
+            const container = document.getElementById('pdf-template');
+            container.style.display = 'block';
+
+            updateCommands(); // Ensure fields are current
+
+            try {
+                const canvas = await html2canvas(template, {
+                    scale: 2,
+                    useCORS: true
+                });
+                const imgData = canvas.toDataURL('image/png');
+                const imgWidth = 210;
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+                pdf.save('ProjektBoard_Installation_Summary.pdf');
+            } catch (err) {
+                console.error('PDF Export Error:', err);
+                alert('Fehler beim PDF-Export. Bitte versuche es erneut.');
+            } finally {
+                container.style.display = 'none';
+            }
+        }
+
+        // Initialize progress
+        updateProgress();
+    </script>
+</body>
+
+</html>
