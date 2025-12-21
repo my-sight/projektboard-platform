@@ -5,17 +5,22 @@ import { verifyLicenseToken } from '@/lib/license';
 
 export async function checkLicenseServerAction() {
     try {
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('system_settings')
             .select('value')
             .eq('key', 'license_key')
             .maybeSingle();
 
+        console.log(`[checkLicenseServerAction] DB_RESULT: data=${!!data}, error=${!!error}`);
+
         if (!data || !data.value || !data.value.token) {
+            console.log(`[checkLicenseServerAction] FAILED: No token in DB`);
             return { valid: false, error: 'No License Found (Server Action)', expiry: null, customer: null };
         }
 
         const status = await verifyLicenseToken(data.value.token);
+        console.log(`[checkLicenseServerAction] VALIDATION: ${status.valid ? 'VALID' : 'INVALID: ' + status.error}`);
+
         // Serialize for client
         return {
             valid: status.valid,
@@ -24,6 +29,7 @@ export async function checkLicenseServerAction() {
             maxUsers: status.maxUsers,
             error: status.error
         };
+
 
     } catch (error: any) {
         console.error('License Action Error:', error);
@@ -67,8 +73,18 @@ export async function saveLicenseTokenAction(token: string) {
                 }
             });
 
+        if (error) {
+            console.error('Save License Action - UPSERT ERROR:', error);
+            throw error;
+        }
 
-        if (error) throw error;
+        // --- VERIFY AFTER UPSERT ---
+        const { data: verifyData } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'license_key')
+            .maybeSingle();
+        console.log('Save License Action - VERIFY AFTER UPSERT:', verifyData ? 'SUCCESS (Found Key)' : 'FAILED (Key missing!)');
 
         return {
             success: true,
@@ -79,6 +95,7 @@ export async function saveLicenseTokenAction(token: string) {
                 maxUsers: status.maxUsers
             }
         };
+
     } catch (error: any) {
         console.error('Save License Action - RAW ERROR:', error);
 

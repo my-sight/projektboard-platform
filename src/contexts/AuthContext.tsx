@@ -93,6 +93,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // 2. Subscribe to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log(`[AuthContext] onAuthStateChange: EVENT=${event}, USER=${session?.user?.id || 'none'}`);
+
       if (session?.user) {
         setUser(session.user);
         // Only fetch profile if not already set or if user changed
@@ -100,11 +102,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           const p = await fetchProfile(session.user.id);
           if (!p) {
             // Stale session (user valid in Auth but missing in DB) -> Logout
-            console.warn('User has no profile (stale session?). Signing out...');
+            console.warn(`[AuthContext] User ${session.user.id} has NO profile in public.profiles. Triggering logout to prevent loop.`);
             await supabase.auth.signOut();
             setUser(null);
             setProfile(null);
           } else {
+            console.log(`[AuthContext] Profile loaded for ${session.user.id}: role=${p.role}`);
             setProfile(p);
           }
         }
@@ -114,6 +117,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
       setLoading(false);
     });
+
 
 
 

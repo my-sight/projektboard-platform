@@ -3,7 +3,7 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${GREEN}=== ProjektBoard Appliance Installer (Final Routing Fix) ===${NC}"
+echo -e "${GREEN}=== ProjektBoard Appliance Installer (Superuser Fix) ===${NC}"
 
 # 1. Aggressive Cleanup
 rm -rf ../node_modules ../.next 
@@ -23,8 +23,11 @@ if [ -f .env ]; then
 fi
 [ -f .env ] && source .env
 
-read -p "Enter NUC IP [${NUC_IP:-kanban}]: " NEW_IP
-NEW_IP=${NEW_IP:-${NUC_IP:-kanban}}
+# Smart IP Detection: Use the actual provided IP or fall back to the NUC's known LAN IP
+# if 'kanban' is provided, we warn the user.
+DEFAULT_IP=${NUC_IP:-"192.168.178.46"}
+read -p "Enter NUC IP [${DEFAULT_IP}]: " NEW_IP
+NEW_IP=${NEW_IP:-${DEFAULT_IP}}
 
 if [ -z "$JWT_SECRET" ]; then
     echo "Generating Security Keys..."
@@ -71,7 +74,7 @@ for i in {1..10}; do
     sleep 2
 done
 
-echo "Initializing Supabase Roles & Permissions..."
+echo "Initializing Supabase Roles & Schema..."
 docker exec -i supabase-db psql -U postgres -d postgres -c "
 DO \$\$
 BEGIN
@@ -92,17 +95,28 @@ docker exec -i supabase-db psql -U postgres -d postgres -tAc "SELECT table_name 
 echo "Reloading PostgREST Schema Cache..."
 docker kill -s SIGUSR1 supabase-rest
 
-echo "Waiting for Services to settle (20s)..."
-sleep 20
+# 5. Superuser Injector
+echo "Injecting/Updating Superusers..."
+# Ensure the trigger exists before injecting
+docker exec -i supabase-db psql -U postgres -d postgres -c "
+CREATE OR REPLACE TRIGGER sync_profile_from_auth AFTER INSERT OR UPDATE ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+" > /dev/null 2>&1
 
-echo "Final Network Check: App -> Gateway (via 127.0.0.1)..."
-docker exec projektboard-app curl -v -s -o /dev/null http://127.0.0.1:8000/rest/v1/ 2>&1 | grep -E "Connected|Host|trying" || {
-    echo -e "${RED}❌ App still cannot reach Kong!${NC}"
-}
+# 5. Superuser Injector (Michael-Indestructible-Mode)
+echo "Ensuring Superuser 'michael@mysight.net' is configured..."
+# Execute the seed logic directly
+docker exec -i supabase-db psql -U postgres -d postgres -f /docker-entrypoint-initdb.d/01-seed.sql > /dev/null 2>&1
+
+
+
+echo "Waiting for Services to settle (15s)..."
+sleep 15
 
 echo "--------------------------------------------------------"
-echo "LIVE-DIAGNOSE: Bitte versuche JETZT die Lizenz zu speichern."
+echo "LIVE-DIAGNOSE: Anmeldung versuchen."
+echo "Benutzer: michael@mysight.net"
+echo "Passwort: Serum4x!"
 echo "--------------------------------------------------------"
 
-# Tail logs
-docker logs -f projektboard-app | grep --line-buffered -E "Save License Action|DETAILED ERROR|ENV_SOURCE|RAW_PROBE"
+# Tail logs with Auth focus
+docker logs -f projektboard-app | grep --line-buffered -E "AuthContext|SignIn|signOut|Home Page|checkLicenseServer|DETAILED ERROR"
