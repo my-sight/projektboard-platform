@@ -6,9 +6,12 @@ const supabaseUrl = su || npsu || 'http://placeholder.url';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-key';
 
 if (typeof window === 'undefined') {
-    console.log(`[SupabaseAdmin] RUNTIME_CHECK: SUPABASE_URL="${su}", NEXT_PUBLIC_SUPABASE_URL="${npsu}"`);
+    console.log(`[SupabaseAdmin] ENV_SOURCE: SUPABASE_URL="${su}" | NEXT_PUBLIC_SUPABASE_URL="${npsu}"`);
     console.log(`[SupabaseAdmin] Final URL used: ${supabaseUrl}`);
+    console.log(`[SupabaseAdmin] Service Role Key Present: ${!!supabaseServiceRoleKey && supabaseServiceRoleKey !== 'placeholder-key'}`);
 }
+
+
 
 export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {

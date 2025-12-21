@@ -6,7 +6,7 @@ services:
   url: http://auth:9999
   routes:
   - name: auth-v1-route
-    strip_path: false
+    strip_path: true 
     paths:
     - /auth/v1
 
@@ -14,7 +14,7 @@ services:
   url: http://rest:3000
   routes:
   - name: rest-v1-route
-    strip_path: false
+    strip_path: true
     paths:
     - /rest/v1
 
@@ -22,7 +22,7 @@ services:
   url: http://realtime:4000
   routes:
   - name: realtime-v1-route
-    strip_path: false
+    strip_path: true
     paths:
     - /realtime/v1
 
@@ -30,7 +30,7 @@ services:
   url: http://storage:5000
   routes:
   - name: storage-v1-route
-    strip_path: false
+    strip_path: true
     paths:
     - /storage/v1
 
@@ -38,6 +38,6 @@ services:
   url: http://meta:8080
   routes:
   - name: meta-route
-    strip_path: false
+    strip_path: true
     paths:
     - /pg
