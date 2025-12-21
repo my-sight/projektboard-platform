@@ -1,30 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { supabase as supabaseShared } from '@/lib/supabaseClient';
-
-// Helper to verify admin - DUPLICATED from users/route.ts for now
-async function verifyAdmin(req: NextRequest) {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return null;
-
-    const token = authHeader.replace('Bearer ', '');
-    const supabase = supabaseShared;
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-
-    if (error || !user) return null;
-
-    const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    if (profile?.role === 'admin' || profile?.role === 'superuser') {
-        return user;
-    }
-    return null;
-}
+import { verifyAdmin } from '@/lib/auth-server';
 
 export async function POST(req: NextRequest) {
     const admin = await verifyAdmin(req);

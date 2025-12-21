@@ -120,7 +120,7 @@ CREATE OR REPLACE FUNCTION "public"."handle_new_auth_user"() RETURNS "trigger"
     SET "search_path" TO 'public'
     AS $$
 begin
-  insert into public.profiles (id, email, full_name, role, company, is_active)
+  insert into public.profiles (id, email, full_name, system_role, company, is_active)
   values (
     new.id,
     new.email,
@@ -132,8 +132,7 @@ begin
   on conflict (id) do update
     set email = excluded.email,
         full_name = coalesce(nullif(excluded.full_name, ''), public.profiles.full_name),
-        -- REMOVED or MODIFIED: Do not overwrite role from metadata on update
-        -- role = coalesce(nullif(excluded.role, ''), public.profiles.role), 
+        system_role = coalesce(nullif(excluded.system_role, ''), public.profiles.system_role), 
         company = coalesce(excluded.company, public.profiles.company),
         is_active = true;
 
@@ -340,8 +339,8 @@ CREATE TABLE IF NOT EXISTS "public"."board_members" (
     "board_id" "uuid" NOT NULL,
     "profile_id" "uuid" NOT NULL,
     "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
-    "role" "text" DEFAULT 'member'::"text",
-    CONSTRAINT "board_members_role_check" CHECK (("role" = ANY (ARRAY['admin'::"text", 'member'::"text"])))
+    "system_role" "text" DEFAULT 'member'::"text",
+    CONSTRAINT "board_members_role_check" CHECK (("system_role" = ANY (ARRAY['admin'::"text", 'member'::"text"])))
 );
 
 
@@ -424,7 +423,7 @@ CREATE TABLE IF NOT EXISTS "public"."profiles" (
     "avatar_url" "text",
     "bio" "text",
     "company" "text",
-    "role" "text" DEFAULT 'user'::"text" NOT NULL,
+    "system_role" "text" DEFAULT 'user'::"text" NOT NULL,
     "is_active" boolean DEFAULT true NOT NULL,
     "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
     "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL
@@ -711,13 +710,13 @@ ALTER TABLE ONLY "public"."profiles"
 
 CREATE POLICY "Admins manage cards" ON "public"."kanban_cards" USING ((("auth"."uid"() IN ( SELECT "profiles"."id"
    FROM "public"."profiles"
-  WHERE ("profiles"."role" = 'admin'::"text"))) OR (("auth"."jwt"() ->> 'email'::"text") = 'michael@mysight.net'::"text")));
+  WHERE ("profiles"."system_role" = 'admin'::"text"))) OR (("auth"."jwt"() ->> 'email'::"text") = 'michael@mysight.net'::"text")));
 
 
 
 CREATE POLICY "Admins manage settings" ON "public"."kanban_board_settings" USING ((("auth"."uid"() IN ( SELECT "profiles"."id"
    FROM "public"."profiles"
-  WHERE ("profiles"."role" = 'admin'::"text"))) OR (("auth"."jwt"() ->> 'email'::"text") = 'michael@mysight.net'::"text")));
+  WHERE ("profiles"."system_role" = 'admin'::"text"))) OR (("auth"."jwt"() ->> 'email'::"text") = 'michael@mysight.net'::"text")));
 
 
 
@@ -747,7 +746,7 @@ CREATE POLICY "Authenticated users manage escalations" ON "public"."board_escala
 
 CREATE POLICY "Board members can modify cards" ON "public"."kanban_cards" USING (((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."system_role" = ANY (ARRAY['admin'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards"
   WHERE (("kanban_boards"."id" = "kanban_cards"."board_id") AND (("kanban_boards"."owner_id" = "auth"."uid"()) OR ("kanban_boards"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members"
@@ -757,11 +756,11 @@ CREATE POLICY "Board members can modify cards" ON "public"."kanban_cards" USING 
 
 CREATE POLICY "Board owners manage board settings" ON "public"."kanban_board_settings" USING (((EXISTS ( SELECT 1
    FROM "public"."profiles"
-  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."system_role" = ANY (ARRAY['admin'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards"
   WHERE (("kanban_boards"."id" = "kanban_board_settings"."board_id") AND (("kanban_boards"."owner_id" = "auth"."uid"()) OR ("kanban_boards"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members"
-  WHERE (("board_members"."board_id" = "board_members"."board_id") AND ("board_members"."profile_id" = "auth"."uid"()) AND ("board_members"."role" = 'admin'::"text"))))));
+  WHERE (("board_members"."board_id" = "board_members"."board_id") AND ("board_members"."profile_id" = "auth"."uid"()) AND ("board_members"."system_role" = 'admin'::"text"))))));
 
 
 
@@ -781,7 +780,7 @@ CREATE POLICY "Members can delete cards on their boards" ON "public"."kanban_car
    FROM "public"."board_members" "bm"
   WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"())))))));
 
@@ -791,7 +790,7 @@ CREATE POLICY "Members can insert cards on their boards" ON "public"."kanban_car
    FROM "public"."board_members" "bm"
   WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"())))))));
 
@@ -803,7 +802,7 @@ CREATE POLICY "Members can read cards on their boards" ON "public"."kanban_cards
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "kanban_cards"."board_id") AND ("b"."visibility" = 'public'::"text")))) OR (EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"())))))));
 
@@ -813,13 +812,13 @@ CREATE POLICY "Members can update cards on their boards" ON "public"."kanban_car
    FROM "public"."board_members" "bm"
   WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
   WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"())))))));
 
@@ -879,7 +878,7 @@ ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "rbac_delete_escalation_history" ON "public"."board_escalation_history" FOR DELETE USING (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_escalation_history"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
@@ -889,13 +888,13 @@ CREATE POLICY "rbac_delete_escalation_history" ON "public"."board_escalation_his
 
 CREATE POLICY "rbac_manage_attendance" ON "public"."board_attendance" USING (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_attendance"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
   WHERE (("bm"."board_id" = "board_attendance"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_attendance"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
@@ -905,11 +904,11 @@ CREATE POLICY "rbac_manage_attendance" ON "public"."board_attendance" USING (((E
 
 CREATE POLICY "rbac_manage_board_members" ON "public"."board_members" USING (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_members"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_members"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"())))))));
 
@@ -917,13 +916,13 @@ CREATE POLICY "rbac_manage_board_members" ON "public"."board_members" USING (((E
 
 CREATE POLICY "rbac_manage_board_settings" ON "public"."kanban_board_settings" USING (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "kanban_board_settings"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
   WHERE (("bm"."board_id" = "kanban_board_settings"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "kanban_board_settings"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
@@ -933,21 +932,21 @@ CREATE POLICY "rbac_manage_board_settings" ON "public"."kanban_board_settings" U
 
 CREATE POLICY "rbac_manage_boards" ON "public"."kanban_boards" USING (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR ("auth"."uid"() = "owner_id") OR ("auth"."uid"() = "board_admin_id"))) WITH CHECK (((EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR ("auth"."uid"() = "owner_id") OR ("auth"."uid"() = "board_admin_id"))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR ("auth"."uid"() = "owner_id") OR ("auth"."uid"() = "board_admin_id")));
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR ("auth"."uid"() = "owner_id") OR ("auth"."uid"() = "board_admin_id")));
 
 
 
 CREATE POLICY "rbac_manage_cards" ON "public"."kanban_cards" USING (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
   WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
@@ -957,13 +956,13 @@ CREATE POLICY "rbac_manage_cards" ON "public"."kanban_cards" USING (((EXISTS ( S
 
 CREATE POLICY "rbac_manage_escalations" ON "public"."board_escalations" USING (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_escalations"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
   WHERE (("bm"."board_id" = "board_escalations"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_escalations"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
@@ -973,13 +972,13 @@ CREATE POLICY "rbac_manage_escalations" ON "public"."board_escalations" USING ((
 
 CREATE POLICY "rbac_manage_top_topics" ON "public"."board_top_topics" USING (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_top_topics"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
   WHERE (("bm"."board_id" = "board_top_topics"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_top_topics"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
@@ -1025,13 +1024,13 @@ CREATE POLICY "rbac_read_top_topics" ON "public"."board_top_topics" FOR SELECT U
 
 CREATE POLICY "rbac_update_escalation_history" ON "public"."board_escalation_history" FOR UPDATE USING (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_escalation_history"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
   WHERE (("bm"."board_id" = "board_escalation_history"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_escalation_history"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
@@ -1041,11 +1040,13 @@ CREATE POLICY "rbac_update_escalation_history" ON "public"."board_escalation_his
 
 CREATE POLICY "rbac_update_own_profile" ON "public"."profiles" FOR UPDATE USING (("auth"."uid"() = "id")) WITH CHECK (("auth"."uid"() = "id"));
 
+CREATE POLICY "rbac_insert_own_profile" ON "public"."profiles" FOR INSERT WITH CHECK (("auth"."uid"() = "id"));
+
 
 
 CREATE POLICY "rbac_write_escalation_history" ON "public"."board_escalation_history" FOR INSERT WITH CHECK (((EXISTS ( SELECT 1
    FROM "public"."profiles" "p"
-  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."system_role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
    FROM "public"."kanban_boards" "b"
   WHERE (("b"."id" = "board_escalation_history"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
    FROM "public"."board_members" "bm"
@@ -1470,3 +1471,59 @@ FOR UPDATE
 TO anon
 USING (key = 'license_key')
 WITH CHECK (key = 'license_key');
+
+-- RLS for departments
+ALTER TABLE "public"."departments" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow authenticated read departments"
+ON "public"."departments"
+FOR SELECT
+TO authenticated
+USING (true);
+
+CREATE POLICY "Allow admin manage departments"
+ON "public"."departments"
+FOR ALL
+TO authenticated
+USING (
+  (SELECT system_role FROM public.profiles WHERE id = auth.uid()) IN ('admin', 'superuser')
+)
+WITH CHECK (
+  (SELECT system_role FROM public.profiles WHERE id = auth.uid()) IN ('admin', 'superuser')
+);
+
+-- SUPABASE STORAGE SCHEMA (Simplified)
+CREATE SCHEMA IF NOT EXISTS storage;
+
+CREATE TABLE IF NOT EXISTS storage.buckets (
+    id text PRIMARY KEY,
+    name text NOT NULL,
+    owner uuid,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    public boolean DEFAULT false,
+    file_size_limit bigint,
+    allowed_mime_types text[]
+);
+
+CREATE TABLE IF NOT EXISTS storage.objects (
+    id uuid DEFAULT extensions.uuid_generate_v4() PRIMARY KEY,
+    bucket_id text REFERENCES storage.buckets(id),
+    name text,
+    owner uuid,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    last_accessed_at timestamp with time zone DEFAULT now(),
+    metadata jsonb,
+    path_tokens text[] GENERATED ALWAYS AS (string_to_array(name, '/')) STORED
+);
+
+-- Storage Permissions
+GRANT ALL ON SCHEMA storage TO postgres, service_role, authenticated, anon;
+GRANT ALL ON TABLE storage.buckets TO postgres, service_role, authenticated, anon;
+GRANT ALL ON TABLE storage.objects TO postgres, service_role, authenticated, anon;
+
+-- Seed a default bucket for logos if needed
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('system', 'system', true)
+ON CONFLICT (id) DO NOTHING;

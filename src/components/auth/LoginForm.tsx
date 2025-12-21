@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useRouter } from 'next/navigation';
 
 export default function LoginForm() {
   const [email, setEmail] = useState('');
@@ -21,6 +22,7 @@ export default function LoginForm() {
   const { t } = useLanguage();
 
   const { signIn } = useAuth();
+  const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,18 +31,24 @@ export default function LoginForm() {
     setMessage(null);
 
     try {
-      await signIn(email, password);
+      const res = await signIn(email, password);
+      if (res?.error) {
+        setError(res.error.message);
+        return;
+      }
 
       // Successful login
-      window.location.href = '/';
+      console.log('[LoginForm] Navigation triggered to /');
+      router.push('/');
 
     } catch (err: any) {
-      console.error(err);
+      console.error('[LoginForm] Unexpected error:', err);
       setError(err.message || t('auth.loginFailed'));
     } finally {
       setLoading(false);
     }
   };
+
 
   // Magic Link removed for local offline version
   const handleMagicLink = async () => {

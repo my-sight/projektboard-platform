@@ -7,6 +7,7 @@ import { SystemConfigProvider } from '@/contexts/SystemConfigContext';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
+import DebugOverlay from '@/components/DebugOverlay';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -35,6 +36,7 @@ export default function RootLayout({
                   {/* 5. Auth (User-Status) */}
                   <AuthProvider>
                     <CssBaseline />
+                    {/* <DebugOverlay /> */}
                     {/* KEIN HEADER HIER - Nur der Inhalt */}
                     {children}
                   </AuthProvider>

@@ -28,28 +28,15 @@ export function useKanbanPermissions(boardId: string, user: any, profile: any) {
                 return;
             }
 
+            const authUserId = user.id;
             const email = user.email || '';
 
-            // PRIO 1: HARDCODED SUPERUSER CHECK (Synchron & Immediate)
-            if (isSuperuserEmail(email) || email === 'admin@kanban.local') {
-                console.log(`[KanbanPermissions] ⚡️ SUPERUSER DETECTED: ${email}`);
-                setCanModifyBoard(true);
-                setPermissions({ canEditContent: true, canManageSettings: true, canManageAttendance: true });
-                setLoadingPermissions(false); // Stop loading immediately
-                return;
-            }
+            // PRIO 1: HIGHLANDER (SUPERUSER) & GLOBAL ADMIN
+            const isMichael = isSuperuserEmail(email) || authUserId === '33333333-3333-3333-3333-333333333333';
+            const globalRole = String(profile?.system_role ?? '').toLowerCase();
+            const isGlobalAdmin = isMichael || globalRole === 'admin';
 
-            const authUserId = user.id;
-
-            let userProfile = profile;
-            if (!userProfile && loadedUsers) {
-                userProfile = loadedUsers.find((u: any) => u.id === authUserId);
-            }
-
-            const globalRole = String(userProfile?.role ?? '').toLowerCase();
-            const isGlobalAdmin = globalRole === 'superuser' || globalRole === 'admin';
-
-            console.log(`[KanbanPermissions] User: ${email}, Global: ${globalRole}, IsGlobalAdmin: ${isGlobalAdmin}`);
+            console.log(`[KanbanPermissions] User: ${email}, isMichael: ${isMichael}, isGlobalAdmin: ${isGlobalAdmin}`);
 
             if (isGlobalAdmin) {
                 setCanModifyBoard(true);
@@ -57,42 +44,34 @@ export function useKanbanPermissions(boardId: string, user: any, profile: any) {
                 return;
             }
 
-            // Fetch board data for owner check
-            let boardRow = null;
-            try {
-                const { data } = await supabase.from('kanban_boards').select('*').eq('id', boardId).single();
-                boardRow = data;
-            } catch (e) { /* ignore */ }
-
-            const isOwner = boardRow?.owner_id === authUserId;
-            const isBoardAdmin = boardRow?.board_admin_id === authUserId;
-
+            // PRIO 2: BOARD-SPECIFIC ROLES
             // Fetch member data
             let memberRow = null;
             try {
                 const { data } = await supabase
                     .from('board_members')
-                    .select('*')
+                    .select('system_role')
                     .eq('board_id', boardId)
                     .eq('profile_id', authUserId)
-                    .single();
+                    .maybeSingle();
                 memberRow = data;
             } catch (e) { /* ignore */ }
 
             const isMember = !!memberRow;
-            const memberRole = memberRow?.role;
+            const boardRole = memberRow?.system_role;
 
-            console.log(`[KanbanPermissions] Owner: ${isOwner} (${boardRow?.owner_id}), BoardAdmin: ${isBoardAdmin}, MemberRole: ${memberRole}`);
+            console.log(`[KanbanPermissions] isMember: ${isMember}, boardRole: ${boardRole}`);
 
-            if (isOwner || isBoardAdmin || (isMember && memberRole === 'admin')) {
+            if (isMember && boardRole === 'admin') {
+                // Board Admin: "darf auf den Boards, in denen er admin ist alles"
                 setCanModifyBoard(true);
                 setPermissions({ canEditContent: true, canManageSettings: true, canManageAttendance: true });
             } else if (isMember) {
-                // Members can edit content but not settings
+                // User: "darf nur auf boards veränderungen vornehmen, in denen er mitglied ist"
                 setCanModifyBoard(true);
                 setPermissions({ canEditContent: true, canManageSettings: false, canManageAttendance: false });
             } else {
-                // View only or no access (depending on visibility, but if they are here they have read access)
+                // View only
                 setCanModifyBoard(false);
                 setPermissions({ canEditContent: false, canManageSettings: false, canManageAttendance: false });
             }

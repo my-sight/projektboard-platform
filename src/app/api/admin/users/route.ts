@@ -1,32 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-import { supabase as supabaseShared } from '@/lib/supabaseClient';
-
-// Helper to verify admin
-async function verifyAdmin(req: NextRequest) {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) return null;
-
-    const token = authHeader.replace('Bearer ', '');
-    // Use shared client
-    const supabase = supabaseShared;
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-
-    if (error || !user) return null;
-
-    // Check role in profiles
-    const { data: profile } = await supabaseAdmin
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-    if (profile?.role === 'admin' || profile?.role === 'superuser') {
-        return user;
-    }
-    return null;
-}
+import { verifyAdmin } from '@/lib/auth-server';
 
 export async function GET(req: NextRequest) {
     const admin = await verifyAdmin(req);
@@ -50,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     try {
         const body = await req.json();
-        const { email, password, name, role, company, department } = body;
+        const { email, password, name, system_role, company, department } = body;
 
         if (!email || !password) return NextResponse.json({ error: 'Missing email or password' }, { status: 400 });
 
@@ -99,7 +74,7 @@ export async function POST(req: NextRequest) {
             id: authUser.user.id,
             email,
             full_name: name,
-            role: role || 'user',
+            system_role: system_role || 'user',
             company: company || department || null,
             is_active: true
         };

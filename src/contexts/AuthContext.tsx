@@ -4,13 +4,14 @@ import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 import { isSuperuserEmail } from '@/constants/superuser';
+import { generateUUID } from '@/lib/uuid';
 
 export interface Profile {
   id: string;
   email: string;
   full_name: string | null;
   avatar_url: string | null;
-  role: string;
+  system_role: string;
   company: string | null;
   is_active: boolean;
 }
@@ -23,6 +24,7 @@ interface AuthContextType {
   signUp: (email: string, password: string) => Promise<any>;
   signOut: () => Promise<void>;
   isAdmin: boolean;
+  isSuperuser: boolean;
   refreshProfile: () => Promise<void>;
 }
 
@@ -99,18 +101,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(session.user);
         // Only fetch profile if not already set or if user changed
         if (!profile || profile.id !== session.user.id) {
-          const p = await fetchProfile(session.user.id);
+          let p = await fetchProfile(session.user.id);
+
           if (!p) {
-            // Stale session (user valid in Auth but missing in DB) -> Logout
-            console.warn(`[AuthContext] User ${session.user.id} has NO profile in public.profiles. Triggering logout to prevent loop.`);
-            await supabase.auth.signOut();
-            setUser(null);
-            setProfile(null);
+            console.warn(`[AuthContext] User ${session.user.id} profile not found or unreadable. Attempting UPSERT...`);
+            // Attempt an UPSERT (insert or update) to handle existing records or RLS issues
+            // We REMOVE system_role from here because it should only be set by the DB trigger
+            // or by an admin via the API. Overwriting it here demotes admins on login.
+            const { data: newProfile, error: upsertError } = await supabase.from('profiles').upsert({
+              id: session.user.id,
+              email: session.user.email || 'unknown',
+              full_name: session.user.user_metadata?.full_name || 'User',
+              is_active: true
+            }, { onConflict: 'id' }).select().single();
+
+            if (upsertError) {
+              console.error(`[AuthContext] Profile UPSERT FAILED: ${upsertError.message}. Using fallback memory profile.`);
+              // FALLBACK: Don't logout! Just create a memory profile so the UI can at least render.
+              setProfile({
+                id: session.user.id,
+                email: session.user.email || 'unknown',
+                full_name: session.user.user_metadata?.full_name || 'Fallback User',
+                system_role: isSuperuserEmail(session.user.email) ? 'admin' : 'user',
+                avatar_url: null,
+                company: null,
+                is_active: true
+              });
+            } else {
+              console.log(`[AuthContext] Profile UPSERTED successfully for ${session.user.id}`);
+              setProfile(newProfile);
+            }
           } else {
-            console.log(`[AuthContext] Profile loaded for ${session.user.id}: role=${p.role}`);
+            console.log(`[AuthContext] Profile loaded for ${session.user.id}: system_role=${p.system_role}`);
             setProfile(p);
           }
         }
+
       } else {
         setUser(null);
         setProfile(null);
@@ -128,7 +154,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    return supabase.auth.signInWithPassword({ email, password });
+    console.log(`[AuthContext] ATTEMPT LOGIN: ${email}`);
+    try {
+      const result = await supabase.auth.signInWithPassword({ email, password });
+      if (result.error) {
+        console.error(`[AuthContext] LOGIN FAILED: ${result.error.message}`);
+      } else {
+        console.log(`[AuthContext] LOGIN SUCCESS for ${result.data.user?.id}`);
+      }
+      return result;
+    } catch (e: any) {
+      console.error(`[AuthContext] LOGIN EXCEPTION: ${e.message}`);
+      throw e;
+    }
   };
 
   const signUp = async (email: string, password: string) => {
@@ -149,7 +187,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (typeof window !== 'undefined') {
       const saved = sessionStorage.getItem('kanban_session_id');
       if (saved) return saved;
-      const id = typeof crypto !== 'undefined' && crypto.randomUUID && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+      const id = generateUUID();
       sessionStorage.setItem('kanban_session_id', id);
       return id;
     }
@@ -199,16 +237,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         );
 
         if (newerSession) {
-          console.warn('Another newer session detected. Reason: Multiple active tabs or devices.', {
+          console.warn('[AuthContext] Another NEWER session detected. Enforcing single-session logout.', {
             myTime: myOnlineAt,
             otherTime: newerSession.online_at,
-            diff: newerSession.online_at - myOnlineAt
+            otherDevice: newerSession.device_info
           });
 
-          // Enforce logout
+          // Enforce logout logic
           supabase.auth.signOut().then(() => {
             setUser(null);
             setProfile(null);
+            // Redirect to login with a specific reason
             window.location.href = '/login?reason=multiple_sessions';
           });
         }
@@ -240,10 +279,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setProfile(null);
   };
 
-  const isAdmin = profile?.role === 'admin' || isSuperuserEmail(user?.email);
+  const isSuperuser = isSuperuserEmail(user?.email) || user?.id === '33333333-3333-3333-3333-333333333333';
+  const isAdmin = isSuperuser || profile?.system_role === 'admin';
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, isAdmin, refreshProfile }}>
+    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, isAdmin, isSuperuser, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

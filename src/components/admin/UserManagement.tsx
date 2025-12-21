@@ -61,7 +61,7 @@ interface UserProfile {
   avatar_url?: string;
   bio?: string;
   company?: string | null;
-  role: string;
+  system_role: string;
   is_active: boolean;
   created_at: string;
 }
@@ -86,7 +86,7 @@ interface CsvUser {
   password?: string;
   full_name: string;
   company: string;
-  role: string;
+  system_role: string;
   generatedPassword?: string;
 }
 
@@ -103,7 +103,7 @@ function normalizeUserProfile(profile: any): UserProfile {
     avatar_url: profile.avatar_url ?? undefined,
     bio: profile.bio ?? undefined,
     company: profile.company ?? null,
-    role: profile.role ?? 'user',
+    system_role: profile.system_role ?? 'user',
     is_active: profile.is_active ?? true,
     created_at: profile.created_at ?? '',
   };
@@ -205,6 +205,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const [newUserName, setNewUserName] = useState('');
   const [newUserDepartment, setNewUserDepartment] = useState('');
   const [newDepartmentName, setNewDepartmentName] = useState('');
+  const [showNewUserPassword, setShowNewUserPassword] = useState(false);
 
   // Edit User Form State
   const [editUserName, setEditUserName] = useState('');
@@ -332,7 +333,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
     } catch (e: any) { setMessage(`❌ ${e.message}`); }
   };
 
-  const updateUserRole = (id: string, role: string) => !isProtectedUser(id) && mutateUser(id, { role }, 'Rolle aktualisiert');
+  const updateUserRole = (id: string, system_role: string) => !isProtectedUser(id) && mutateUser(id, { system_role }, 'Rolle aktualisiert');
   const updateUserDepartment = (id: string, company: string) => !isProtectedUser(id) && mutateUser(id, { company: company || null }, 'Abteilung aktualisiert');
   const toggleUserActive = (id: string, current: boolean) => !isProtectedUser(id) && mutateUser(id, { is_active: !current }, 'Status geändert');
   const updateUserName = (id: string, name: string) => !isProtectedUser(id) && name.trim() && mutateUser(id, { full_name: name.trim() }, 'Name aktualisiert');
@@ -403,7 +404,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
         email: newUserEmail.trim(),
         password: newUserPassword.trim(),
         name: newUserName.trim() || undefined,
-        role: 'user',
+        system_role: 'user',
         company: newUserDepartment || undefined
       };
 
@@ -517,7 +518,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
         else if (nameIdx !== -1) full_name = cols[nameIdx] || '';
         if (!full_name) full_name = email.split('@')[0];
 
-        parsedUsers.push({ email, password: fixedPassword, generatedPassword: fixedPassword, full_name, company: '', role: 'user' });
+        parsedUsers.push({ email, password: fixedPassword, generatedPassword: fixedPassword, full_name, company: '', system_role: 'user' });
       }
       setImportData(parsedUsers);
       if (parsedUsers.length > 0) { setImportDialogOpen(true); setImportProgress(0); }
@@ -550,7 +551,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
             email: u.email,
             password: u.password,
             name: u.full_name,
-            role: 'user',
+            system_role: 'user',
             company: u.company || ''
           })
         });
@@ -599,7 +600,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
           <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="primary">{users.length} {maxUsers ? <span style={{ fontSize: '0.6em', opacity: 0.7 }}>/ {maxUsers}</span> : ''}</Typography><Typography variant="caption">Benutzer</Typography></CardContent></Card></Grid>
           <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="success.main">{users.filter(u => u.is_active).length}</Typography><Typography variant="caption">Aktiv</Typography></CardContent></Card></Grid>
           <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="info.main">{departments.length}</Typography><Typography variant="caption">Abteilungen</Typography></CardContent></Card></Grid>
-          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="warning.main">{users.filter(u => u.role === 'admin').length}</Typography><Typography variant="caption">Admins</Typography></CardContent></Card></Grid>
+          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="warning.main">{users.filter(u => u.system_role === 'admin').length}</Typography><Typography variant="caption">Admins</Typography></CardContent></Card></Grid>
         </Grid>
       </Box>
 
@@ -661,7 +662,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
                       </Select>
                     </TableCell>
                     <TableCell>
-                      <Select size="small" variant="standard" disableUnderline value={u.role} onChange={(e) => updateUserRole(u.id, e.target.value)} disabled={protectedUser}>
+                      <Select size="small" variant="standard" disableUnderline value={u.system_role} onChange={(e) => updateUserRole(u.id, e.target.value)} disabled={protectedUser}>
                         <MenuItem value="user">User</MenuItem><MenuItem value="admin">Admin</MenuItem>
                       </Select>
                     </TableCell>
@@ -670,7 +671,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
                       <IconButton size="small" color="primary" onClick={() => {
                         setEditingUser(u);
                         setEditUserName(u.full_name);
-                        setEditUserRole(u.role);
+                        setEditUserRole(u.system_role);
                         setEditUserDepartment(u.company || '');
                         setEditUserActive(u.is_active);
                         setEditUserDialogOpen(true);
@@ -767,7 +768,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
             if (!editingUser) return;
             const modifications: any = {};
             if (editUserName !== editingUser.full_name) modifications.full_name = editUserName;
-            if (editUserRole !== editingUser.role) modifications.role = editUserRole;
+            if (editUserRole !== editingUser.system_role) modifications.system_role = editUserRole;
             if (editUserDepartment !== (editingUser.company || '')) modifications.company = editUserDepartment || null;
             if (editUserActive !== editingUser.is_active) modifications.is_active = editUserActive;
 
@@ -785,7 +786,37 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
         <DialogContent>
           <TextField label="Name" fullWidth margin="normal" value={newUserName} onChange={e => setNewUserName(e.target.value)} />
           <TextField label="Email" fullWidth margin="normal" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} />
-          <TextField label="Passwort" type="password" fullWidth margin="normal" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} />
+          <Box sx={{ position: 'relative' }}>
+            <TextField
+              label="Passwort"
+              type={showNewUserPassword ? "text" : "password"}
+              fullWidth
+              margin="normal"
+              value={newUserPassword}
+              onChange={e => setNewUserPassword(e.target.value)}
+            />
+            <Button
+              size="small"
+              sx={{ position: 'absolute', right: 8, top: 24 }}
+              onClick={() => setShowNewUserPassword(!showNewUserPassword)}
+            >
+              {showNewUserPassword ? "Verbergen" : "Anzeigen"}
+            </Button>
+          </Box>
+          <Button
+            size="small"
+            variant="outlined"
+            sx={{ mb: 2 }}
+            onClick={() => {
+              const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*";
+              let pass = "";
+              for (let i = 0; i < 12; i++) pass += chars.charAt(Math.floor(Math.random() * chars.length));
+              setNewUserPassword(pass);
+              setShowNewUserPassword(true);
+            }}
+          >
+            Zufälliges Passwort generieren
+          </Button>
           <FormControl fullWidth margin="normal">
             <InputLabel>Abteilung</InputLabel>
             <Select value={newUserDepartment} label="Abteilung" onChange={e => setNewUserDepartment(e.target.value)}>

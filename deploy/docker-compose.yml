@@ -49,7 +49,7 @@ services:
       GOTRUE_SITE_URL: http://${NUC_IP}:3000
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
       GOTRUE_JWT_EXP: 3600
-      GOTRUE_EXTERNAL_EMAIL_ENABLED: "false"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
       GOTRUE_EXTERNAL_PHONE_ENABLED: "false"
       GOTRUE_MAILER_AUTOCONFIRM: "true"
 
@@ -152,8 +152,9 @@ services:
     network_mode: host
     environment:
       NEXT_PUBLIC_SUPABASE_URL: http://${NUC_IP}:8000
-      SUPABASE_URL: http://127.0.0.1:8000
+      SUPABASE_URL: http://${NUC_IP}:8000
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       HOSTNAME: "0.0.0.0"
       PORT: 3000

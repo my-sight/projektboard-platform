@@ -49,7 +49,7 @@ export default function BoardSettingsPage() {
 
                 // Determine permissions
                 const isSuperuser = isSuperuserEmail(user.email);
-                const isContextAdmin = profile?.role === 'admin';
+                const isContextAdmin = profile?.system_role === 'admin';
                 const isBoardAdmin = data.board_admin_id === user.id;
 
                 setIsAdmin(isSuperuser || isContextAdmin || isBoardAdmin);

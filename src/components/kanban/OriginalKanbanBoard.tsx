@@ -77,13 +77,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
     const [users, setUsers] = useState<any[]>([]);
     const [boardMembers, setBoardMembers] = useState<any[]>([]);
     const [archivedCards, setArchivedCards] = useState<ProjectBoardCard[]>([]);
-
-    const isSuperForce = user?.email ? isSuperuserEmail(user.email) : false;
-    const { permissions: rawPermissions, canModifyBoard, resolvePermissions } = useKanbanPermissions(boardId, user, profile);
-
-    const permissions = isSuperForce
-      ? { canEditContent: true, canManageSettings: true, canManageAttendance: true }
-      : rawPermissions;
+    const { permissions, canModifyBoard, resolvePermissions } = useKanbanPermissions(boardId, user, profile);
 
     const {
       rows, setRows, cols, lanes, checklistTemplates, setChecklistTemplates,
@@ -353,7 +347,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           onOpenTopTopics={() => setTopTopicsOpen(true)}
           onOpenArchive={handleOpenArchive}
           onNewCard={() => setNewCardOpen(true)}
-          canModify={canModifyBoard || isSuperForce}
+          canModify={canModifyBoard}
           canManageSettings={permissions.canManageSettings}
           kpiBadgeCount={kpiBadgeCount}
         />
@@ -382,7 +376,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           setBoardName={setBoardName}
           boardDescription={boardDescription}
           setBoardDescription={setBoardDescription}
-          canManageSettings={permissions.canManageSettings || isSuperForce}
+          canManageSettings={permissions.canManageSettings}
           onSave={saveSettings}
           loadCards={loadCards}
           onOpenArchive={handleOpenArchive}

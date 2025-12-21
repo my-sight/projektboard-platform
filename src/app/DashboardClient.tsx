@@ -64,12 +64,11 @@ interface Board {
 export default function DashboardClient() {
   const router = useRouter();
   const theme = useTheme();
-  const { user, profile, refreshProfile, signOut, loading: authLoading } = useAuth();
+  const { user, profile, refreshProfile, signOut, loading: authLoading, isAdmin } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const { config, toggleMode } = useSystemConfig();
 
   const [boards, setBoards] = useState<Board[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
 
   // UI State
@@ -92,12 +91,7 @@ export default function DashboardClient() {
 
     try {
       const fetchData = async () => {
-        // 1. Check Roles
-        const isSuper = isSuperuserEmail(user.email);
-        const { data: profileData } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-        setIsAdmin(isSuper || (profileData?.role && profileData.role.toLowerCase() === 'admin'));
-
-        // 2. Load Boards
+        // 1. Load Boards
         const { data: boardData } = await supabase.from('kanban_boards').select('*');
         if (boardData) {
           const mapped = boardData.map(b => ({
@@ -108,7 +102,7 @@ export default function DashboardClient() {
           setBoards(mapped);
         }
 
-        // 3. Load Favorites
+        // 2. Load Favorites
         const { data: favData } = await supabase.from('board_favorites').select('board_id').eq('user_id', user.id);
         if (favData) {
           setFavoriteBoardIds(new Set(favData.map(f => f.board_id)));
@@ -213,14 +207,25 @@ export default function DashboardClient() {
   const handleOpenBoard = (boardId: string) => router.push(`/boards/${boardId}`);
   const handleOpenSettings = (e: React.MouseEvent, board: Board) => {
     e.stopPropagation();
+    // In Highlander mode, settings access is gated inside the page or by RLS on save.
+    // We allow everyone to OPEN the settings page, but RLS will prevent unauthorized SAVES.
     router.push(`/boards/${board.id}/settings`);
   };
 
   if (showLoader) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+    return <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: 2 }}>
       <Typography variant="h6" color="text.secondary">Lade Dashboard...</Typography>
+      <Box sx={{ p: 2, bgcolor: alpha(theme.palette.info.main, 0.1), borderRadius: 2 }}>
+        <Typography variant="caption" sx={{ fontFamily: 'monospace', display: 'block' }}>
+          Auth: {authLoading ? 'Verbinde...' : (user ? 'Angemeldet (' + user.email + ')' : 'Keine Sitzung')}
+        </Typography>
+        <Typography variant="caption" sx={{ fontFamily: 'monospace', display: 'block' }}>
+          Profile: {profile ? 'Gefunden (' + profile.system_role + ')' : 'Suche...'}
+        </Typography>
+      </Box>
     </Box>;
   }
+
 
   if (!user && !authLoading) return null;
 

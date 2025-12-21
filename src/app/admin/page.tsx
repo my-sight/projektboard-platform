@@ -19,28 +19,18 @@ import { isSuperuserEmail } from '@/constants/superuser';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function AdminPage() {
-  const [isSuperUser, setIsSuperUser] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { user, isSuperuser, loading: authLoading } = useAuth();
 
-  const { user } = useAuth();
-
-  useEffect(() => {
-    if (user) {
-      setIsSuperUser(isSuperuserEmail(user.email));
-    }
-    setLoading(false);
-  }, [user]);
-
-  if (loading) return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>;
+  if (authLoading) return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>;
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
 
       {/* 1. Benutzer & Abteilungen (Für alle Admins) */}
-      <UserManagement isSuperUser={isSuperUser} />
+      <UserManagement isSuperUser={isSuperuser} />
 
       {/* 2. System-Bereich (Nur für Superuser) */}
-      {isSuperUser && (
+      {isSuperuser && (
         <Box sx={{ mt: 8 }}>
           <Divider sx={{ my: 4 }}>
             <Chip label="SUPERUSER ZONE" color="error" variant="outlined" />

@@ -7,8 +7,8 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeho
 
 if (typeof window === 'undefined') {
     console.log(`[SupabaseAdmin] ENV_SOURCE: SUPABASE_URL="${su}" | NEXT_PUBLIC_SUPABASE_URL="${npsu}"`);
-    console.log(`[SupabaseAdmin] Final URL used: ${supabaseUrl}`);
-    console.log(`[SupabaseAdmin] Service Role Key Present: ${!!supabaseServiceRoleKey && supabaseServiceRoleKey !== 'placeholder-key'}`);
+    console.log(`[SupabaseAdmin] Final URL: ${supabaseUrl}`);
+    console.log(`[SupabaseAdmin] Key Prefix: ${supabaseServiceRoleKey.substring(0, 10)}...`);
 }
 
 

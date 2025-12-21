@@ -1,0 +1,542 @@
+118-CREATE OR REPLACE FUNCTION "public"."handle_new_auth_user"() RETURNS "trigger"
+119-    LANGUAGE "plpgsql" SECURITY DEFINER
+120-    SET "search_path" TO 'public'
+121-    AS $$
+122-begin
+123:  insert into public.profiles (id, email, full_name, "role", company, is_active)
+124-  values (
+125-    new.id,
+126-    new.email,
+127-    coalesce(nullif(new.raw_user_meta_data->>'full_name', ''), new.email),
+128:    coalesce(nullif(new.raw_user_meta_data->>'role', ''), 'user'),
+129-    nullif(new.raw_user_meta_data->>'company', ''),
+130-    true
+131-  )
+132-  on conflict (id) do update
+133-    set email = excluded.email,
+134-        full_name = coalesce(nullif(excluded.full_name, ''), public.profiles.full_name),
+135:        "role" = coalesce(nullif(excluded.role, ''), public.profiles.role), 
+136-        company = coalesce(excluded.company, public.profiles.company),
+137-        is_active = true;
+138-
+139-  return new;
+140-end;
+--
+161-
+162-CREATE OR REPLACE FUNCTION "public"."is_admin"() RETURNS boolean
+163-    LANGUAGE "sql" SECURITY DEFINER
+164-    SET "search_path" TO 'public'
+165-    AS $$
+166:  select role = 'admin'
+167-  from public.profiles
+168-  where id = auth.uid();
+169-$$;
+170-
+171-
+--
+337-CREATE TABLE IF NOT EXISTS "public"."board_members" (
+338-    "id" "uuid" DEFAULT "gen_random_uuid"() NOT NULL,
+339-    "board_id" "uuid" NOT NULL,
+340-    "profile_id" "uuid" NOT NULL,
+341-    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+342:    "role" "text" DEFAULT 'member'::"text",
+343:    CONSTRAINT "board_members_role_check" CHECK (("role" = ANY (ARRAY['admin'::"text", 'member'::"text"])))
+344-);
+345-
+346-
+347-ALTER TABLE "public"."board_members" OWNER TO "postgres";
+348-
+--
+421-    "email" "text" NOT NULL,
+422-    "full_name" "text",
+423-    "avatar_url" "text",
+424-    "bio" "text",
+425-    "company" "text",
+426:    "role" "text" DEFAULT 'user'::"text" NOT NULL,
+427-    "is_active" boolean DEFAULT true NOT NULL,
+428-    "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
+429-    "updated_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL
+430-);
+431-
+--
+708-
+709-
+710-
+711-CREATE POLICY "Admins manage cards" ON "public"."kanban_cards" USING ((("auth"."uid"() IN ( SELECT "profiles"."id"
+712-   FROM "public"."profiles"
+713:  WHERE ("profiles"."role" = 'admin'::"text"))) OR (("auth"."jwt"() ->> 'email'::"text") = 'michael@mysight.net'::"text")));
+714-
+715-
+716-
+717-CREATE POLICY "Admins manage settings" ON "public"."kanban_board_settings" USING ((("auth"."uid"() IN ( SELECT "profiles"."id"
+718-   FROM "public"."profiles"
+719:  WHERE ("profiles"."role" = 'admin'::"text"))) OR (("auth"."jwt"() ->> 'email'::"text") = 'michael@mysight.net'::"text")));
+720-
+721-
+722-
+723-CREATE POLICY "Allow anon to update license_key" ON "public"."system_settings" USING (("key" = 'license_key'::"text")) WITH CHECK (("key" = 'license_key'::"text"));
+724-
+--
+726-
+727-CREATE POLICY "Allow read access to system_settings" ON "public"."system_settings" FOR SELECT USING (true);
+728-
+729-
+730-
+731:CREATE POLICY "Authenticated users can read board cards" ON "public"."kanban_cards" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+732-
+733-
+734-
+735:CREATE POLICY "Authenticated users can read escalation history" ON "public"."board_escalation_history" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+736-
+737-
+738-
+739:CREATE POLICY "Authenticated users can write escalation history" ON "public"."board_escalation_history" FOR INSERT WITH CHECK (("auth"."role"() = 'authenticated'::"text"));
+740-
+741-
+742-
+743:CREATE POLICY "Authenticated users manage escalations" ON "public"."board_escalations" USING (("auth"."role"() = 'authenticated'::"text")) WITH CHECK (("auth"."role"() = 'authenticated'::"text"));
+744-
+745-
+746-
+747-CREATE POLICY "Board members can modify cards" ON "public"."kanban_cards" USING (((EXISTS ( SELECT 1
+748-   FROM "public"."profiles"
+749:  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+750-   FROM "public"."kanban_boards"
+751-  WHERE (("kanban_boards"."id" = "kanban_cards"."board_id") AND (("kanban_boards"."owner_id" = "auth"."uid"()) OR ("kanban_boards"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+752-   FROM "public"."board_members"
+753-  WHERE (("board_members"."board_id" = "board_members"."board_id") AND ("board_members"."profile_id" = "auth"."uid"()))))));
+754-
+755-
+756-
+757-CREATE POLICY "Board owners manage board settings" ON "public"."kanban_board_settings" USING (((EXISTS ( SELECT 1
+758-   FROM "public"."profiles"
+759:  WHERE (("profiles"."id" = "auth"."uid"()) AND ("profiles"."role" = ANY (ARRAY['admin'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+760-   FROM "public"."kanban_boards"
+761-  WHERE (("kanban_boards"."id" = "kanban_board_settings"."board_id") AND (("kanban_boards"."owner_id" = "auth"."uid"()) OR ("kanban_boards"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+762-   FROM "public"."board_members"
+763:  WHERE (("board_members"."board_id" = "board_members"."board_id") AND ("board_members"."profile_id" = "auth"."uid"()) AND ("board_members"."role" = 'admin'::"text"))))));
+764-
+765-
+766-
+767-CREATE POLICY "Enable insert for authenticated users" ON "public"."system_settings" FOR INSERT TO "authenticated" WITH CHECK (true);
+768-
+--
+778-
+779-CREATE POLICY "Members can delete cards on their boards" ON "public"."kanban_cards" FOR DELETE USING (((EXISTS ( SELECT 1
+780-   FROM "public"."board_members" "bm"
+781-  WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
+782-   FROM "public"."profiles" "p"
+783:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+784-   FROM "public"."kanban_boards" "b"
+785-  WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"())))))));
+786-
+787-
+788-
+789-CREATE POLICY "Members can insert cards on their boards" ON "public"."kanban_cards" FOR INSERT WITH CHECK (((EXISTS ( SELECT 1
+790-   FROM "public"."board_members" "bm"
+791-  WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
+792-   FROM "public"."profiles" "p"
+793:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+794-   FROM "public"."kanban_boards" "b"
+795-  WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"())))))));
+796-
+797-
+798-
+--
+800-   FROM "public"."board_members" "bm"
+801-  WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
+802-   FROM "public"."kanban_boards" "b"
+803-  WHERE (("b"."id" = "kanban_cards"."board_id") AND ("b"."visibility" = 'public'::"text")))) OR (EXISTS ( SELECT 1
+804-   FROM "public"."profiles" "p"
+805:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+806-   FROM "public"."kanban_boards" "b"
+807-  WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"())))))));
+808-
+809-
+810-
+811-CREATE POLICY "Members can update cards on their boards" ON "public"."kanban_cards" FOR UPDATE USING (((EXISTS ( SELECT 1
+812-   FROM "public"."board_members" "bm"
+813-  WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
+814-   FROM "public"."profiles" "p"
+815:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+816-   FROM "public"."kanban_boards" "b"
+817-  WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))))) WITH CHECK (((EXISTS ( SELECT 1
+818-   FROM "public"."board_members" "bm"
+819-  WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))) OR (EXISTS ( SELECT 1
+820-   FROM "public"."profiles" "p"
+821:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+822-   FROM "public"."kanban_boards" "b"
+823-  WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"())))))));
+824-
+825-
+826-
+--
+876-ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
+877-
+878-
+879-CREATE POLICY "rbac_delete_escalation_history" ON "public"."board_escalation_history" FOR DELETE USING (((EXISTS ( SELECT 1
+880-   FROM "public"."profiles" "p"
+881:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+882-   FROM "public"."kanban_boards" "b"
+883-  WHERE (("b"."id" = "board_escalation_history"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+884-   FROM "public"."board_members" "bm"
+885-  WHERE (("bm"."board_id" = "board_escalation_history"."board_id") AND ("bm"."profile_id" = "auth"."uid"()))))));
+886-
+887-
+888-
+889-CREATE POLICY "rbac_manage_attendance" ON "public"."board_attendance" USING (((EXISTS ( SELECT 1
+890-   FROM "public"."profiles" "p"
+891:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+892-   FROM "public"."kanban_boards" "b"
+893-  WHERE (("b"."id" = "board_attendance"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+894-   FROM "public"."board_members" "bm"
+895-  WHERE (("bm"."board_id" = "board_attendance"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
+896-   FROM "public"."profiles" "p"
+897:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+898-   FROM "public"."kanban_boards" "b"
+899-  WHERE (("b"."id" = "board_attendance"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+900-   FROM "public"."board_members" "bm"
+901-  WHERE (("bm"."board_id" = "board_attendance"."board_id") AND ("bm"."profile_id" = "auth"."uid"()))))));
+902-
+903-
+904-
+905-CREATE POLICY "rbac_manage_board_members" ON "public"."board_members" USING (((EXISTS ( SELECT 1
+906-   FROM "public"."profiles" "p"
+907:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+908-   FROM "public"."kanban_boards" "b"
+909-  WHERE (("b"."id" = "board_members"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))))) WITH CHECK (((EXISTS ( SELECT 1
+910-   FROM "public"."profiles" "p"
+911:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+912-   FROM "public"."kanban_boards" "b"
+913-  WHERE (("b"."id" = "board_members"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"())))))));
+914-
+915-
+916-
+917-CREATE POLICY "rbac_manage_board_settings" ON "public"."kanban_board_settings" USING (((EXISTS ( SELECT 1
+918-   FROM "public"."profiles" "p"
+919:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+920-   FROM "public"."kanban_boards" "b"
+921-  WHERE (("b"."id" = "kanban_board_settings"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+922-   FROM "public"."board_members" "bm"
+923-  WHERE (("bm"."board_id" = "kanban_board_settings"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
+924-   FROM "public"."profiles" "p"
+925:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+926-   FROM "public"."kanban_boards" "b"
+927-  WHERE (("b"."id" = "kanban_board_settings"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+928-   FROM "public"."board_members" "bm"
+929-  WHERE (("bm"."board_id" = "kanban_board_settings"."board_id") AND ("bm"."profile_id" = "auth"."uid"()))))));
+930-
+931-
+932-
+933-CREATE POLICY "rbac_manage_boards" ON "public"."kanban_boards" USING (((EXISTS ( SELECT 1
+934-   FROM "public"."profiles" "p"
+935:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR ("auth"."uid"() = "owner_id") OR ("auth"."uid"() = "board_admin_id"))) WITH CHECK (((EXISTS ( SELECT 1
+936-   FROM "public"."profiles" "p"
+937:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR ("auth"."uid"() = "owner_id") OR ("auth"."uid"() = "board_admin_id")));
+938-
+939-
+940-
+941-CREATE POLICY "rbac_manage_cards" ON "public"."kanban_cards" USING (((EXISTS ( SELECT 1
+942-   FROM "public"."profiles" "p"
+943:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+944-   FROM "public"."kanban_boards" "b"
+945-  WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+946-   FROM "public"."board_members" "bm"
+947-  WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
+948-   FROM "public"."profiles" "p"
+949:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+950-   FROM "public"."kanban_boards" "b"
+951-  WHERE (("b"."id" = "kanban_cards"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+952-   FROM "public"."board_members" "bm"
+953-  WHERE (("bm"."board_id" = "kanban_cards"."board_id") AND ("bm"."profile_id" = "auth"."uid"()))))));
+954-
+955-
+956-
+957-CREATE POLICY "rbac_manage_escalations" ON "public"."board_escalations" USING (((EXISTS ( SELECT 1
+958-   FROM "public"."profiles" "p"
+959:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+960-   FROM "public"."kanban_boards" "b"
+961-  WHERE (("b"."id" = "board_escalations"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+962-   FROM "public"."board_members" "bm"
+963-  WHERE (("bm"."board_id" = "board_escalations"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
+964-   FROM "public"."profiles" "p"
+965:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+966-   FROM "public"."kanban_boards" "b"
+967-  WHERE (("b"."id" = "board_escalations"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+968-   FROM "public"."board_members" "bm"
+969-  WHERE (("bm"."board_id" = "board_escalations"."board_id") AND ("bm"."profile_id" = "auth"."uid"()))))));
+970-
+971-
+972-
+973-CREATE POLICY "rbac_manage_top_topics" ON "public"."board_top_topics" USING (((EXISTS ( SELECT 1
+974-   FROM "public"."profiles" "p"
+975:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+976-   FROM "public"."kanban_boards" "b"
+977-  WHERE (("b"."id" = "board_top_topics"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+978-   FROM "public"."board_members" "bm"
+979-  WHERE (("bm"."board_id" = "board_top_topics"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
+980-   FROM "public"."profiles" "p"
+981:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+982-   FROM "public"."kanban_boards" "b"
+983-  WHERE (("b"."id" = "board_top_topics"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+984-   FROM "public"."board_members" "bm"
+985-  WHERE (("bm"."board_id" = "board_top_topics"."board_id") AND ("bm"."profile_id" = "auth"."uid"()))))));
+986-
+987-
+988-
+989:CREATE POLICY "rbac_read_attendance" ON "public"."board_attendance" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+990-
+991-
+992-
+993:CREATE POLICY "rbac_read_board_members" ON "public"."board_members" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+994-
+995-
+996-
+997:CREATE POLICY "rbac_read_boards" ON "public"."kanban_boards" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+998-
+999-
+1000-
+1001:CREATE POLICY "rbac_read_cards" ON "public"."kanban_cards" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+1002-
+1003-
+1004-
+1005:CREATE POLICY "rbac_read_departments" ON "public"."departments" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+1006-
+1007-
+1008-
+1009:CREATE POLICY "rbac_read_escalation_history" ON "public"."board_escalation_history" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+1010-
+1011-
+1012-
+1013:CREATE POLICY "rbac_read_escalations" ON "public"."board_escalations" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+1014-
+1015-
+1016-
+1017:CREATE POLICY "rbac_read_profiles" ON "public"."profiles" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+1018-
+1019-
+1020-
+1021:CREATE POLICY "rbac_read_top_topics" ON "public"."board_top_topics" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
+1022-
+1023-
+1024-
+1025-CREATE POLICY "rbac_update_escalation_history" ON "public"."board_escalation_history" FOR UPDATE USING (((EXISTS ( SELECT 1
+1026-   FROM "public"."profiles" "p"
+1027:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+1028-   FROM "public"."kanban_boards" "b"
+1029-  WHERE (("b"."id" = "board_escalation_history"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+1030-   FROM "public"."board_members" "bm"
+1031-  WHERE (("bm"."board_id" = "board_escalation_history"."board_id") AND ("bm"."profile_id" = "auth"."uid"())))))) WITH CHECK (((EXISTS ( SELECT 1
+1032-   FROM "public"."profiles" "p"
+1033:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+1034-   FROM "public"."kanban_boards" "b"
+1035-  WHERE (("b"."id" = "board_escalation_history"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+1036-   FROM "public"."board_members" "bm"
+1037-  WHERE (("bm"."board_id" = "board_escalation_history"."board_id") AND ("bm"."profile_id" = "auth"."uid"()))))));
+1038-
+--
+1044-
+1045-
+1046-
+1047-CREATE POLICY "rbac_write_escalation_history" ON "public"."board_escalation_history" FOR INSERT WITH CHECK (((EXISTS ( SELECT 1
+1048-   FROM "public"."profiles" "p"
+1049:  WHERE (("p"."id" = "auth"."uid"()) AND ("lower"("p"."role") = ANY (ARRAY['admin'::"text", 'owner'::"text", 'manager'::"text", 'superuser'::"text"]))))) OR (EXISTS ( SELECT 1
+1050-   FROM "public"."kanban_boards" "b"
+1051-  WHERE (("b"."id" = "board_escalation_history"."board_id") AND (("b"."owner_id" = "auth"."uid"()) OR ("b"."board_admin_id" = "auth"."uid"()))))) OR (EXISTS ( SELECT 1
+1052-   FROM "public"."board_members" "bm"
+1053-  WHERE (("bm"."board_id" = "board_escalation_history"."board_id") AND ("bm"."profile_id" = "auth"."uid"()))))));
+1054-
+--
+1067-
+1068-
+1069-GRANT USAGE ON SCHEMA "public" TO "postgres";
+1070-GRANT USAGE ON SCHEMA "public" TO "anon";
+1071-GRANT USAGE ON SCHEMA "public" TO "authenticated";
+1072:GRANT USAGE ON SCHEMA "public" TO "service_role";
+1073-
+1074-
+1075-
+1076-
+1077-
+--
+1223-
+1224-
+1225-
+1226-GRANT ALL ON FUNCTION "public"."cleanup_old_data"() TO "anon";
+1227-GRANT ALL ON FUNCTION "public"."cleanup_old_data"() TO "authenticated";
+1228:GRANT ALL ON FUNCTION "public"."cleanup_old_data"() TO "service_role";
+1229-
+1230-
+1231-
+1232-GRANT ALL ON FUNCTION "public"."ensure_owner_and_admin_in_board_members"() TO "anon";
+1233-GRANT ALL ON FUNCTION "public"."ensure_owner_and_admin_in_board_members"() TO "authenticated";
+1234:GRANT ALL ON FUNCTION "public"."ensure_owner_and_admin_in_board_members"() TO "service_role";
+1235-
+1236-
+1237-
+1238-GRANT ALL ON FUNCTION "public"."handle_new_auth_user"() TO "anon";
+1239-GRANT ALL ON FUNCTION "public"."handle_new_auth_user"() TO "authenticated";
+1240:GRANT ALL ON FUNCTION "public"."handle_new_auth_user"() TO "service_role";
+1241-
+1242-
+1243-
+1244-GRANT ALL ON FUNCTION "public"."is_active_user"("uid" "uuid") TO "anon";
+1245-GRANT ALL ON FUNCTION "public"."is_active_user"("uid" "uuid") TO "authenticated";
+1246:GRANT ALL ON FUNCTION "public"."is_active_user"("uid" "uuid") TO "service_role";
+1247-
+1248-
+1249-
+1250-GRANT ALL ON FUNCTION "public"."is_admin"() TO "anon";
+1251-GRANT ALL ON FUNCTION "public"."is_admin"() TO "authenticated";
+1252:GRANT ALL ON FUNCTION "public"."is_admin"() TO "service_role";
+1253-
+1254-
+1255-
+1256-GRANT ALL ON TABLE "public"."kanban_boards" TO "anon";
+1257-GRANT ALL ON TABLE "public"."kanban_boards" TO "authenticated";
+1258:GRANT ALL ON TABLE "public"."kanban_boards" TO "service_role";
+1259-
+1260-
+1261-
+1262-GRANT ALL ON FUNCTION "public"."list_all_boards"() TO "anon";
+1263-GRANT ALL ON FUNCTION "public"."list_all_boards"() TO "authenticated";
+1264:GRANT ALL ON FUNCTION "public"."list_all_boards"() TO "service_role";
+1265-
+1266-
+1267-
+1268-GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "anon";
+1269-GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "authenticated";
+1270:GRANT ALL ON FUNCTION "public"."set_updated_at"() TO "service_role";
+1271-
+1272-
+1273-
+1274-
+1275-
+--
+1286-
+1287-
+1288-
+1289-GRANT ALL ON TABLE "public"."board_attendance" TO "anon";
+1290-GRANT ALL ON TABLE "public"."board_attendance" TO "authenticated";
+1291:GRANT ALL ON TABLE "public"."board_attendance" TO "service_role";
+1292-
+1293-
+1294-
+1295-GRANT ALL ON TABLE "public"."board_attendance_matrix" TO "anon";
+1296-GRANT ALL ON TABLE "public"."board_attendance_matrix" TO "authenticated";
+1297:GRANT ALL ON TABLE "public"."board_attendance_matrix" TO "service_role";
+1298-
+1299-
+1300-
+1301-GRANT ALL ON TABLE "public"."board_attendance_week_series" TO "anon";
+1302-GRANT ALL ON TABLE "public"."board_attendance_week_series" TO "authenticated";
+1303:GRANT ALL ON TABLE "public"."board_attendance_week_series" TO "service_role";
+1304-
+1305-
+1306-
+1307-GRANT ALL ON TABLE "public"."board_attendance_weeks" TO "anon";
+1308-GRANT ALL ON TABLE "public"."board_attendance_weeks" TO "authenticated";
+1309:GRANT ALL ON TABLE "public"."board_attendance_weeks" TO "service_role";
+1310-
+1311-
+1312-
+1313-GRANT ALL ON TABLE "public"."board_escalation_history" TO "anon";
+1314-GRANT ALL ON TABLE "public"."board_escalation_history" TO "authenticated";
+1315:GRANT ALL ON TABLE "public"."board_escalation_history" TO "service_role";
+1316-
+1317-
+1318-
+1319-GRANT ALL ON TABLE "public"."board_escalations" TO "anon";
+1320-GRANT ALL ON TABLE "public"."board_escalations" TO "authenticated";
+1321:GRANT ALL ON TABLE "public"."board_escalations" TO "service_role";
+1322-
+1323-
+1324-
+1325-GRANT ALL ON TABLE "public"."board_favorites" TO "anon";
+1326-GRANT ALL ON TABLE "public"."board_favorites" TO "authenticated";
+1327:GRANT ALL ON TABLE "public"."board_favorites" TO "service_role";
+1328-
+1329-
+1330-
+1331-GRANT ALL ON TABLE "public"."board_members" TO "anon";
+1332-GRANT ALL ON TABLE "public"."board_members" TO "authenticated";
+1333:GRANT ALL ON TABLE "public"."board_members" TO "service_role";
+1334-
+1335-
+1336-
+1337-GRANT ALL ON TABLE "public"."board_top_topics" TO "anon";
+1338-GRANT ALL ON TABLE "public"."board_top_topics" TO "authenticated";
+1339:GRANT ALL ON TABLE "public"."board_top_topics" TO "service_role";
+1340-
+1341-
+1342-
+1343-GRANT ALL ON TABLE "public"."departments" TO "anon";
+1344-GRANT ALL ON TABLE "public"."departments" TO "authenticated";
+1345:GRANT ALL ON TABLE "public"."departments" TO "service_role";
+1346-
+1347-
+1348-
+1349-GRANT ALL ON TABLE "public"."kanban_board_settings" TO "anon";
+1350-GRANT ALL ON TABLE "public"."kanban_board_settings" TO "authenticated";
+1351:GRANT ALL ON TABLE "public"."kanban_board_settings" TO "service_role";
+1352-
+1353-
+1354-
+1355-GRANT ALL ON TABLE "public"."kanban_cards" TO "anon";
+1356-GRANT ALL ON TABLE "public"."kanban_cards" TO "authenticated";
+1357:GRANT ALL ON TABLE "public"."kanban_cards" TO "service_role";
+1358-
+1359-
+1360-
+1361-GRANT ALL ON TABLE "public"."personal_notes" TO "anon";
+1362-GRANT ALL ON TABLE "public"."personal_notes" TO "authenticated";
+1363:GRANT ALL ON TABLE "public"."personal_notes" TO "service_role";
+1364-
+1365-
+1366-
+1367-GRANT ALL ON TABLE "public"."profiles" TO "anon";
+1368-GRANT ALL ON TABLE "public"."profiles" TO "authenticated";
+1369:GRANT ALL ON TABLE "public"."profiles" TO "service_role";
+1370-
+1371-
+1372-
+1373-GRANT ALL ON TABLE "public"."system_settings" TO "anon";
+1374-GRANT ALL ON TABLE "public"."system_settings" TO "authenticated";
+1375:GRANT ALL ON TABLE "public"."system_settings" TO "service_role";
+1376-
+1377-
+1378-
+1379-
+1380-
+--
+1383-
+1384-
+1385-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
+1386-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
+1387-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
+1388:ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "service_role";
+1389-
+1390-
+1391-
+1392-
+1393-
+1394-
+1395-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
+1396-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
+1397-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
+1398:ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
+1399-
+1400-
+1401-
+1402-
+1403-
+1404-
+1405-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "postgres";
+1406-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
+1407-ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
+1408:ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+1409-
+1410-
+1411-
+1412-
+1413-

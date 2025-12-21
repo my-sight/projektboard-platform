@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { generateUUID } from '@/lib/uuid';
 import { useSnackbar } from 'notistack';
 import { ProjectBoardCard, ViewMode, LayoutDensity } from '@/types';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -320,7 +321,7 @@ export function useKanbanData(
         try {
             const payload = {
                 board_id: boardId,
-                card_id: crypto.randomUUID(),
+                card_id: generateUUID(),
                 card_data: newCardData,
                 stage: newCardData['Board Stage'],
                 position: 0,

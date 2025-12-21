@@ -48,6 +48,8 @@ import {
     Inventory2
 } from '@mui/icons-material';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
+import { toBoolean } from '@/utils/booleans';
+import { generateUUID } from '@/lib/uuid';
 import { useSnackbar } from 'notistack';
 import { keyframes } from '@mui/material/styles';
 
@@ -176,7 +178,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     // const supabase = useMemo(() => getSupabaseBrowserClient(), []); // Removed
     const { enqueueSnackbar } = useSnackbar();
     const { t } = useLanguage();
-    const { user, profile } = useAuth();
+    const { user, profile, isAdmin, isSuperuser } = useAuth();
     const theme = useTheme();
 
     const [members, setMembers] = useState<MemberWithProfile[]>([]);
@@ -430,35 +432,23 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         if (!user) { console.warn('No auth model found'); return; }
         setCurrentUser(user);
 
-        // PRIO 1: SUPERUSER FORCE
-        if (user.email && isSuperuserEmail(user.email)) {
-            // console.log('⚡️ Superuser detected (TeamBoard):', user.email);
+        // PRIO 1: HIGHLANDER (SUPERUSER) & GLOBAL ADMIN
+        if (isAdmin || isSuperuser) {
             setCanModify(true);
             setCanConfigure(true);
             return;
         }
 
-        // console.log('Evaluating permissions for:', user.email, user.id);
+        // PRIO 2: BOARD-SPECIFIC ROLES
+        const myMemberEntry = currentMembers.find(m => m.profile_id === user.id);
+        const isMember = !!myMemberEntry;
+        const isBoardAdmin = myMemberEntry?.profile?.system_role === 'admin' || (myMemberEntry as any)?.system_role === 'admin';
 
-        let userProfile: any = profile;
-        if (!userProfile) userProfile = profiles.find(p => p.id === user.id) || null;
-
-        const globalRole = String(userProfile?.role ?? '').toLowerCase();
-        const isSuper = isSuperuserEmail(user.email || '') || globalRole === 'admin' || globalRole === 'superuser';
-
-        let boardRow = null;
-        try {
-            const { data } = await supabase.from('kanban_boards').select('*').eq('id', boardId).single();
-            boardRow = data;
-        } catch (e) { /* ignore */ }
-
-        const isOwner = boardRow?.owner_id === user.id;
-        const isBoardAdmin = boardRow?.board_admin_id === user.id;
-        const isMember = currentMembers.some(m => m.profile_id === user.id);
-
-        setCanModify(isSuper || isOwner || isBoardAdmin || isMember);
-        setCanConfigure(isSuper || isOwner || isBoardAdmin);
-    }, [boardId, user, profile]);
+        // User: "darf nur auf boards veränderungen vornehmen, in denen er mitglied ist"
+        // Board-Admin: "darf auf den Boards, in denen er admin ist alles"
+        setCanModify(isMember);
+        setCanConfigure(isBoardAdmin);
+    }, [user, isAdmin, isSuperuser]);
 
     useEffect(() => {
         let active = true;
@@ -641,7 +631,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 const existingInCol = cards.filter(c => c.assigneeId === draft.assigneeId && c.status === draft.status).length;
                 await supabase.from('kanban_cards').insert({
                     board_id: boardId,
-                    card_id: crypto.randomUUID(),
+                    card_id: generateUUID(),
                     stage: draft.status === 'done' ? 'Fertig' : 'Backlog',
                     position: existingInCol,
                     card_data: {
