@@ -1,5 +1,10 @@
 
-
+-- Ensure standard Supabase schemas exist
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE SCHEMA IF NOT EXISTS graphql;
+CREATE SCHEMA IF NOT EXISTS vault;
+CREATE SCHEMA IF NOT EXISTS realtime;
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -12,8 +17,8 @@ SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
 
-
 COMMENT ON SCHEMA "public" IS 'standard public schema';
+
 
 
 

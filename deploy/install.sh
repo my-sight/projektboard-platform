@@ -3,7 +3,7 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${GREEN}=== ProjektBoard Appliance Installer (Stabilization Fix) ===${NC}"
+echo -e "${GREEN}=== ProjektBoard Appliance Installer (Final Surgical Fix) ===${NC}"
 
 # 1. Cleanup
 rm -rf ../node_modules ../.next
@@ -11,7 +11,6 @@ rm -rf ../node_modules ../.next
 # 2. Env Handling
 EXISTING_PASS=""
 if [ -f .env ]; then
-    # Preserve existing password if present
     EXISTING_PASS=$(grep POSTGRES_PASSWORD .env | cut -d '=' -f2)
     source .env
 fi
@@ -29,7 +28,6 @@ NEW_IP=${NEW_IP:-${NUC_IP:-kanban}}
 # Keys Generation (Safe Mode)
 if [ -z "$JWT_SECRET" ]; then
     echo "Generating Secure Keys..."
-    # Preserve old password if we have it, otherwise generate new
     POSTGRES_PASSWORD=${EXISTING_PASS:-$(openssl rand -base64 15 | tr -dc 'a-zA-Z0-9' | head -c 12)}
     JWT_SECRET=$(openssl rand -hex 32)
     
@@ -55,7 +53,7 @@ fi
 # Final Password check
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-$EXISTING_PASS}
 
-# Write .env (overwrites/creates)
+# Write .env
 cat <<EOF > .env
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 JWT_SECRET=${JWT_SECRET}
@@ -73,15 +71,33 @@ echo "Force refreshing containers..."
 docker compose down --remove-orphans
 docker compose up -d --build
 
+echo "Fixing Database Schemas & Types (Surgical Repair)..."
+# We wait a few seconds for the DB to be ready for psql
+sleep 5
+docker exec -i supabase-db psql -U postgres -d postgres -c "
+CREATE SCHEMA IF NOT EXISTS auth;
+CREATE SCHEMA IF NOT EXISTS extensions;
+DO \$\$ BEGIN
+    CREATE TYPE auth.factor_type AS ENUM ('totp', 'webauthn', 'phone');
+EXCEPTION WHEN duplicate_object THEN null; END \$\$;
+DO \$\$ BEGIN
+    CREATE TYPE auth.factor_status AS ENUM ('unverified', 'verified');
+EXCEPTION WHEN duplicate_object THEN null; END \$\$;
+DO \$\$ BEGIN
+    CREATE TYPE auth.aal_level AS ENUM ('aal1', 'aal2', 'aal3');
+EXCEPTION WHEN duplicate_object THEN null; END \$\$;
+DO \$\$ BEGIN
+    CREATE TYPE auth.code_challenge_method AS ENUM ('s256', 'plain');
+EXCEPTION WHEN duplicate_object THEN null; END \$\$;
+" > /dev/null 2>&1
+
 echo "Waiting for stabilization (30s)..."
 sleep 30
 
 echo "--- Diagnostics ---"
 docker ps
-
-echo "Checking Auth Service Logs (if restarting):"
-docker logs supabase-auth | tail -n 5
-
+echo "Checking Auth Service Logs:"
+docker logs supabase-auth --tail 5 || echo "No logs found"
 echo "Connectivity Check (Internal):"
 docker exec projektboard-app curl -s -f http://kong:8000/rest/v1/system_settings?select=key&key=eq.license_key || echo "❌ Kong failed"
 
