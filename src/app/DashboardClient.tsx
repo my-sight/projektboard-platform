@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Box,
@@ -73,6 +73,7 @@ export default function DashboardClient() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+  const isFetchingRef = useRef(false);
 
   // UI State
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -93,42 +94,36 @@ export default function DashboardClient() {
       return;
     }
 
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     try {
-      const fetchData = async () => {
-        // 1. Check Roles
-        const isSuper = isSuperuserEmail(user.email);
-        const { data: profileData } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-        setIsAdmin(isSuper || (profileData?.role && profileData.role.toLowerCase() === 'admin'));
+      // 1. Check Roles
+      const isSuper = isSuperuserEmail(user.email);
+      const { data: profileData } = await supabase.from('profiles').select('role').eq('id', user.id).single();
+      setIsAdmin(isSuper || (profileData?.role && profileData.role.toLowerCase() === 'admin'));
 
-        // 2. Load Boards
-        const { data: boardData } = await supabase.from('kanban_boards').select('*');
-        if (boardData) {
-          const mapped = boardData.map(b => ({
-            ...b,
-            boardType: b.settings?.boardType === 'team' ? 'team' : 'standard'
-          }));
-          mapped.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-          setBoards(mapped);
-        }
+      // 2. Load Boards
+      const { data: boardData } = await supabase.from('kanban_boards').select('*');
+      if (boardData) {
+        const mapped = boardData.map(b => ({
+          ...b,
+          boardType: b.settings?.boardType === 'team' ? 'team' : 'standard'
+        }));
+        mapped.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        setBoards(mapped);
+      }
 
-        // 3. Load Favorites
-        const { data: favData } = await supabase.from('board_favorites').select('board_id').eq('user_id', user.id);
-        if (favData) {
-          setFavoriteBoardIds(new Set(favData.map(f => f.board_id)));
-        }
-      };
-
-      // Race against a timeout to prevent infinite loading
-      await Promise.race([
-        fetchData(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout loading dashboard')), 8000))
-      ]);
-
+      // 3. Load Favorites
+      const { data: favData } = await supabase.from('board_favorites').select('board_id').eq('user_id', user.id);
+      if (favData) {
+        setFavoriteBoardIds(new Set(favData.map(f => f.board_id)));
+      }
     } catch (e) {
       console.error('Error loading dashboard data:', e);
-      // Optional: setMessage('Fehler beim Laden der Daten');
     } finally {
       setLoadingData(false);
+      isFetchingRef.current = false;
     }
   }, [user]);
 

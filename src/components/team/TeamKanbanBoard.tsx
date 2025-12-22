@@ -184,6 +184,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const { t } = useLanguage();
     const { user, profile, visibilityCounter } = useAuth();
     const theme = useTheme();
+    const isFetchingRef = useRef(false);
 
     const [members, setMembers] = useState<MemberWithProfile[]>([]);
     const [cards, setCards] = useState<TeamBoardCard[]>([]);
@@ -494,13 +495,23 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     // centralized visibility refresh via AuthContext signal
     useEffect(() => {
-        if (visibilityCounter > 0 && user) {
-            console.log('[TeamKanbanBoard] Visibility refresh triggered via AuthContext');
-            loadBoardSettings();
-            loadTopTopics();
-            if (members.length > 0) {
-                loadCards(members);
+        const runRefresh = async () => {
+            if (isFetchingRef.current) return;
+            isFetchingRef.current = true;
+            try {
+                console.log('[TeamKanbanBoard] Visibility refresh triggered via AuthContext');
+                await loadBoardSettings();
+                await loadTopTopics();
+                if (members.length > 0) {
+                    await loadCards(members);
+                }
+            } finally {
+                isFetchingRef.current = false;
             }
+        };
+
+        if (visibilityCounter > 0 && user) {
+            runRefresh();
         }
     }, [visibilityCounter, user, members, loadBoardSettings, loadTopTopics, loadCards]);
 

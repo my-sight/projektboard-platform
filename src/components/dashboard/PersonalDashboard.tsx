@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
   Box,
   Card,
@@ -60,6 +60,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
   const { user, profile, visibilityCounter } = useAuth();
+  const isFetchingRef = useRef(false);
   const userId = user?.id || '';
 
   const [allTasks, setAllTasks] = useState<any[]>([]);
@@ -79,10 +80,12 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
   });
 
   const loadData = useCallback(async (active: boolean = true) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
     setLoading(true);
 
     try {
-      if (!user) { if (active) setLoading(false); return; }
+      if (!user) { if (active) setLoading(false); isFetchingRef.current = false; return; }
       // userId is already set from context
 
       // 1. Identitäten sammeln (ID, Email, Voller Name)
@@ -174,7 +177,10 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
     } catch (err) {
       console.error(err);
-    } finally { if (active) setLoading(false); }
+    } finally {
+      if (active) setLoading(false);
+      isFetchingRef.current = false;
+    }
   }, [user, t]);
 
   useEffect(() => {

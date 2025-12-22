@@ -1,7 +1,7 @@
 
 'use client';
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, useRef } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useSnackbar } from 'notistack';
 import { useAuth } from '@/contexts/AuthContext';
@@ -51,6 +51,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
     const { t } = useLanguage();
     const { user, profile, visibilityCounter } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
+    const isFetchingRef = useRef(false);
 
     // UI State
     const [viewMode, setViewMode] = useState<ViewMode>('columns');
@@ -128,11 +129,23 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
 
     // visibility refresh via centralized trigger
     useEffect(() => {
+      const runRefresh = async () => {
+        if (isFetchingRef.current) return;
+        isFetchingRef.current = true;
+        try {
+          console.log('[OriginalKanbanBoard] Visibility refresh triggered via AuthContext');
+          await Promise.all([
+            loadCards(),
+            loadSettings(),
+            loadTopTopics()
+          ]);
+        } finally {
+          isFetchingRef.current = false;
+        }
+      };
+
       if (visibilityCounter > 0 && boardId) {
-        console.log('[OriginalKanbanBoard] Visibility refresh triggered via AuthContext');
-        loadCards();
-        loadSettings();
-        loadTopTopics();
+        runRefresh();
       }
     }, [visibilityCounter, boardId, loadCards, loadSettings, loadTopTopics]);
 
