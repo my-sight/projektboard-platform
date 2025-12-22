@@ -2,7 +2,7 @@
 
 import React, { ReactNode } from 'react';
 import { DragDropContext, Droppable, DropResult } from '@hello-pangea/dnd';
-import { Box, IconButton, Typography, Paper, Chip } from '@mui/material';
+import { Box, IconButton, Typography, Paper, Chip, Tooltip } from '@mui/material';
 import { KanbanDensity } from './KanbanCard';
 import { alpha } from '@mui/material/styles';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -150,15 +150,15 @@ export function KanbanColumnsView({
                 </Box>
 
                 {col.done && allowDrag && (
-                  <Button
-                    size="small"
-                    startIcon={<Inventory2 sx={{ fontSize: 16 }} />}
-                    onClick={() => archiveColumn(col.name)}
-                    sx={{ minWidth: 'auto', px: 1, py: 0.2, fontSize: '0.7rem' }}
-                    color="secondary"
-                  >
-                    {t('kanban.archiveColumn') || 'Archivieren'}
-                  </Button>
+                  <Tooltip title={t('kanban.archiveColumn') || 'Archivieren'}>
+                    <IconButton
+                      size="small"
+                      onClick={() => archiveColumn(col.name)}
+                      color="primary"
+                    >
+                      <Inventory2 fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
                 )}
 
 

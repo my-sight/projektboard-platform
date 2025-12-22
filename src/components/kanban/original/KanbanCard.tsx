@@ -313,7 +313,6 @@ export function KanbanCard({
                   {/* SOP-Datum moved here */}
                   {sopDate && (
                     <Chip
-                      icon={<AccessTime sx={{ fontSize: '0.9rem' }} />}
                       label={`${sopLabel}: ${sopDate.toLocaleDateString('de-DE')}`}
                       size="small"
                       sx={{

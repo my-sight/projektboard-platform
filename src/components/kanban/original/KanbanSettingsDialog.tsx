@@ -54,6 +54,8 @@ export function KanbanSettingsDialog({
     const [localCustomLabels, setLocalCustomLabels] = useState(customLabels);
     const [tab, setTab] = useState(0);
     const [newColName, setNewColName] = useState('');
+    const [newLaneName, setNewLaneName] = useState('');
+    const [newChecklistItems, setNewChecklistItems] = useState<Record<string, string>>({});
 
     // Sync state when dialog opens
     useEffect(() => {
@@ -62,6 +64,8 @@ export function KanbanSettingsDialog({
             setCurrentLanes(lanes || []);
             setCurrentTemplates(checklistTemplates);
             setLocalCustomLabels(customLabels);
+            setNewLaneName('');
+            setNewChecklistItems({});
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, cols, lanes, checklistTemplates, customLabels]);
@@ -92,12 +96,16 @@ export function KanbanSettingsDialog({
     };
 
     const addChecklistItem = (colName: string) => {
+        const text = newChecklistItems[colName]?.trim();
+        if (!text) return;
+
         const currentList = currentTemplates[colName] || [];
-        const newItem = `${t('kanban.newEntry')} ${currentList.length + 1}`;
         setCurrentTemplates({
             ...currentTemplates,
-            [colName]: [...currentList, newItem]
+            [colName]: [...currentList, text]
         });
+
+        setNewChecklistItems(prev => ({ ...prev, [colName]: '' }));
     };
 
     const updateChecklistItem = (colName: string, idx: number, text: string) => {
@@ -130,6 +138,14 @@ export function KanbanSettingsDialog({
     const handleAddCol = () => { if (newColName.trim()) { setCurrentCols([...currentCols, { id: `c${Date.now()}`, name: newColName, done: false }]); setNewColName(''); } };
     const handleDelCol = (id: string) => { if (confirm(t('kanban.deletePrompt'))) setCurrentCols(currentCols.filter(c => c.id !== id)); };
     const handleToggleDone = (id: string) => { setCurrentCols(currentCols.map(c => c.id === id ? { ...c, done: !c.done } : c)); }
+
+    const handleAddLane = () => {
+        if (newLaneName.trim()) {
+            setCurrentLanes([...currentLanes, newLaneName.trim()]);
+            setNewLaneName('');
+        }
+    };
+
     const handleDelLane = (idx: number) => { if (confirm(t('kanban.deletePrompt'))) setCurrentLanes(currentLanes.filter((_, i) => i !== idx)); };
 
     return (
@@ -163,44 +179,44 @@ export function KanbanSettingsDialog({
 
                 {tab === 1 && (
                     <Box sx={{ pt: 1 }}>
-                        <List dense>
-                            {currentCols.map((col, idx) => (
-                                <ListItem key={col.id} secondaryAction={
-                                    <Box>
-                                        <IconButton size="small" onClick={() => handleMove(col.id, 'up')} disabled={!canManageSettings || idx === 0}><ArrowUpward fontSize="small" /></IconButton>
-                                        <IconButton size="small" onClick={() => handleMove(col.id, 'down')} disabled={!canManageSettings || idx === currentCols.length - 1}><ArrowDownward fontSize="small" /></IconButton>
-                                        <Button size="small" onClick={() => handleToggleDone(col.id)} disabled={!canManageSettings} sx={{ ml: 1, border: '1px solid', borderColor: col.done ? 'success.main' : 'grey.400', color: col.done ? 'success.main' : 'text.primary' }}>{col.done ? t('kanban.done') : t('kanban.normal')}</Button>
-                                        <IconButton onClick={() => handleDelCol(col.id)} disabled={!canManageSettings}><Delete /></IconButton>
-                                    </Box>
-                                }>
-                                    <TextField
-                                        value={col.name}
-                                        onChange={(e) => {
-                                            const newName = e.target.value;
-                                            const oldName = col.name;
+                        <Card variant="outlined" sx={{ p: 2 }}>
+                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                {currentCols.map((col, idx) => (
+                                    <Box key={col.id} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <TextField
+                                            value={col.name}
+                                            onChange={(e) => {
+                                                const newName = e.target.value;
+                                                const oldName = col.name;
 
-                                            // Update column name
-                                            const nc = currentCols.map((c, i) => i === idx ? { ...c, name: newName } : c);
-                                            setCurrentCols(nc);
-                                            if (oldName !== newName && currentTemplates[oldName]) {
-                                                const newT = { ...currentTemplates };
-                                                newT[newName] = newT[oldName];
-                                                delete newT[oldName];
-                                                setCurrentTemplates(newT);
-                                            }
-                                        }}
-                                        size="small"
-                                        fullWidth
-                                        sx={{ mr: 2 }}
-                                        disabled={!canManageSettings}
-                                    />
-                                </ListItem>
-                            ))}
-                        </List>
-                        <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                            <TextField size="small" label={t('kanban.newColumn')} value={newColName} onChange={(e) => setNewColName(e.target.value)} fullWidth disabled={!canManageSettings} />
-                            <Button variant="contained" startIcon={<Add />} onClick={handleAddCol} disabled={!canManageSettings}>{t('kanban.add')}</Button>
-                        </Box>
+                                                // Update column name
+                                                const nc = currentCols.map((c, i) => i === idx ? { ...c, name: newName } : c);
+                                                setCurrentCols(nc);
+                                                if (oldName !== newName && currentTemplates[oldName]) {
+                                                    const newT = { ...currentTemplates };
+                                                    newT[newName] = newT[oldName];
+                                                    delete newT[oldName];
+                                                    setCurrentTemplates(newT);
+                                                }
+                                            }}
+                                            size="small"
+                                            fullWidth
+                                            disabled={!canManageSettings}
+                                        />
+                                        <Box sx={{ display: 'flex', flexShrink: 0 }}>
+                                            <IconButton size="small" onClick={() => handleMove(col.id, 'up')} disabled={!canManageSettings || idx === 0}><ArrowUpward fontSize="small" /></IconButton>
+                                            <IconButton size="small" onClick={() => handleMove(col.id, 'down')} disabled={!canManageSettings || idx === currentCols.length - 1}><ArrowDownward fontSize="small" /></IconButton>
+                                            <Button size="small" onClick={() => handleToggleDone(col.id)} disabled={!canManageSettings} sx={{ ml: 1, border: '1px solid', borderColor: col.done ? 'success.main' : 'grey.400', color: col.done ? 'success.main' : 'text.primary', minWidth: '80px' }}>{col.done ? t('kanban.done') : t('kanban.normal')}</Button>
+                                            <IconButton size="small" onClick={() => handleDelCol(col.id)} disabled={!canManageSettings} sx={{ ml: 0.5 }}><Delete fontSize="small" /></IconButton>
+                                        </Box>
+                                    </Box>
+                                ))}
+                            </Box>
+                            <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                                <TextField size="small" label={t('kanban.newColumn')} value={newColName} onChange={(e) => setNewColName(e.target.value)} fullWidth disabled={!canManageSettings} />
+                                <Button variant="outlined" startIcon={<Add />} onClick={handleAddCol} disabled={!canManageSettings}>{t('kanban.add')}</Button>
+                            </Box>
+                        </Card>
                     </Box>
                 )}
 
@@ -212,15 +228,39 @@ export function KanbanSettingsDialog({
                                 <List dense>
                                     {(currentTemplates[col.name] || []).map((item, idx) => (
                                         <ListItem key={idx} disableGutters secondaryAction={
-                                            <IconButton edge="end" onClick={() => deleteChecklistItem(col.name, idx)} disabled={!canManageSettings}>
-                                                <Delete fontSize="small" color="error" />
+                                            <IconButton size="small" edge="end" onClick={() => deleteChecklistItem(col.name, idx)} disabled={!canManageSettings}>
+                                                <Delete fontSize="small" />
                                             </IconButton>
                                         }>
                                             <TextField fullWidth size="small" value={item} onChange={(e) => updateChecklistItem(col.name, idx, e.target.value)} sx={{ mr: 2 }} disabled={!canManageSettings} />
                                         </ListItem>
                                     ))}
                                 </List>
-                                <Button startIcon={<Add />} size="small" onClick={() => addChecklistItem(col.name)} disabled={!canManageSettings}>{t('kanban.addItem')}</Button>
+                                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                                    <TextField
+                                        size="small"
+                                        fullWidth
+                                        placeholder={t('kanban.newEntry')}
+                                        value={newChecklistItems[col.name] || ''}
+                                        onChange={(e) => setNewChecklistItems(prev => ({ ...prev, [col.name]: e.target.value }))}
+                                        disabled={!canManageSettings}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                addChecklistItem(col.name);
+                                            }
+                                        }}
+                                    />
+                                    <Button
+                                        variant="outlined"
+                                        startIcon={<Add />}
+                                        size="small"
+                                        onClick={() => addChecklistItem(col.name)}
+                                        disabled={!canManageSettings}
+                                    >
+                                        {t('kanban.add')}
+                                    </Button>
+                                </Box>
                             </Card>
                         ))}
                     </Box>
@@ -228,29 +268,44 @@ export function KanbanSettingsDialog({
 
                 {tab === 2 && (
                     <Box sx={{ pt: 1 }}>
-                        <List dense>
-                            {currentLanes.map((lane, idx) => (
-                                <ListItem key={idx} secondaryAction={
-                                    <IconButton onClick={() => handleDelLane(idx)} disabled={!canManageSettings}><Delete /></IconButton>
-                                }>
-                                    <TextField
-                                        value={lane}
-                                        onChange={(e) => {
-                                            const newLanes = [...currentLanes];
-                                            newLanes[idx] = e.target.value;
-                                            setCurrentLanes(newLanes);
-                                        }}
-                                        size="small"
-                                        fullWidth
-                                        sx={{ mr: 2 }}
-                                        disabled={!canManageSettings}
-                                    />
-                                </ListItem>
-                            ))}
-                        </List>
-                        <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                            <Button variant="contained" startIcon={<Add />} onClick={() => setCurrentLanes([...currentLanes, 'Neue Lane'])} disabled={!canManageSettings}>{t('kanban.add')}</Button>
-                        </Box>
+                        <Card variant="outlined" sx={{ p: 2 }}>
+                            <List dense>
+                                {currentLanes.map((lane, idx) => (
+                                    <ListItem key={idx} secondaryAction={
+                                        <IconButton size="small" onClick={() => handleDelLane(idx)} disabled={!canManageSettings}><Delete fontSize="small" /></IconButton>
+                                    }>
+                                        <TextField
+                                            value={lane}
+                                            onChange={(e) => {
+                                                const newLanes = [...currentLanes];
+                                                newLanes[idx] = e.target.value;
+                                                setCurrentLanes(newLanes);
+                                            }}
+                                            size="small"
+                                            fullWidth
+                                            sx={{ mr: 2 }}
+                                            disabled={!canManageSettings}
+                                        />
+                                    </ListItem>
+                                ))}
+                            </List>
+                            <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                                <TextField
+                                    size="small"
+                                    label={t('kanban.viewLanes') || 'Lane'}
+                                    value={newLaneName}
+                                    onChange={(e) => setNewLaneName(e.target.value)}
+                                    fullWidth
+                                    disabled={!canManageSettings}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            handleAddLane();
+                                        }
+                                    }}
+                                />
+                                <Button variant="outlined" startIcon={<Add />} onClick={handleAddLane} disabled={!canManageSettings}>{t('kanban.add')}</Button>
+                            </Box>
+                        </Card>
                     </Box>
                 )}
             </DialogContent>
