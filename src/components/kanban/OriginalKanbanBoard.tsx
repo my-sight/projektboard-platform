@@ -136,6 +136,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
       }
     }, [visibilityCounter, boardId, loadCards, loadSettings, loadTopTopics]);
 
+
     // 2. Permission Resolution Effect (Triggers when user/auth changes)
     useEffect(() => {
       const resolve = async () => {

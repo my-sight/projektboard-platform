@@ -154,6 +154,7 @@ export default function DashboardClient() {
     }
   }, [visibilityCounter, user, loadDashboardData]);
 
+
   // Loading State Logic:
   // Only show generic loader if:
   // 1. Auth is truly loading AND we have no user yet

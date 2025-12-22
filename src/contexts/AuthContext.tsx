@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, useRef } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 import { isSuperuserEmail } from '@/constants/superuser';
@@ -50,7 +50,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [visibilityCounter, setVisibilityCounter] = useState(0);
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = useCallback(async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -72,7 +72,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.error('Fetch profile exception:', e);
       return null;
     }
-  };
+  }, []);
+
+  // Simple Tab Visibility Reload Logic
+  useEffect(() => {
+    // 1. Mark the current time as the "last reload" on initial mount
+    // This prevents a double-reload if the user focuses the window immediately after opening it.
+    if (!sessionStorage.getItem('last_visibility_reload')) {
+      sessionStorage.setItem('last_visibility_reload', Date.now().toString());
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        const lastReloadStr = sessionStorage.getItem('last_visibility_reload');
+        const lastReload = lastReloadStr ? parseInt(lastReloadStr, 10) : 0;
+        const now = Date.now();
+
+        // Throttle background refresh to once every 1 second
+        if (now - lastReload > 1000) {
+          console.log('[AuthContext] Tab became visible/focused, triggering silent background refresh...');
+          sessionStorage.setItem('last_visibility_reload', now.toString());
+          setVisibilityCounter(prev => prev + 1);
+        } else {
+          console.log('[AuthContext] Tab became visible, but throttled (last reload < 1s ago)');
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    // Focus can also trigger it for consistency
+    window.addEventListener('focus', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, []);
 
   const refreshProfile = async () => {
     if (user) {
@@ -87,11 +122,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(true);
       // 1. Initial Session Load
       supabase.auth.getSession().then(async ({ data: { session } }) => {
-        // License Check
-        // License Check moved to Middleware (src/middleware.ts) for stability
-        // const license = await getLicenseStatus();
-        // console.log('License Status (Client View):', license);
-
         if (session?.user) {
           setUser(session.user);
           setProfile(await fetchProfile(session.user.id));
@@ -113,7 +143,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (!profile || profile.id !== session.user.id) {
           const p = await fetchProfile(session.user.id);
           if (!p) {
-            // Stale session (user valid in Auth but missing in DB) -> Logout
             console.warn('User has no profile (stale session?). Signing out...');
             await supabase.auth.signOut();
             setUser(null);
@@ -129,46 +158,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     });
 
-    // 3. Tab Visibility & Focus Change Listener
-    // Trigger session refresh when user returns to tab (prevents stale state/empty views)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        console.log('[AuthContext] Tab became visible, triggering refresh...');
-        setVisibilityCounter(prev => prev + 1);
-
-        // Small delay to allow network to stabilize
-        setTimeout(() => {
-          supabase.auth.getUser().then(async ({ data: { user: freshUser }, error }) => {
-            if (error || !freshUser) {
-              console.warn('[AuthContext] Session invalid or expired after tab wake-up.');
-              setUser(null);
-              setProfile(null);
-              return;
-            }
-
-            console.log('[AuthContext] User verified:', freshUser.email);
-            setUser(freshUser);
-            const p = await fetchProfile(freshUser.id);
-            setProfile(p);
-          });
-        }, 500);
-      }
-    };
-
-    const handleFocus = () => {
-      // Focus can also be a signal of returning
-      if (document.visibilityState === 'visible') {
-        setVisibilityCounter(prev => prev + 1);
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleFocus);
-
     return () => {
       subscription.unsubscribe();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleFocus);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -234,10 +225,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           presences.forEach((p: any) => allSessions.push(p));
         });
 
-        // SINGLE SESSION ENFORCEMENT
-        // We only kill ourself if there is an OTHER session with a significantly NEWER timestamp.
-        // ID check prevents self-logout after refresh (IDs persist in sessionStorage).
-        // Grace period (5s) prevents logout on small clock skews or rapid refreshes.
         const GRACE_PERIOD_MS = 5000;
         const newerSession = allSessions.find(s =>
           s.session_id !== sessionId &&
@@ -245,13 +232,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         );
 
         if (newerSession) {
-          console.warn('Another newer session detected. Reason: Multiple active tabs or devices.', {
-            myTime: myOnlineAt,
-            otherTime: newerSession.online_at,
-            diff: newerSession.online_at - myOnlineAt
-          });
-
-          // Enforce logout
+          console.warn('Another newer session detected. Reason: Multiple active tabs or devices.');
           supabase.auth.signOut().then(() => {
             setUser(null);
             setProfile(null);

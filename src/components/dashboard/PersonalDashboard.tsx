@@ -194,6 +194,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
     }
   }, [visibilityCounter, user, loadData]);
 
+
   const kpis = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     return {
@@ -482,7 +483,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
     </Paper>
   );
 
-  if (loading) return <LinearProgress sx={{ mt: 4, borderRadius: 4 }} />;
+  if (loading && allTasks.length === 0 && notes.length === 0) return <LinearProgress sx={{ mt: 4, borderRadius: 4 }} />;
 
   return (
     <Box sx={{ mt: 2, mb: 6 }}>

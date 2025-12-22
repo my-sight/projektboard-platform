@@ -504,6 +504,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         }
     }, [visibilityCounter, user, members, loadBoardSettings, loadTopTopics, loadCards]);
 
+
     useEffect(() => {
         if (!loading && members.length > 0) {
             loadCards(members);
@@ -1000,7 +1001,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         }
     }, [highlightCardId, filteredCards]);
 
-    if (loading) return <LinearProgress sx={{ mt: 4 }} />;
+    if (loading && members.length === 0) return <LinearProgress sx={{ mt: 4 }} />;
 
 
     return (
