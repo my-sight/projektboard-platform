@@ -272,16 +272,33 @@ export default function DashboardClient() {
               {favoriteBoardIds.has(board.id) ? <Star color="warning" fontSize="small" /> : <StarBorder fontSize="small" />}
             </IconButton>
           </Box>
-          <Chip
-            label={board.boardType === 'team' ? t('home.teamBoard') : t('home.projectBoard')}
-            size="small"
-            sx={{
-              mb: 1,
-              height: 20,
-              fontSize: '0.7rem',
-              backgroundColor: alpha(theme.palette.secondary.main, 0.1)
-            }}
-          />
+          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+            <Chip
+              label={board.boardType === 'team' ? t('home.teamBoard') : t('home.projectBoard')}
+              size="small"
+              sx={{
+                height: 20,
+                fontSize: '0.7rem',
+                backgroundColor: alpha(theme.palette.secondary.main, 0.1)
+              }}
+            />
+            {board.settings?.isHomeBoard && (
+              <Tooltip title="Heimatboard">
+                <Chip
+                  label="H"
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                  sx={{
+                    height: 20,
+                    fontSize: '0.7rem',
+                    fontWeight: 'bold',
+                    minWidth: '24px'
+                  }}
+                />
+              </Tooltip>
+            )}
+          </Box>
           <Typography variant="body2" color="text.secondary" sx={{
             display: '-webkit-box',
             WebkitLineClamp: 2,
