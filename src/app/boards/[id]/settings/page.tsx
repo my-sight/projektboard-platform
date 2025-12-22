@@ -78,7 +78,7 @@ export default function BoardSettingsPage() {
     return (
         <Container maxWidth="lg" sx={{ py: 4 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-                <Button variant="outlined" onClick={handleBackToDashboard} startIcon={<SpaceDashboard />}>Dashboard</Button>
+                <Button variant="outlined" onClick={handleBackToDashboard} startIcon={<SpaceDashboard />}>{t('header.backToOverview')}</Button>
                 <Typography variant="h5">Boardmanagement - {board.name}</Typography>
                 <Button variant="outlined" onClick={handleBackToBoard} startIcon={<RocketLaunch />}>{t('header.toBoard') || 'Zum Board'}</Button>
             </Box>

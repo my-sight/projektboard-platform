@@ -35,7 +35,8 @@ import {
   LinearProgress,
   Tabs,
   Tab,
-  Divider
+  Divider,
+  ListSubheader
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -721,7 +722,34 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
                     <FormControl fullWidth size="small">
                       <Select value={boardAdminSelections[b.id] ?? ''} onChange={(e) => updateBoardAdmin(b.id, e.target.value)} displayEmpty>
                         <MenuItem value=""><em>Kein Admin zugewiesen</em></MenuItem>
-                        {users.map(u => <MenuItem key={u.id} value={u.id}>{u.full_name || u.email}</MenuItem>)}
+                        {departments.map(dept => {
+                          const deptUsers = users.filter(u => u.company === dept.name);
+                          if (deptUsers.length === 0) return null;
+                          return [
+                            <ListSubheader key={`dept-${dept.id}`} sx={{ fontWeight: 'bold', color: 'primary.main', bgcolor: 'background.paper' }}>
+                              {dept.name}
+                            </ListSubheader>,
+                            ...deptUsers.sort((a, b) => (a.full_name || a.email).localeCompare(b.full_name || b.email)).map(u => (
+                              <MenuItem key={u.id} value={u.id} sx={{ pl: 4 }}>
+                                {u.full_name || u.email}
+                              </MenuItem>
+                            ))
+                          ];
+                        })}
+                        {(() => {
+                          const noDeptUsers = users.filter(u => !u.company);
+                          if (noDeptUsers.length === 0) return null;
+                          return [
+                            <ListSubheader key="no-dept" sx={{ fontWeight: 'bold', color: 'text.secondary', bgcolor: 'background.paper' }}>
+                              Ohne Abteilung
+                            </ListSubheader>,
+                            ...noDeptUsers.sort((a, b) => (a.full_name || a.email).localeCompare(b.full_name || b.email)).map(u => (
+                              <MenuItem key={u.id} value={u.id} sx={{ pl: 4 }}>
+                                {u.full_name || u.email}
+                              </MenuItem>
+                            ))
+                          ];
+                        })()}
                       </Select>
                     </FormControl>
                   </TableCell>

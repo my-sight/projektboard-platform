@@ -73,7 +73,6 @@ export default function DashboardClient() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
-  const isFetchingRef = useRef(false);
 
   // UI State
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -94,9 +93,8 @@ export default function DashboardClient() {
       return;
     }
 
-    // if (isFetchingRef.current) return; // Removed to prevent blocking valid re-mount fetches
-    // isFetchingRef.current = true;
     console.log('[DashboardClient] Loading data...');
+    const startTime = Date.now();
 
     try {
       // 1. Check Roles
@@ -123,8 +121,8 @@ export default function DashboardClient() {
     } catch (e) {
       console.error('Error loading dashboard data:', e);
     } finally {
+      console.log(`[DashboardClient] Data load finished in ${Date.now() - startTime}ms`);
       setLoadingData(false);
-      // isFetchingRef.current = false;
     }
   }, [user]);
 
@@ -132,14 +130,23 @@ export default function DashboardClient() {
 
   // Initial Load & Auth Check
   useEffect(() => {
+    // Safety timeout to prevent infinite loading screen
+    const safetyTimeout = setTimeout(() => {
+      if (loadingData) {
+        console.warn('[DashboardClient] Force-clearing loading state after timeout.');
+        setLoadingData(false);
+      }
+    }, 5000);
+
     // If we have a user, load data immediately, don't wait for authLoading to finish (it might be background revalidating)
     if (user) {
       loadDashboardData();
     } else if (!authLoading && !user) {
-      // Only redirect if we definitely know there is no user and loading is done
       console.log('[DashboardClient] No user. Redirecting to /login');
       router.push('/login');
     }
+
+    return () => clearTimeout(safetyTimeout);
   }, [authLoading, user, loadDashboardData, router]);
 
   // Handle visibility refresh via centralized counter from AuthContext

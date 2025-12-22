@@ -47,7 +47,7 @@ export const translations = {
             logout: "Logout",
             admin: "Admin",
             backToManagement: "Management",
-            backToOverview: "Übersicht",
+            backToOverview: "Dashboard",
             toBoard: "Zum Board",
             welcome: "Willkommen"
         },
@@ -447,7 +447,7 @@ export const translations = {
             logout: "Logout",
             admin: "Admin",
             backToManagement: "Management",
-            backToOverview: "Overview",
+            backToOverview: "Dashboard",
             toBoard: "To Board",
             welcome: "Welcome"
         },
@@ -827,12 +827,27 @@ export const translations = {
             projects: "Projekty",
             task: "Zadanie"
         },
+        userSettings: {
+            title: "Ustawienia użytkownika",
+            profileInfo: "Informacje o profilu",
+            preferences: "Preferencje",
+            security: "Bezpieczeństwo",
+            fullName: "Pełne imię i nazwisko",
+            alias: "Alias / Skrót",
+            avatarDesc: "Kliknij ikonę aparatu, aby zmienić awatar.",
+            department: "Dział",
+            language: "Język",
+            newPassword: "Nowe hasło",
+            confirmPassword: "Potwierdź hasło",
+            saveSuccess: "Profil zapisany pomyślnie",
+            passwordSuccess: "Hasło zmienione pomyślnie"
+        },
         header: {
             login: "Zaloguj",
             logout: "Wyloguj",
             admin: "Admin",
             backToManagement: "Zarządzanie",
-            backToOverview: "Przegląd",
+            backToOverview: "Pulpit",
             toBoard: "Do tablicy",
             welcome: "Witaj"
         },
