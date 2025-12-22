@@ -49,7 +49,7 @@ export type OriginalKanbanBoardProps = OriginalKanbanBoardPropsInterface;
 const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, OriginalKanbanBoardPropsInterface>(
   function OriginalKanbanBoard({ boardId, onArchiveCountChange, onKpiCountChange, highlightCardId, onExit }, ref) {
     const { t } = useLanguage();
-    const { user, profile } = useAuth();
+    const { user, profile, visibilityCounter } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
 
     // UI State
@@ -119,8 +119,22 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         ]);
       };
       if (boardId) loadData();
+
+      return () => {
+        // no cleanup needed for simple data load
+      };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [boardId]);
+    }, [boardId, loadCards, loadSettings, loadTopTopics]);
+
+    // visibility refresh via centralized trigger
+    useEffect(() => {
+      if (visibilityCounter > 0 && boardId) {
+        console.log('[OriginalKanbanBoard] Visibility refresh triggered via AuthContext');
+        loadCards();
+        loadSettings();
+        loadTopTopics();
+      }
+    }, [visibilityCounter, boardId, loadCards, loadSettings, loadTopTopics]);
 
     // 2. Permission Resolution Effect (Triggers when user/auth changes)
     useEffect(() => {

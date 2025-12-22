@@ -31,6 +31,7 @@ interface AuthContextType {
   refreshProfile: () => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<{ data: any; error: any }>;
   updatePassword: (newPassword: string) => Promise<{ data: any; error: any }>;
+  visibilityCounter: number;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -47,6 +48,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [visibilityCounter, setVisibilityCounter] = useState(0);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -127,10 +129,46 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setLoading(false);
     });
 
+    // 3. Tab Visibility & Focus Change Listener
+    // Trigger session refresh when user returns to tab (prevents stale state/empty views)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[AuthContext] Tab became visible, triggering refresh...');
+        setVisibilityCounter(prev => prev + 1);
 
+        // Small delay to allow network to stabilize
+        setTimeout(() => {
+          supabase.auth.getUser().then(async ({ data: { user: freshUser }, error }) => {
+            if (error || !freshUser) {
+              console.warn('[AuthContext] Session invalid or expired after tab wake-up.');
+              setUser(null);
+              setProfile(null);
+              return;
+            }
+
+            console.log('[AuthContext] User verified:', freshUser.email);
+            setUser(freshUser);
+            const p = await fetchProfile(freshUser.id);
+            setProfile(p);
+          });
+        }, 500);
+      }
+    };
+
+    const handleFocus = () => {
+      // Focus can also be a signal of returning
+      if (document.visibilityState === 'visible') {
+        setVisibilityCounter(prev => prev + 1);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
       subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -281,7 +319,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       isAdmin,
       refreshProfile,
       updateProfile,
-      updatePassword
+      updatePassword,
+      visibilityCounter
     }}>
       {children}
     </AuthContext.Provider>

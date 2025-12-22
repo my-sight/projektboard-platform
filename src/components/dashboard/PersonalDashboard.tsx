@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   Box,
   Card,
@@ -59,7 +59,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
-  const { user, profile } = useAuth();
+  const { user, profile, visibilityCounter } = useAuth();
   const userId = user?.id || '';
 
   const [allTasks, setAllTasks] = useState<any[]>([]);
@@ -78,110 +78,121 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
     dueToday: false
   });
 
-  useEffect(() => {
-    let active = true;
+  const loadData = useCallback(async (active: boolean = true) => {
+    setLoading(true);
 
-    const loadData = async () => {
-      setLoading(true);
+    try {
+      if (!user) { if (active) setLoading(false); return; }
+      // userId is already set from context
+
+      // 1. Identitäten sammeln (ID, Email, Voller Name)
+      const myIds = new Set<string>();
+      myIds.add(user.id);
+      if (user.email) myIds.add(user.email.toLowerCase().trim());
+      const metaName = user.user_metadata?.full_name || user.user_metadata?.name;
+      if (metaName) myIds.add(String(metaName).toLowerCase().trim());
 
       try {
-        if (!user) { if (active) setLoading(false); return; }
-        // userId is already set from context
+        const profiles = await fetchClientProfiles();
+        const p = profiles.find(p => p.id === user.id);
+        if (p?.full_name) myIds.add(p.full_name.toLowerCase().trim());
+        if (p?.alias) myIds.add(p.alias.toLowerCase().trim());
+      } catch (e) { console.warn('Profile fetch warning', e); }
 
-        // 1. Identitäten sammeln (ID, Email, Voller Name)
-        const myIds = new Set<string>();
-        myIds.add(user.id);
-        if (user.email) myIds.add(user.email.toLowerCase().trim());
-        const metaName = user.user_metadata?.full_name || user.user_metadata?.name;
-        if (metaName) myIds.add(String(metaName).toLowerCase().trim());
+      // Boards laden für Namen
+      const { data: boards } = await supabase.from('kanban_boards').select('id,name,settings');
+      const bMap: Record<string, any> = {};
+      (boards || []).forEach((b: any) => {
+        const settings = b.settings as Record<string, any> | null;
+        bMap[b.id] = { name: b.name, type: settings?.boardType || 'standard' };
+      });
 
-        try {
-          const profiles = await fetchClientProfiles();
-          const p = profiles.find(p => p.id === user.id);
-          if (p?.full_name) myIds.add(p.full_name.toLowerCase().trim());
-          if (p?.alias) myIds.add(p.alias.toLowerCase().trim());
-        } catch (e) { console.warn('Profile fetch warning', e); }
+      const { data: cards } = await supabase.from('kanban_cards').select('*');
 
-        // Boards laden für Namen
-        const { data: boards } = await supabase.from('kanban_boards').select('id,name,settings');
-        const bMap: Record<string, any> = {};
-        (boards || []).forEach((b: any) => {
-          const settings = b.settings as Record<string, any> | null;
-          bMap[b.id] = { name: b.name, type: settings?.boardType || 'standard' };
+      if (cards && active) {
+        const foundTasks: any[] = [];
+
+        cards.forEach((row: any) => {
+          let d = row.card_data;
+          // PB usually returns JSON object for JSON fields, but checking just in case
+          if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = {}; } }
+          d = d || {};
+          if (d.Archived === '1' || d.archived) return;
+
+          const boardInfo = bMap[row.board_id] || { name: t('kanban.unknown'), type: 'standard' };
+          let isMine = false;
+
+          // A) Strikter ID Check (Sicherste Methode)
+          const cardUserIds = [d.userId, d.assigneeId, d.user_id, d.assignee_id].filter(Boolean);
+          if (cardUserIds.includes(user.id)) {
+            isMine = true;
+          }
+          // B) Fallback: Namens-Match (Nur wenn keine ID da ist)
+          else if (cardUserIds.length === 0) {
+            const candidates = [d.Verantwortlich, d.responsible, d.assigneeName].filter(s => typeof s === 'string');
+            for (const cand of candidates) {
+              const raw = cand.toLowerCase().trim();
+              if (myIds.has(raw)) { isMine = true; break; }
+              if (metaName && raw.includes(metaName.toLowerCase().trim())) { isMine = true; break; }
+            }
+          }
+
+          if (isMine) {
+            const isTeamBoard = d.type === 'teamTask' || boardInfo.type === 'team';
+            if (isTeamBoard && d.status === 'done') return;
+
+            const rawDate = d['Due Date'] || d.dueDate || d.target_date;
+            const dueDate = rawDate ? String(rawDate).split('T')[0] : null;
+
+            const isCritical = (d.Ampel && String(d.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(d.Eskalation || '').toUpperCase());
+            const isPriority = (toBoolean(d.Priorität)) || (d.important === true);
+            const isWatch = (d.watch === true);
+
+            foundTasks.push({
+              id: row.card_id || row.id, // Using row.id if card_id is missing? Scheme says card_id exists.
+              rowId: row.id, // KEEP ROW ID for updates
+              title: d.Nummer ? `${d.Nummer} ${d.Teil}` : (d.description || t('dashboard.task')),
+              boardName: boardInfo.name, boardId: row.board_id, dueDate,
+              type: isTeamBoard ? 'team' : 'standard', isCritical, isPriority, isWatch, stage: d['Board Stage'], originalData: d
+            });
+          }
         });
+        setAllTasks(foundTasks);
+      }
 
-        const { data: cards } = await supabase.from('kanban_cards').select('*');
+      // Personal Notes
+      const { data: myNotes } = await supabase.from('personal_notes')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('due_date', { ascending: true })
+        .order('is_done', { ascending: true }); // Supabase orders by multiple cols naturally
 
-        if (cards && active) {
-          const foundTasks: any[] = [];
+      // Client side sort if needed to match PB exact order 'is_done,due_date'
+      // But SQL order should be fine.
 
-          cards.forEach((row: any) => {
-            let d = row.card_data;
-            // PB usually returns JSON object for JSON fields, but checking just in case
-            if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = {}; } }
-            d = d || {};
-            if (d.Archived === '1' || d.archived) return;
+      if (active) setNotes(myNotes || []);
 
-            const boardInfo = bMap[row.board_id] || { name: t('kanban.unknown'), type: 'standard' };
-            let isMine = false;
+    } catch (err) {
+      console.error(err);
+    } finally { if (active) setLoading(false); }
+  }, [user, t]);
 
-            // A) Strikter ID Check (Sicherste Methode)
-            const cardUserIds = [d.userId, d.assigneeId, d.user_id, d.assignee_id].filter(Boolean);
-            if (cardUserIds.includes(user.id)) {
-              isMine = true;
-            }
-            // B) Fallback: Namens-Match (Nur wenn keine ID da ist)
-            else if (cardUserIds.length === 0) {
-              const candidates = [d.Verantwortlich, d.responsible, d.assigneeName].filter(s => typeof s === 'string');
-              for (const cand of candidates) {
-                const raw = cand.toLowerCase().trim();
-                if (myIds.has(raw)) { isMine = true; break; }
-                if (metaName && raw.includes(metaName.toLowerCase().trim())) { isMine = true; break; }
-              }
-            }
+  useEffect(() => {
+    let active = true;
+    if (user) loadData(active);
 
-            if (isMine) {
-              const isTeamBoard = d.type === 'teamTask' || boardInfo.type === 'team';
-              if (isTeamBoard && d.status === 'done') return;
-
-              const rawDate = d['Due Date'] || d.dueDate || d.target_date;
-              const dueDate = rawDate ? String(rawDate).split('T')[0] : null;
-
-              const isCritical = (d.Ampel && String(d.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(d.Eskalation || '').toUpperCase());
-              const isPriority = (toBoolean(d.Priorität)) || (d.important === true);
-              const isWatch = (d.watch === true);
-
-              foundTasks.push({
-                id: row.card_id || row.id, // Using row.id if card_id is missing? Scheme says card_id exists.
-                rowId: row.id, // KEEP ROW ID for updates
-                title: d.Nummer ? `${d.Nummer} ${d.Teil}` : (d.description || t('dashboard.task')),
-                boardName: boardInfo.name, boardId: row.board_id, dueDate,
-                type: isTeamBoard ? 'team' : 'standard', isCritical, isPriority, isWatch, stage: d['Board Stage'], originalData: d
-              });
-            }
-          });
-          setAllTasks(foundTasks);
-        }
-
-        // Personal Notes
-        const { data: myNotes } = await supabase.from('personal_notes')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('due_date', { ascending: true })
-          .order('is_done', { ascending: true }); // Supabase orders by multiple cols naturally
-
-        // Client side sort if needed to match PB exact order 'is_done,due_date'
-        // But SQL order should be fine.
-
-        if (active) setNotes(myNotes || []);
-
-      } catch (err) {
-        console.error(err);
-      } finally { if (active) setLoading(false); }
+    return () => {
+      active = false;
     };
-    if (user) loadData();
-    return () => { active = false; };
-  }, [user]); // user dependency
+  }, [user, loadData]); // user dependency
+
+  // visibility refresh via centralized trigger
+  useEffect(() => {
+    if (visibilityCounter > 0 && user) {
+      console.log('[PersonalDashboard] Visibility refresh triggered via AuthContext');
+      loadData(true);
+    }
+  }, [visibilityCounter, user, loadData]);
 
   const kpis = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];

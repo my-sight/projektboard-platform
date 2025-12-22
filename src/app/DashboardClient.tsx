@@ -66,7 +66,7 @@ interface Board {
 export default function DashboardClient() {
   const router = useRouter();
   const theme = useTheme();
-  const { user, profile, refreshProfile, signOut, loading: authLoading } = useAuth();
+  const { user, profile, refreshProfile, signOut, loading: authLoading, visibilityCounter } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const { config, toggleMode } = useSystemConfig();
 
@@ -145,6 +145,14 @@ export default function DashboardClient() {
       router.push('/login');
     }
   }, [authLoading, user, loadDashboardData, router]);
+
+  // Handle visibility refresh via centralized counter from AuthContext
+  useEffect(() => {
+    if (visibilityCounter > 0 && user) {
+      console.log('[DashboardClient] Visibility refresh triggered via AuthContext');
+      loadDashboardData();
+    }
+  }, [visibilityCounter, user, loadDashboardData]);
 
   // Loading State Logic:
   // Only show generic loader if:

@@ -182,7 +182,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     // const supabase = useMemo(() => getSupabaseBrowserClient(), []); // Removed
     const { enqueueSnackbar } = useSnackbar();
     const { t } = useLanguage();
-    const { user, profile } = useAuth();
+    const { user, profile, visibilityCounter } = useAuth();
     const theme = useTheme();
 
     const [members, setMembers] = useState<MemberWithProfile[]>([]);
@@ -486,8 +486,23 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             }
         };
         init();
-        return () => { active = false; };
+
+        return () => {
+            active = false;
+        };
     }, [boardId, loadBoardSettings, loadAllUsers, loadMembers, loadCards, loadTopTopics, evaluatePermissions]);
+
+    // centralized visibility refresh via AuthContext signal
+    useEffect(() => {
+        if (visibilityCounter > 0 && user) {
+            console.log('[TeamKanbanBoard] Visibility refresh triggered via AuthContext');
+            loadBoardSettings();
+            loadTopTopics();
+            if (members.length > 0) {
+                loadCards(members);
+            }
+        }
+    }, [visibilityCounter, user, members, loadBoardSettings, loadTopTopics, loadCards]);
 
     useEffect(() => {
         if (!loading && members.length > 0) {
