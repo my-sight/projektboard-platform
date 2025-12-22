@@ -206,6 +206,7 @@ export const translations = {
             projectsPerPhase: "Projekte je Phase",
             projectsPerLane: "Projekte je Lane",
             projectsPerMember: "Projekte je Boardmember",
+            completionLabel: "Abschluss Label"
         },
         teamBoard: {
             settingsSaved: 'Einstellungen gespeichert',
@@ -604,7 +605,8 @@ export const translations = {
             checklistUnfinished: '⚠️ There are {count} open items in phase "{stage}":\n{items}\n\nDo you still want to move the card?',
             projectsPerPhase: "Projects per Phase",
             projectsPerLane: "Projects per Lane",
-            projectsPerMember: "Projects per Board Member"
+            projectsPerMember: "Projects per Board Member",
+            completionLabel: "Completion Label"
         },
         teamBoard: {
             settingsSaved: 'Settings saved',
@@ -988,7 +990,8 @@ export const translations = {
             checklistUnfinished: '⚠️ W fazie "{stage}" wciąż jest {count} otwartych elementów:\n{items}\n\nMöchtest du die Karte trotzdem verschieben?',
             projectsPerPhase: "Projekty na fazę",
             projectsPerLane: "Projekty na tor",
-            projectsPerMember: "Projekty na członka zarządu"
+            projectsPerMember: "Projekty na członka zarządu",
+            completionLabel: "Etykieta zakończenia"
         },
         teamBoard: {
             settingsSaved: 'Ustawienia zapisane',

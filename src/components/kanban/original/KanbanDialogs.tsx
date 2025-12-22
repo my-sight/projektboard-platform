@@ -631,12 +631,23 @@ export function EditCardDialog({
 
             <Box sx={{ mt: 2 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>{sopLabel}-Datum</Typography>
-              <StandardDatePicker
-                value={selectedCard.SOP_Datum ? dayjs(selectedCard.SOP_Datum) : null}
-                onChange={(val) => handleDateChangeLocal('SOP_Datum', val)}
-                onAccept={(val) => handleDateAccept('SOP_Datum', val)}
-                disabled={!canEdit}
-              />
+              <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                <StandardDatePicker
+                  label={`${sopLabel} Original`}
+                  value={selectedCard.SOP_Datum ? dayjs(selectedCard.SOP_Datum) : null}
+                  onChange={(val) => handleDateChangeLocal('SOP_Datum', val)}
+                  onAccept={(val) => handleDateAccept('SOP_Datum', val)}
+                  disabled={!canEdit || !!selectedCard.SOP_Datum}
+                />
+
+                <StandardDatePicker
+                  label={`${sopLabel} ${t('kanban.currentNew')}`}
+                  value={selectedCard.SOP_Neu ? dayjs(selectedCard.SOP_Neu) : null}
+                  onChange={(val) => handleDateChangeLocal('SOP_Neu', val)}
+                  onAccept={(val) => handleDateAccept('SOP_Neu', val)}
+                  disabled={!canEdit}
+                />
+              </Box>
 
               <Typography>{t('kanban.image')}</Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>

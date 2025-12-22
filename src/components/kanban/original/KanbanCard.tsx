@@ -311,18 +311,39 @@ export function KanbanCard({
                   </Tooltip>
 
                   {/* SOP-Datum moved here */}
-                  {sopDate && (
-                    <Chip
-                      label={`${sopLabel}: ${sopDate.toLocaleDateString('de-DE')}`}
-                      size="small"
-                      sx={{
-                        height: 18,
-                        fontSize: '0.6rem',
-                        bgcolor: alpha(theme.palette.secondary.main, 0.1),
-                        color: theme.palette.secondary.main,
-                        flexShrink: 0
-                      }}
-                    />
+                  {(sopDate || card.SOP_Neu) && (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.25 }}>
+                      {sopDate && (
+                        <Chip
+                          label={`${sopLabel}: ${sopDate.toLocaleDateString('de-DE')}`}
+                          size="small"
+                          sx={{
+                            height: 18,
+                            fontSize: '0.6rem',
+                            bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                            color: theme.palette.secondary.main,
+                            flexShrink: 0
+                          }}
+                        />
+                      )}
+                      {card.SOP_Neu && (() => {
+                        const sopNeuDate = nullableDate(card.SOP_Neu);
+                        if (!sopNeuDate) return null;
+                        return (
+                          <Chip
+                            label={`* ${sopNeuDate.toLocaleDateString('de-DE')}`}
+                            size="small"
+                            sx={{
+                              height: 18,
+                              fontSize: '0.6rem',
+                              bgcolor: alpha(theme.palette.success.main, 0.1),
+                              color: theme.palette.success.main,
+                              flexShrink: 0
+                            }}
+                          />
+                        );
+                      })()}
+                    </Box>
                   )}
                 </Box>
 

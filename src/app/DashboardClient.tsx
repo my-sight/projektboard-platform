@@ -94,8 +94,9 @@ export default function DashboardClient() {
       return;
     }
 
-    if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
+    // if (isFetchingRef.current) return; // Removed to prevent blocking valid re-mount fetches
+    // isFetchingRef.current = true;
+    console.log('[DashboardClient] Loading data...');
 
     try {
       // 1. Check Roles
@@ -123,7 +124,7 @@ export default function DashboardClient() {
       console.error('Error loading dashboard data:', e);
     } finally {
       setLoadingData(false);
-      isFetchingRef.current = false;
+      // isFetchingRef.current = false;
     }
   }, [user]);
 

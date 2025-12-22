@@ -112,6 +112,7 @@ export interface ProjectBoardCard {
 
   // Start of Production
   SOP_Datum?: string;
+  SOP_Neu?: string;
 
   // Phase Transition
   PhaseTransition?: boolean | string;
