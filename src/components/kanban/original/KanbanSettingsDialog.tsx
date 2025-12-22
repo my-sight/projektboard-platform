@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import {
     Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
-    Typography, TextField, IconButton, Tabs, Tab, List, ListItem, Card
+    Typography, TextField, IconButton, Tabs, Tab, List, ListItem, Card, Tooltip
 } from '@mui/material';
 import { Settings, Close, ArrowUpward, ArrowDownward, Delete, Add, Inventory2 } from '@mui/icons-material';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -148,13 +148,15 @@ export function KanbanSettingsDialog({
                         <TextField label={t('kanban.boardName')} value={boardName} onChange={(e) => setBoardName(e.target.value)} fullWidth sx={{ mt: 2 }} disabled={!canManageSettings} />
                         <TextField label={t('kanban.description')} value={boardDescription} onChange={(e) => setBoardDescription(e.target.value)} fullWidth multiline rows={2} sx={{ mt: 2 }} disabled={!canManageSettings} />
                         <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-                            <TextField label="TR Label" value={localCustomLabels.tr} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, tr: e.target.value }))} fullWidth size="small" disabled={!canManageSettings} />
+                            <TextField label="MS Label" value={localCustomLabels.tr} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, tr: e.target.value }))} fullWidth size="small" disabled={!canManageSettings} />
                             <TextField label="SOP Label" value={localCustomLabels.sop} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, sop: e.target.value }))} fullWidth size="small" disabled={!canManageSettings} />
                         </Box>
                         <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-start' }}>
-                            <Button variant="outlined" startIcon={<Inventory2 />} onClick={() => { onClose(); onOpenArchive(); }}>
-                                {t('kanban.openArchive') || 'Archiv öffnen'}
-                            </Button>
+                            <Tooltip title={t('kanban.openArchive') || 'Archiv öffnen'}>
+                                <IconButton onClick={() => { onClose(); onOpenArchive(); }}>
+                                    <Inventory2 />
+                                </IconButton>
+                            </Tooltip>
                         </Box>
                     </Box>
                 )}

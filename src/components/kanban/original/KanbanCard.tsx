@@ -153,7 +153,7 @@ export function KanbanCard({
         const color = type === 'original' ? 'info' : 'success';
         return (
           <Chip
-            label={`${label}: ${date.toLocaleDateString('de-DE')}`}
+            label={label === '*' ? `${label} ${date.toLocaleDateString('de-DE')}` : `${label}: ${date.toLocaleDateString('de-DE')}`}
             size="small"
             color={color}
             variant="outlined"
@@ -212,7 +212,8 @@ export function KanbanCard({
             ) : (
               <CardContent sx={{ p: '12px !important', '&:last-child': { pb: '12px !important' } }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
-                  <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                  {/* Left: Number + Escalation */}
+                  <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap', minWidth: 0, flex: 1, mr: 0.5 }}>
                     <Chip
                       label={card.Nummer}
                       size="small"
@@ -221,7 +222,15 @@ export function KanbanCard({
                         fontSize: '0.65rem',
                         fontWeight: 700,
                         bgcolor: alpha(theme.palette.primary.main, 0.1),
-                        color: theme.palette.primary.main
+                        color: theme.palette.primary.main,
+                        maxWidth: '100%',
+                        '& .MuiChip-label': {
+                          display: 'block',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          px: 1
+                        }
                       }}
                     />
 
@@ -233,6 +242,7 @@ export function KanbanCard({
                         p: 0.5,
                         width: 24,
                         height: 24,
+                        flexShrink: 0,
                         color: isRed ? 'error.main' : (isYellow ? 'warning.main' : 'text.disabled'),
                         bgcolor: isRed ? alpha(theme.palette.error.main, 0.1) : (isYellow ? alpha(theme.palette.warning.main, 0.1) : alpha(theme.palette.action.hover, 0.05)),
                         transition: 'all 0.2s',
@@ -253,7 +263,8 @@ export function KanbanCard({
                     </IconButton>
                   </Box>
 
-                  <Box className="controls" sx={{ display: 'flex', gap: 0.5, alignItems: 'center', opacity: 0.6, transition: 'opacity 0.2s', '&:hover': { opacity: 1 } }}>
+                  {/* Right: Controls */}
+                  <Box className="controls" sx={{ display: 'flex', gap: 0.5, alignItems: 'center', opacity: 0.6, transition: 'opacity 0.2s', '&:hover': { opacity: 1 }, flexShrink: 0 }}>
                     <IconButton
                       size="small"
                       sx={{
@@ -269,21 +280,6 @@ export function KanbanCard({
                       <ArrowCircleRight fontSize="small" />
                     </IconButton>
 
-                    {/* SOP-Datum */}
-                    {sopDate && (
-                      <Chip
-                        icon={<AccessTime sx={{ fontSize: '0.9rem' }} />}
-                        label={`${sopLabel}: ${sopDate.toLocaleDateString('de-DE')}`}
-                        size="small"
-                        sx={{
-                          height: 18,
-                          fontSize: '0.6rem',
-                          bgcolor: alpha(theme.palette.secondary.main, 0.1),
-                          color: theme.palette.secondary.main,
-                          mr: 0.5
-                        }}
-                      />
-                    )}
 
                     <IconButton
                       size="small"
@@ -295,9 +291,41 @@ export function KanbanCard({
                   </Box>
                 </Box>
 
-                <Typography variant="body2" fontWeight={500} sx={{ mb: 0.5, lineHeight: 1.2, fontSize: '0.85rem' }}>
-                  {card.Teil || t('kanban.noTitle')}
-                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5, gap: 1 }}>
+                  <Tooltip title={card.Teil || t('kanban.noTitle')}>
+                    <Typography
+                      variant="body2"
+                      fontWeight={500}
+                      sx={{
+                        lineHeight: 1.2,
+                        fontSize: '0.85rem',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        minWidth: 0,
+                        flex: 1
+                      }}
+                    >
+                      {card.Teil || t('kanban.noTitle')}
+                    </Typography>
+                  </Tooltip>
+
+                  {/* SOP-Datum moved here */}
+                  {sopDate && (
+                    <Chip
+                      icon={<AccessTime sx={{ fontSize: '0.9rem' }} />}
+                      label={`${sopLabel}: ${sopDate.toLocaleDateString('de-DE')}`}
+                      size="small"
+                      sx={{
+                        height: 18,
+                        fontSize: '0.6rem',
+                        bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                        color: theme.palette.secondary.main,
+                        flexShrink: 0
+                      }}
+                    />
+                  )}
+                </Box>
 
 
 
@@ -313,7 +341,8 @@ export function KanbanCard({
                         overflow: currentSize === 'large' ? 'visible' : 'hidden',
                         mb: 0.5,
                         fontSize: '0.7rem',
-                        lineHeight: 1.2
+                        lineHeight: 1.2,
+                        width: '100%' // Ensure width constraint
                       }}
                     >
                       {statusKurz}
@@ -365,7 +394,7 @@ export function KanbanCard({
                 {(card.TR_Datum || card.TR_Neu) && (
                   <Box sx={{ mt: 1, pt: 0.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                     {renderTRChip(trLabel, trOriginalDate || undefined, 'original')}
-                    {renderTRChip(t('kanban.currentNew'), trNeuDate || undefined, 'new')}
+                    {renderTRChip('*', trNeuDate || undefined, 'new')}
                     {trDiff !== null && trDiff !== 0 && (
                       <Chip
                         label={`${trDiff > 0 ? '+' : ''}${trDiff} T`}

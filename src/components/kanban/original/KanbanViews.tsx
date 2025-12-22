@@ -381,7 +381,27 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
   );
 
   const stages = cols.map((c) => c.name);
-  const laneNames = lanes.length ? lanes : [t('kanban.generalLane')];
+
+  // 1. Determine explicitly configured lanes
+  const configuredLanes = lanes.length ? lanes : [];
+
+  // 2. Identify cards that don't belong to any configured lane
+  const hasUnassignedCards = filtered.some(row => {
+    const lane = row['Swimlane'] || '';
+    return !configuredLanes.includes(lane);
+  });
+
+  // 3. Construct final list of lanes to render
+  const displayLanes = [...configuredLanes];
+  const unassignedLabel = t('kanban.unassigned') || 'Nicht zugeordnet';
+
+  // If we have no configured lanes, we just show one generic lane (or unassigned)
+  if (displayLanes.length === 0) {
+    displayLanes.push(unassignedLabel);
+  } else if (hasUnassignedCards) {
+    // If we have configured lanes BUT also stray cards, add "Unassigned" at the end
+    displayLanes.push(unassignedLabel);
+  }
 
   const handleDragStart = () => {
     onAutoScrollStart();
@@ -427,7 +447,7 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
           </Paper>
         ))}
 
-        {laneNames.map((laneName) => (
+        {displayLanes.map((laneName) => (
           <React.Fragment key={laneName}>
             <Paper
               key={`header-${laneName}`}
@@ -451,7 +471,15 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
               <Typography fontWeight={700} noWrap title={laneName}>{laneName}</Typography>
               <Typography variant="caption" color="text.secondary">
                 {
-                  filtered.filter((row) => (row['Swimlane'] || laneNames[0]) === laneName).length
+                  filtered.filter((row) => {
+                    const rowLane = row['Swimlane'] || '';
+                    if (laneName === unassignedLabel) {
+                      // If this is the unassigned lane, match cards that are NOT in configured lanes
+                      // OR match cards that are explicitly 'Nicht zugeordnet' if that happens to be the value
+                      return !configuredLanes.includes(rowLane) || rowLane === unassignedLabel;
+                    }
+                    return rowLane === laneName;
+                  }).length
                 }{' '}
                 {t('kanban.cards')}
               </Typography>
@@ -459,7 +487,13 @@ export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, infer
 
             {stages.map((stage) => {
               const cellCards = filtered.filter(
-                (row) => inferStage(row) === stage && (row['Swimlane'] || laneNames[0]) === laneName,
+                (row) => {
+                  const rowLane = row['Swimlane'] || '';
+                  if (laneName === unassignedLabel) {
+                    return inferStage(row) === stage && (!configuredLanes.includes(rowLane) || rowLane === unassignedLabel);
+                  }
+                  return inferStage(row) === stage && rowLane === laneName;
+                }
               );
 
               return (
