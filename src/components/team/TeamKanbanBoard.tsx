@@ -1089,7 +1089,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                     </Avatar>
                                                     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                                                         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                                                            {member.profile?.alias || member.profile?.full_name || 'Unbekannt'}
+                                                            {member.profile?.alias || member.profile?.full_name || t('kanban.unknown')}
                                                         </Typography>
                                                         {member.profile?.alias && member.profile?.full_name && (
                                                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mt: -0.5 }}>
@@ -1109,7 +1109,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                                 <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
                                                                     {flow1.map((c, i) => renderCard(c, i))}
                                                                     {prov.placeholder}
-                                                                    {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline />} onClick={() => openQuickAdd(member.profile_id, 'flow1')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
+                                                                    {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline />} onClick={() => openQuickAdd(member.profile_id, 'flow1')} sx={{ mt: 1, opacity: 0.5 }}>{t('teamBoard.new')}</Button>}
                                                                 </Box>
                                                             )}
                                                         </Droppable>

@@ -58,7 +58,12 @@ export default function BoardSwitcherBadge() {
             if (error) throw error;
 
             if (isSuper) {
-                setBoards(allBoards || []);
+                const sortedAll = [...(allBoards || [])].sort((a, b) => {
+                    const typeA = a.settings?.boardType === 'team' ? 1 : 0;
+                    const typeB = b.settings?.boardType === 'team' ? 1 : 0;
+                    return typeA - typeB;
+                });
+                setBoards(sortedAll);
             } else {
                 // Find boards where user is member
                 const { data: memberships } = await supabase
@@ -73,7 +78,15 @@ export default function BoardSwitcherBadge() {
                     b.board_admin_id === user.id ||
                     memberBoardIds.has(b.id)
                 );
-                setBoards(myBoards);
+
+                // Sort: Standard Boards first, then Team Boards
+                const sortedBoards = [...myBoards].sort((a, b) => {
+                    const typeA = a.settings?.boardType === 'team' ? 1 : 0;
+                    const typeB = b.settings?.boardType === 'team' ? 1 : 0;
+                    return typeA - typeB;
+                });
+
+                setBoards(sortedBoards);
             }
         } catch (e) {
             console.error('Error loading switcher boards:', e);
@@ -125,7 +138,7 @@ export default function BoardSwitcherBadge() {
             >
                 <Box sx={{ px: 2, py: 1.5 }}>
                     <Typography variant="subtitle2" fontWeight="bold">
-                        Meine Boards
+                        {t('switcher.title')}
                     </Typography>
                 </Box>
                 <Divider />
@@ -138,7 +151,7 @@ export default function BoardSwitcherBadge() {
                     <Box sx={{ py: 0.5 }}>
                         <MenuItem onClick={() => { handleClose(); router.push('/'); }} sx={{ py: 1 }}>
                             <SpaceDashboard sx={{ mr: 1.5, fontSize: 20, color: 'text.secondary' }} />
-                            <Typography variant="body2" fontWeight={500}>Dashboard</Typography>
+                            <Typography variant="body2" fontWeight={500}>{t('switcher.dashboard')}</Typography>
                         </MenuItem>
 
                         <Divider sx={{ my: 0.5 }} />
@@ -146,7 +159,7 @@ export default function BoardSwitcherBadge() {
                         {boards.length === 0 && !loading && (
                             <Box sx={{ px: 2, py: 2 }}>
                                 <Typography variant="caption" color="text.secondary">
-                                    Keine weiteren Boards gefunden.
+                                    {t('switcher.noBoards')}
                                 </Typography>
                             </Box>
                         )}
@@ -169,7 +182,7 @@ export default function BoardSwitcherBadge() {
                                             {b.name}
                                         </Typography>
                                         <Typography variant="caption" color="text.secondary">
-                                            {isTeam ? 'Flow Board' : 'Projekt Board'}
+                                            {isTeam ? t('switcher.flowBoard') : t('switcher.projectBoard')}
                                         </Typography>
                                     </Box>
                                 </MenuItem>

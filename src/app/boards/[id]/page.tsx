@@ -72,8 +72,8 @@ export default function BoardPage() {
     if (!board) {
         return (
             <Box sx={{ p: 4, textAlign: 'center' }}>
-                <Typography variant="h5" color="error" gutterBottom>{message || 'Board not found'}</Typography>
-                <Button variant="contained" onClick={() => router.push('/')}>Go to Dashboard</Button>
+                <Typography variant="h5" color="error" gutterBottom>{message || t('home.loadError')}</Typography>
+                <Button variant="contained" onClick={() => router.push('/')}>{t('header.backToOverview')}</Button>
             </Box>
         );
     }
@@ -88,10 +88,10 @@ export default function BoardPage() {
             <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', backgroundColor: 'background.paper', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Button variant="outlined" onClick={handleBack} startIcon={<SpaceDashboard />}>
-                        Dashboard
+                        {t('header.backToOverview')}
                     </Button>
                     <Button variant="outlined" onClick={handleSettings} startIcon={<DashboardCustomize />}>
-                        Boardmanagement
+                        {t('kanban.settings')}
                     </Button>
                     <Typography variant="h6">{board.name}</Typography>
                 </Box>

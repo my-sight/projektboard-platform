@@ -388,6 +388,13 @@ export const translations = {
             save: 'Speichern',
             saving: 'Speichern...',
             saveError: 'Fehler beim Speichern',
+        },
+        switcher: {
+            title: "Meine Boards",
+            dashboard: "Dashboard",
+            noBoards: "Keine weiteren Boards gefunden.",
+            flowBoard: "Flow Board",
+            projectBoard: "Projekt Board"
         }
     },
     en: {
@@ -779,6 +786,13 @@ export const translations = {
             save: 'Save',
             saving: 'Saving...',
             saveError: 'Error saving',
+        },
+        switcher: {
+            title: "My Boards",
+            dashboard: "Dashboard",
+            noBoards: "No other boards found.",
+            flowBoard: "Flow Board",
+            projectBoard: "Project Board"
         }
     },
     pl: {
@@ -1155,6 +1169,13 @@ export const translations = {
             save: 'Zapisz',
             saving: 'Zapisywanie...',
             saveError: 'Błąd zapisywania',
+        },
+        switcher: {
+            title: "Moje Tablice",
+            dashboard: "Pulpit",
+            noBoards: "Nie znaleziono innych tablic.",
+            flowBoard: "Tablica Flow",
+            projectBoard: "Tablica Projektowa"
         }
     }
 };

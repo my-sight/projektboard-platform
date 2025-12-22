@@ -381,7 +381,7 @@ export default function DashboardClient() {
       {favoriteBoards.length > 0 && (
         <Box sx={{ mb: 6 }}>
           <Typography variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
-            <Star color="warning" /> Favoriten
+            <Star color="warning" /> {t('home.favorites')}
           </Typography>
           <Grid container spacing={3}>
             {favoriteBoards.map(renderBoardCard)}
@@ -406,7 +406,7 @@ export default function DashboardClient() {
 
         <Grid container spacing={3}>
           {standardBoards.map(renderBoardCard)}
-          {standardBoards.length === 0 && <Grid item xs={12}><Typography color="text.secondary">Keine weiteren {t('home.projectBoards')} vorhanden.</Typography></Grid>}
+          {standardBoards.length === 0 && <Grid item xs={12}><Typography color="text.secondary">{t('home.noDescription')}</Typography></Grid>}
         </Grid>
       </Box>
 
@@ -425,7 +425,7 @@ export default function DashboardClient() {
 
         <Grid container spacing={3}>
           {teamBoards.map(renderBoardCard)}
-          {teamBoards.length === 0 && <Grid item xs={12}><Typography color="text.secondary">Keine weiteren {t('home.teamBoards')} vorhanden.</Typography></Grid>}
+          {teamBoards.length === 0 && <Grid item xs={12}><Typography color="text.secondary">{t('home.noDescription')}</Typography></Grid>}
         </Grid>
       </Box>
 
