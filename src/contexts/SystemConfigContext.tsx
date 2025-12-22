@@ -132,8 +132,8 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
       secondary: { main: config.secondaryColor },
       background: mode === 'dark'
         ? {
-          default: '#0f172a', // Slate 900
-          paper: '#1e293b',   // Slate 800
+          default: '#09090b', // Zinc 950 (Neutral Black)
+          paper: '#18181b',   // Zinc 900 (Dark Gray)
         }
         : {
           default: '#f4f6f8',
@@ -141,14 +141,14 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
         },
       text: mode === 'dark'
         ? {
-          primary: '#f8fafc', // Slate 50
-          secondary: '#94a3b8', // Slate 400
+          primary: '#fafafa', // Zinc 50
+          secondary: '#a1a1aa', // Zinc 400
         }
         : {
           primary: '#1c2434', // Darker text for light mode
           secondary: '#64748b',
         },
-      divider: mode === 'dark' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(0,0,0,0.12)',
+      divider: mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0,0,0,0.08)',
     },
     typography: {
       fontFamily: fonts[config.fontFamily]?.style.fontFamily || 'sans-serif',
@@ -184,7 +184,7 @@ export function SystemConfigProvider({ children }: { children: ReactNode }) {
         styleOverrides: {
           root: {
             boxShadow: mode === 'dark' ? '0 1px 0 rgba(255,255,255,0.05)' : '0 1px 0 rgba(0,0,0,0.05)',
-            backgroundColor: mode === 'dark' ? '#1e293b' : '#ffffff',
+            backgroundColor: mode === 'dark' ? '#18181b' : '#ffffff',
             color: mode === 'dark' ? '#f8fafc' : '#333'
           }
         }
