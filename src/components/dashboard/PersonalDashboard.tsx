@@ -59,7 +59,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
   const { enqueueSnackbar } = useSnackbar();
   const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const userId = user?.id || '';
 
   const [allTasks, setAllTasks] = useState<any[]>([]);
@@ -97,8 +97,9 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
         try {
           const profiles = await fetchClientProfiles();
-          const profile = profiles.find(p => p.id === user.id);
-          if (profile?.full_name) myIds.add(profile.full_name.toLowerCase().trim());
+          const p = profiles.find(p => p.id === user.id);
+          if (p?.full_name) myIds.add(p.full_name.toLowerCase().trim());
+          if (p?.alias) myIds.add(p.alias.toLowerCase().trim());
         } catch (e) { console.warn('Profile fetch warning', e); }
 
         // Boards laden für Namen
@@ -479,9 +480,26 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
           <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.02em', mb: 0.5 }}>
             {t('dashboard.welcome')}
           </Typography>
-          <Typography variant="body1" color="text.secondary">
-            {t('dashboard.overview')}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body1" color="text.secondary">
+              {t('dashboard.overview')}
+            </Typography>
+            {profile?.department_name && (
+              <Chip
+                icon={<Business sx={{ fontSize: '14px !important' }} />}
+                label={profile.department_name}
+                size="small"
+                variant="outlined"
+                sx={{
+                  height: 20,
+                  fontSize: '0.7rem',
+                  borderColor: 'divider',
+                  color: 'text.secondary',
+                  bgcolor: alpha(theme.palette.primary.main, 0.05)
+                }}
+              />
+            )}
+          </Box>
         </Box>
 
         <Stack direction="row" spacing={1}>

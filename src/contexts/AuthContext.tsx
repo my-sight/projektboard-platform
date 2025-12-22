@@ -10,9 +10,13 @@ export interface Profile {
   id: string;
   email: string;
   full_name: string | null;
+  alias: string | null;
   avatar_url: string | null;
   role: string;
   company: string | null;
+  department_id: string | null;
+  department_name?: string | null;
+  preferred_language: 'de' | 'en' | 'pl' | null;
   is_active: boolean;
 }
 
@@ -25,6 +29,8 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   isAdmin: boolean;
   refreshProfile: () => Promise<void>;
+  updateProfile: (updates: Partial<Profile>) => Promise<{ data: any; error: any }>;
+  updatePassword: (newPassword: string) => Promise<{ data: any; error: any }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -46,7 +52,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('*, departments(name)')
         .eq('id', userId)
         .maybeSingle();
 
@@ -54,7 +60,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         console.warn('Error fetching profile:', error);
         return null;
       }
-      return data as Profile;
+
+      const profileData = data as any;
+      if (profileData && profileData.departments) {
+        profileData.department_name = profileData.departments.name;
+      }
+      return profileData as Profile;
     } catch (e) {
       console.error('Fetch profile exception:', e);
       return null;
@@ -239,8 +250,39 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const isAdmin = profile?.role === 'admin' || isSuperuserEmail(user?.email);
 
+  const updateProfile = async (updates: Partial<Profile>) => {
+    if (!user) return { data: null, error: new Error('Not authenticated') };
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', user.id)
+      .select()
+      .single();
+
+    if (!error) {
+      setProfile(data as Profile);
+    }
+    return { data, error };
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    return supabase.auth.updateUser({ password: newPassword });
+  };
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signUp, signOut, isAdmin, refreshProfile }}>
+    <AuthContext.Provider value={{
+      user,
+      profile,
+      loading,
+      signIn,
+      signUp,
+      signOut,
+      isAdmin,
+      refreshProfile,
+      updateProfile,
+      updatePassword
+    }}>
       {children}
     </AuthContext.Provider>
   );

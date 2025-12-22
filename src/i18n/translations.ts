@@ -27,6 +27,21 @@ export const translations = {
             projects: "Projekte",
             task: "Aufgabe"
         },
+        userSettings: {
+            title: "Benutzereinstellungen",
+            profileInfo: "Profilinformationen",
+            preferences: "Präferenzen",
+            security: "Sicherheit",
+            fullName: "Vollständiger Name",
+            alias: "Alias / Kürzel",
+            avatarDesc: "Klicken Sie auf das Kamera-Icon, um Ihr Avatar zu ändern.",
+            department: "Abteilung",
+            language: "Sprache",
+            newPassword: "Neues Passwort",
+            confirmPassword: "Passwort bestätigen",
+            saveSuccess: "Profil erfolgreich gespeichert",
+            passwordSuccess: "Passwort erfolgreich geändert"
+        },
         header: {
             login: "Login",
             logout: "Logout",
@@ -402,6 +417,21 @@ export const translations = {
             team: "Team",
             projects: "Projects",
             task: "Task"
+        },
+        userSettings: {
+            title: "User Settings",
+            profileInfo: "Profile Information",
+            preferences: "Preferences",
+            security: "Security",
+            fullName: "Full Name",
+            alias: "Alias",
+            avatarDesc: "Click the camera icon to change your avatar.",
+            department: "Department",
+            language: "Language",
+            newPassword: "New Password",
+            confirmPassword: "Confirm Password",
+            saveSuccess: "Profile saved successfully",
+            passwordSuccess: "Password changed successfully"
         },
         header: {
             login: "Login",

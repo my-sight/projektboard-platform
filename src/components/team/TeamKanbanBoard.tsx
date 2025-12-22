@@ -101,6 +101,7 @@ interface TeamBoardCard {
     originalStage?: string;
     originalData: any;
     createdAt?: string;
+    assigneeProfile?: ClientProfile | null;
 }
 
 interface TeamKanbanBoardProps { boardId: string; onExit?: () => void; highlightCardId?: string | null; }
@@ -110,7 +111,10 @@ interface TopTopic { id: string; title: string; calendar_week?: string; due_date
 
 const defaultDraft: TaskDraft = { description: '', dueDate: '', important: false, watch: false, assigneeId: null, status: 'backlog' };
 
-const getInitials = (name: string) => name.split(' ').filter(Boolean).map((part) => part[0]).join('').toUpperCase().slice(0, 2);
+const getInitials = (name: string) => {
+    if (!name) return '?';
+    return name.split(' ').filter(Boolean).map((part) => part[0]).join('').toUpperCase().slice(0, 2);
+};
 const droppableKey = (assigneeId: string | null, status: TeamBoardStatus) => `team|${assigneeId ?? 'unassigned'}|${status}`;
 const parseDroppableKey = (value: string): DroppableInfo => {
     if (!value.startsWith('team|')) return { assigneeId: null, status: 'backlog' };
@@ -168,7 +172,9 @@ const convertDbToCard = (item: any, boardMap: Map<string, string>, currentBoardI
         createdAt: item.created || item.created_at,
         createdBy: d.createdBy,
         originalStage: item.stage || d['Board Stage'],
-        originalData: d
+        originalData: d,
+        // Addition: find assignee profile for avatar
+        assigneeProfile: (item.assigneeProfile || null)
     };
 };
 
@@ -407,7 +413,11 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 const isLocal = item.board_id === boardId;
 
                 if (isLocal || (isHomeBoard && assignee && memberIds.includes(assignee))) {
-                    loadedCards.push(convertDbToCard(item, boardMap, boardId));
+                    const card = convertDbToCard(item, boardMap, boardId);
+                    if (assignee) {
+                        card.assigneeProfile = currentMembers.find(m => m.profile_id === assignee)?.profile || null;
+                    }
+                    loadedCards.push(card);
                 }
             });
 
@@ -494,7 +504,13 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
         const memberLoad = members.map(m => {
             const count = active.filter(c => c.assigneeId === m.profile_id).length;
-            return { name: m.profile?.full_name || m.profile?.email || '?', count, avatar: getInitials(m.profile?.full_name || m.profile?.email || '') };
+            const displayName = m.profile?.full_name || m.profile?.alias || m.profile?.email || '?';
+            return {
+                name: displayName,
+                count,
+                avatar: getInitials(displayName),
+                avatar_url: m.profile?.avatar_url
+            };
         }).sort((a, b) => b.count - a.count);
 
         const currentDone = cards.filter(c => c.status === 'done').length;
@@ -902,7 +918,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                         </Box>
 
                         <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1 } }}>
-                            <Box sx={{ display: 'flex', mb: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                                 <Chip
                                     label={card.boardName}
                                     size="small"
@@ -1065,8 +1081,22 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                     <IconButton size="small" onClick={() => toggleLaneCollapse(member.id)} sx={{ p: 0.5, ml: -1 }}>
                                                         <Typography variant="caption">{isCollapsed ? '▶' : '▼'}</Typography>
                                                     </IconButton>
-                                                    <Avatar sx={{ width: 32, height: 32, fontSize: '0.85rem', bgcolor: 'primary.main' }}>{getInitials(member.profile?.full_name || '?')}</Avatar>
-                                                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{member.profile?.full_name || 'Unbekannt'}</Typography>
+                                                    <Avatar
+                                                        src={member.profile?.avatar_url || undefined}
+                                                        sx={{ width: 32, height: 32, fontSize: '0.85rem', bgcolor: 'primary.main' }}
+                                                    >
+                                                        {getInitials(member.profile?.alias || member.profile?.full_name || '?')}
+                                                    </Avatar>
+                                                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                                        <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                                            {member.profile?.alias || member.profile?.full_name || 'Unbekannt'}
+                                                        </Typography>
+                                                        {member.profile?.alias && member.profile?.full_name && (
+                                                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mt: -0.5 }}>
+                                                                {member.profile.full_name}
+                                                            </Typography>
+                                                        )}
+                                                    </Box>
                                                 </Stack>
                                                 {!isCollapsed && member.profile?.company && <Typography variant="caption" color="text.secondary" sx={{ ml: 5 }}>{member.profile.company}</Typography>}
                                             </Box>

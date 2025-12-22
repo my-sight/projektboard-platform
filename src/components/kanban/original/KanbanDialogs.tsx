@@ -498,6 +498,7 @@ export function EditCardDialog({
                               <Box>
                                 <Typography variant="body2">
                                   {user.full_name || user.name || user.email}
+                                  {user.alias ? ` (${user.alias})` : ''}
                                 </Typography>
                               </Box>
                             </MenuItem>
@@ -591,6 +592,7 @@ export function EditCardDialog({
                     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                       <Typography variant="body2" sx={{ fontWeight: 500 }}>
                         {(user.full_name || user.name || user.email) ?? t('kanban.unknown')}
+                        {user.alias ? ` (${user.alias})` : ''}
                         {user.department || user.company ? ` – ${user.department || user.company}` : ''}
                       </Typography>
                       {user.email && <Typography variant="caption" color="text.secondary">{user.email}</Typography>}

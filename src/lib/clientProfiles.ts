@@ -7,6 +7,8 @@ export interface ClientProfile {
   company: string | null;
   department?: string | null;
   name?: string | null; // Compatibility alias for full_name
+  alias?: string | null;
+  avatar_url?: string | null;
   role: string | null;
   is_active: boolean;
   created_at?: string | null;
@@ -25,6 +27,8 @@ export async function fetchClientProfiles(): Promise<ClientProfile[]> {
       id: u.id,
       email: u.email,
       full_name: u.full_name,
+      alias: u.alias || null,
+      avatar_url: u.avatar_url || null,
       company: u.company || null,
       department: null, // 'department' column missing in public.profiles schema
       name: u.full_name, // Alias

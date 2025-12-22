@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { translations, Language } from '@/i18n/translations';
+import { useAuth } from './AuthContext';
 import dayjs from 'dayjs';
 import 'dayjs/locale/de';
 import 'dayjs/locale/en';
@@ -16,30 +17,37 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
+    const { profile, updateProfile } = useAuth();
     const [language, setLanguageState] = useState<Language>('de');
 
-    // Load language preference on mount
+    // Load language preference on mount and when profile changes
     useEffect(() => {
         const loadLanguage = async () => {
-            // Check local storage first for speed
+            // Priority: URL (if implemented) > Profile > LocalStorage > Default (de)
+            if (profile?.preferred_language) {
+                setLanguageState(profile.preferred_language);
+                dayjs.locale(profile.preferred_language);
+                return;
+            }
+
             const stored = localStorage.getItem('language');
             if (stored && (stored === 'de' || stored === 'en' || stored === 'pl')) {
                 setLanguageState(stored as Language);
                 dayjs.locale(stored);
                 return;
             }
-
-            // if (pb.authStore.isValid && pb.authStore.model) ... removed PB dep
         };
         loadLanguage();
-    }, []);
+    }, [profile]);
 
     const setLanguage = async (lang: Language) => {
         setLanguageState(lang);
         localStorage.setItem('language', lang);
         dayjs.locale(lang);
 
-        // Optional: Persist to DB if schema supports it (omitted for now)
+        if (profile) {
+            updateProfile({ preferred_language: lang });
+        }
     };
 
     const t = (key: string): string => {

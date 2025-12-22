@@ -31,7 +31,7 @@ export interface KanbanCardProps {
   setEditTabValue: (value: number) => void;
   inferStage: (card: ProjectBoardCard) => string;
   idFor: (card: ProjectBoardCard) => string;
-  users: Array<{ id: string; name?: string; full_name?: string; email?: string; department?: string | null; company?: string | null; }>;
+  users: Array<{ id: string; name?: string; full_name?: string; alias?: string | null; avatar_url?: string | null; email?: string; department?: string | null; company?: string | null; }>;
   canModify: boolean;
   highlighted?: boolean;
   checklistTemplates: Record<string, string[]>;
@@ -329,13 +329,19 @@ export function KanbanCard({
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    {card.Verantwortlich && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
-                        <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 500 }}>
-                          {card.Verantwortlich}
-                        </Typography>
-                      </Box>
-                    )}
+                    {card.Verantwortlich && (() => {
+                      const user = users.find(u => u.full_name === card.Verantwortlich || u.name === card.Verantwortlich || u.email === (card as any).VerantwortlichEmail);
+                      const displayAssignee = user
+                        ? (user.full_name || user.name || user.email) + (user.alias ? ` (${user.alias})` : '')
+                        : card.Verantwortlich;
+                      return (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+                          <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 500 }}>
+                            {displayAssignee}
+                          </Typography>
+                        </Box>
+                      );
+                    })()}
                     {hasChecklist && (
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: doneChecklist === totalChecklist ? 'success.main' : 'text.secondary' }}>
                         <CheckCircle sx={{ fontSize: 12 }} />
@@ -385,16 +391,20 @@ export function KanbanCard({
 
                 {currentSize === 'large' && card.Team && Array.isArray(card.Team) && card.Team.length > 0 && (
                   <Box sx={{ mt: 1, pt: 0.5, borderTop: '1px solid', borderColor: 'divider', display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {card.Team.map((member: any, idx: number) => (
-                      <Chip
-                        key={idx}
-                        avatar={<Avatar sx={{ width: 16, height: 16, fontSize: '0.5rem' }}>{(member.name || '?').charAt(0)}</Avatar>}
-                        label={`${member.name || t('kanban.unknown')} ${member.department ? `(${member.department})` : ''}`}
-                        size="small"
-                        variant="outlined"
-                        sx={{ height: 20, fontSize: '0.6rem', maxWidth: '100%' }}
-                      />
-                    ))}
+                    {card.Team.map((member: any, idx: number) => {
+                      const user = users.find(u => u.full_name === member.name || u.name === member.name || u.email === member.email);
+                      const displayName = user?.full_name || user?.name || member.name || t('kanban.unknown');
+                      return (
+                        <Chip
+                          key={idx}
+                          avatar={<Avatar src={user?.avatar_url || undefined} sx={{ width: 16, height: 16, fontSize: '0.5rem' }}>{displayName.charAt(0)}</Avatar>}
+                          label={`${displayName} ${member.department ? `(${member.department})` : ''}`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ height: 20, fontSize: '0.6rem', maxWidth: '100%' }}
+                        />
+                      );
+                    })}
                   </Box>
                 )}
               </CardContent>

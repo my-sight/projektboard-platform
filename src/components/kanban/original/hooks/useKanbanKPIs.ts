@@ -21,7 +21,7 @@ export interface KanbanKPIs {
     nextTrs: ProjectBoardCard[];
 }
 
-export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: ProjectBoardCard) => string) {
+export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: ProjectBoardCard) => string, profiles: any[] = []) {
 
     const calculateKPIs = useCallback((): KanbanKPIs => {
         const activeCards = rows.filter(card => card["Archived"] !== "1");
@@ -89,8 +89,18 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
             const stage = inferStage(card);
             kpis.columnDistribution[stage] = (kpis.columnDistribution[stage] || 0) + 1;
 
-            const member = card.Verantwortlich ? String(card.Verantwortlich).trim() : 'Unzugewiesen';
-            kpis.memberDistribution[member] = (kpis.memberDistribution[member] || 0) + 1;
+            const rawMember = card.Verantwortlich ? String(card.Verantwortlich).trim() : 'Unzugewiesen';
+            // Try to resolve full name from profiles if the current string matches an alias or name
+            let resolvedName = rawMember;
+            if (profiles.length > 0 && rawMember !== 'Unzugewiesen') {
+                const p = profiles.find(u =>
+                    (u.full_name && u.full_name.trim() === rawMember) ||
+                    (u.alias && u.alias.trim() === rawMember) ||
+                    (u.name && u.name.trim() === rawMember)
+                );
+                if (p && p.full_name) resolvedName = p.full_name;
+            }
+            kpis.memberDistribution[resolvedName] = (kpis.memberDistribution[resolvedName] || 0) + 1;
 
             // Simplified lane logic: Assuming "Lane" field or mapped from "Board Lane" if applicable from other logic
             // Based on previous chats, there are "lanes" in settings mapped to card fields.
@@ -120,7 +130,7 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
             }));
 
         return kpis;
-    }, [rows, inferStage]);
+    }, [rows, inferStage, profiles]);
 
     const kpis = useMemo(() => calculateKPIs(), [calculateKPIs]);
 

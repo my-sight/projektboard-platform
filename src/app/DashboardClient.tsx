@@ -12,6 +12,7 @@ import {
   CardContent,
   CardActions,
   IconButton,
+  Avatar,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -48,6 +49,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import PersonalDashboard from '@/components/dashboard/PersonalDashboard';
+import UserSettingsDialog from '@/components/dashboard/UserSettingsDialog';
 import { supabase } from '@/lib/supabaseClient';
 import { isSuperuserEmail } from '@/constants/superuser';
 
@@ -82,6 +84,7 @@ export default function DashboardClient() {
   const [deletePassword, setDeletePassword] = useState('');
   const [favoriteBoardIds, setFavoriteBoardIds] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState('');
+  const [userSettingsOpen, setUserSettingsOpen] = useState(false);
 
   // --- DATA LOADING ---
   const loadDashboardData = useCallback(async () => {
@@ -344,10 +347,15 @@ export default function DashboardClient() {
             </Tooltip>
           )}
           <Chip
-            avatar={<Box component={Person} sx={{ color: 'inherit !important' }} />}
-            label={profile?.full_name || user?.email || ''}
+            avatar={profile?.avatar_url ? (
+              <Avatar src={profile.avatar_url} sx={{ width: 24, height: 24 }} />
+            ) : (
+              <Box component={Person} sx={{ color: 'inherit !important' }} />
+            )}
+            label={profile?.alias || profile?.full_name || user?.email || ''}
             variant="outlined"
-            onClick={() => { }}
+            onClick={() => setUserSettingsOpen(true)}
+            sx={{ cursor: 'pointer', '&:hover': { bgcolor: 'action.hover' } }}
           />
           <Tooltip title={t('header.logout')}>
             <IconButton onClick={signOut} color="error">
@@ -452,6 +460,11 @@ export default function DashboardClient() {
           <Button onClick={deleteBoard} color="error" variant="contained">{t('delete')}</Button>
         </DialogActions>
       </Dialog>
+
+      <UserSettingsDialog
+        open={userSettingsOpen}
+        onClose={() => setUserSettingsOpen(false)}
+      />
     </Container>
   );
 }

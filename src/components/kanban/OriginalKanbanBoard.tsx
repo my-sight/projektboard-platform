@@ -92,7 +92,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
       inferStage, idFor
     } = useKanbanData(boardId, permissions, viewMode, setViewMode, setDensity);
 
-    const { kpis, distribution, memberDistribution, laneDistribution, kpiBadgeCount } = useKanbanKPIs(rows, inferStage);
+    const { kpis, distribution, memberDistribution, laneDistribution, kpiBadgeCount } = useKanbanKPIs(rows, inferStage, users);
     const { convertDbToCard } = useKanbanUtils(cols, viewMode);
 
     // --- Loading & Initialization ---
@@ -275,7 +275,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         // simplified mine check
         const resp = String(row.Verantwortlich || '').toLowerCase();
         const myName = (profile?.full_name || '').toLowerCase();
-        if (!resp.includes(myName) && (row as any).VerantwortlichEmail !== user.email) return false;
+        const myAlias = (profile?.alias || '').toLowerCase();
+        if (!resp.includes(myName) && (myAlias && !resp.includes(myAlias)) && (row as any).VerantwortlichEmail !== user.email) return false;
       }
       if (filters.overdue) {
         const d = row['Due Date'];

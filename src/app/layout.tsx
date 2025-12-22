@@ -28,18 +28,18 @@ export default function RootLayout({
           <ThemeRegistry>
             {/* 2. System Config (Farben & Logik) */}
             <SystemConfigProvider>
-              {/* 3. Language Provider (i18n) */}
-              <LanguageProvider>
-                {/* 4. Snackbar (Benachrichtigungen) */}
-                <SnackbarProviderWrapper>
-                  {/* 5. Auth (User-Status) */}
-                  <AuthProvider>
+              {/* 3. Auth (User-Status) */}
+              <AuthProvider>
+                {/* 4. Language Provider (i18n) */}
+                <LanguageProvider>
+                  {/* 5. Snackbar (Benachrichtigungen) */}
+                  <SnackbarProviderWrapper>
                     <CssBaseline />
                     {/* KEIN HEADER HIER - Nur der Inhalt */}
                     {children}
-                  </AuthProvider>
-                </SnackbarProviderWrapper>
-              </LanguageProvider>
+                  </SnackbarProviderWrapper>
+                </LanguageProvider>
+              </AuthProvider>
             </SystemConfigProvider>
           </ThemeRegistry>
         </AppRouterCacheProvider>
