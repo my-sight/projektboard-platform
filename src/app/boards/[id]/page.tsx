@@ -9,6 +9,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
 import TeamKanbanBoard from '@/components/team/TeamKanbanBoard';
+import BoardSwitcherBadge from '@/components/layout/BoardSwitcherBadge';
 
 interface Board {
     id: string;
@@ -95,8 +96,7 @@ export default function BoardPage() {
                     <Typography variant="h6">{board.name}</Typography>
                 </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Typography variant="body2">👋 {profile?.full_name || user?.email}</Typography>
-                    {/* <Button variant="outlined" onClick={signOut} color="error">🚪</Button> */}
+                    <BoardSwitcherBadge />
                 </Box>
             </Box>
 
