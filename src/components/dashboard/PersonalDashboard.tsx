@@ -23,7 +23,8 @@ import {
   Tab,
   Avatar,
   Paper,
-  Tooltip
+  Tooltip,
+  alpha
 } from '@mui/material';
 import {
   Assignment,
@@ -313,7 +314,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                   p: 1.5, // Reduced padding
                   cursor: 'pointer',
                   borderLeft: task.isCritical ? '4px solid #ef4444' : (task.isPriority ? '4px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)'),
-                  bgcolor: 'background.paper',
+                  bgcolor: type === 'team' ? alpha(theme.palette.secondary.main, 0.03) : 'background.paper',
                   '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', transform: 'translateX(4px)' },
                   transition: 'all 0.2s'
                 }}

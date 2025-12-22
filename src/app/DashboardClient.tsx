@@ -228,10 +228,12 @@ export default function DashboardClient() {
   const renderBoardCard = (board: Board) => (
     <Grid item xs={12} sm={6} md={4} lg={3} key={board.id}>
       <Card
+        variant="outlined"
         sx={{
           height: '100%',
           display: 'flex',
           flexDirection: 'column',
+          backgroundColor: board.boardType === 'team' ? alpha(theme.palette.secondary.main, 0.03) : 'background.paper',
           transition: 'transform 0.2s, box-shadow 0.2s',
           '&:hover': {
             transform: 'translateY(-2px)',
@@ -241,7 +243,6 @@ export default function DashboardClient() {
           }
         }}
         onClick={() => handleOpenBoard(board.id)}
-        variant="outlined"
       >
         <CardContent sx={{ flexGrow: 1, p: 1.5, '&:last-child': { pb: 1.5 } }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
@@ -257,9 +258,14 @@ export default function DashboardClient() {
             </IconButton>
           </Box>
           <Chip
-            label={board.boardType === 'team' ? 'Team' : 'Projekt'}
+            label={board.boardType === 'team' ? t('home.teamBoard') : t('home.projectBoard')}
             size="small"
-            sx={{ mb: 1, height: 20, fontSize: '0.7rem', backgroundColor: alpha(theme.palette.secondary.main, 0.1) }}
+            sx={{
+              mb: 1,
+              height: 20,
+              fontSize: '0.7rem',
+              backgroundColor: alpha(theme.palette.secondary.main, 0.1)
+            }}
           />
           <Typography variant="body2" color="text.secondary" sx={{
             display: '-webkit-box',
@@ -377,30 +383,11 @@ export default function DashboardClient() {
       )}
 
 
-      {/* Team Boards Section */}
+      {/* Standard Boards Section (Kanban Boards) */}
       <Box sx={{ mb: 6 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Groups color="secondary" /> Team Boards
-          </Typography>
-          {isAdmin && (
-            <Button startIcon={<Add />} variant="outlined" color="primary" onClick={() => { setNewBoardType('team'); setCreateDialogOpen(true); }}>
-              {t('home.newBoard')}
-            </Button>
-          )}
-        </Box>
-
-        <Grid container spacing={3}>
-          {teamBoards.map(renderBoardCard)}
-          {teamBoards.length === 0 && <Grid item xs={12}><Typography color="text.secondary">Keine weiteren Team Boards vorhanden.</Typography></Grid>}
-        </Grid>
-      </Box>
-
-      {/* Standard Boards Section */}
-      <Box sx={{ mb: 6 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <ViewColumn color="secondary" /> Projekt Boards
+            <ViewColumn color="secondary" /> {t('home.projectBoards')}
           </Typography>
           {isAdmin && (
             <Button startIcon={<Add />} variant="outlined" color="primary" onClick={() => { setNewBoardType('standard'); setCreateDialogOpen(true); }}>
@@ -411,7 +398,26 @@ export default function DashboardClient() {
 
         <Grid container spacing={3}>
           {standardBoards.map(renderBoardCard)}
-          {standardBoards.length === 0 && <Grid item xs={12}><Typography color="text.secondary">Keine weiteren Projekt Boards vorhanden.</Typography></Grid>}
+          {standardBoards.length === 0 && <Grid item xs={12}><Typography color="text.secondary">Keine weiteren {t('home.projectBoards')} vorhanden.</Typography></Grid>}
+        </Grid>
+      </Box>
+
+      {/* Team Boards Section (Flow Boards) */}
+      <Box sx={{ mb: 6 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Groups color="secondary" /> {t('home.teamBoards')}
+          </Typography>
+          {isAdmin && (
+            <Button startIcon={<Add />} variant="outlined" color="primary" onClick={() => { setNewBoardType('team'); setCreateDialogOpen(true); }}>
+              {t('home.newBoard')}
+            </Button>
+          )}
+        </Box>
+
+        <Grid container spacing={3}>
+          {teamBoards.map(renderBoardCard)}
+          {teamBoards.length === 0 && <Grid item xs={12}><Typography color="text.secondary">Keine weiteren {t('home.teamBoards')} vorhanden.</Typography></Grid>}
         </Grid>
       </Box>
 
