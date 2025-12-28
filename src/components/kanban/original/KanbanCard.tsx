@@ -443,6 +443,13 @@ export function KanbanCard({
                     {card.Team.map((member: any, idx: number) => {
                       const user = users.find(u => u.full_name === member.name || u.name === member.name || u.email === member.email);
                       const displayName = user?.full_name || user?.name || member.name || t('kanban.unknown');
+                      const isAssignee = (card.Verantwortlich && (
+                        member.name === card.Verantwortlich ||
+                        user?.full_name === card.Verantwortlich ||
+                        user?.email === (card as any).VerantwortlichEmail
+                      ));
+                      const isParentResp = !!member.isParentResp;
+
                       return (
                         <Chip
                           key={idx}
@@ -450,7 +457,14 @@ export function KanbanCard({
                           label={`${displayName} ${member.department ? `(${member.department})` : ''}`}
                           size="small"
                           variant="outlined"
-                          sx={{ height: 20, fontSize: '0.6rem', maxWidth: '100%' }}
+                          sx={{
+                            height: 20,
+                            fontSize: '0.6rem',
+                            maxWidth: '100%',
+                            borderColor: isAssignee ? 'primary.main' : (isParentResp ? 'secondary.main' : 'default'),
+                            borderWidth: (isAssignee || isParentResp) ? '2px' : '1px',
+                            color: isParentResp ? 'secondary.main' : undefined
+                          }}
                         />
                       );
                     })}

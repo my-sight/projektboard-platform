@@ -61,6 +61,7 @@ interface Board {
   owner_id: string;
   settings?: any;
   boardType?: 'standard' | 'team';
+  parent_id?: string | null;
 }
 
 export default function DashboardClient() {
@@ -73,6 +74,13 @@ export default function DashboardClient() {
   const [boards, setBoards] = useState<Board[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
+
+  console.log('[DashboardClient RENDER]', {
+    authLoading,
+    hasUser: !!user,
+    loadingData,
+    boardsCount: boards.length
+  });
 
   // UI State
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -124,7 +132,7 @@ export default function DashboardClient() {
       console.log(`[DashboardClient] Data load finished in ${Date.now() - startTime}ms`);
       setLoadingData(false);
     }
-  }, [user]);
+  }, [user?.id]);
 
   // --- EFFECTS ---
 
@@ -147,15 +155,15 @@ export default function DashboardClient() {
     }
 
     return () => clearTimeout(safetyTimeout);
-  }, [authLoading, user, loadDashboardData, router]);
+  }, [authLoading, user?.id, loadDashboardData, router]);
 
   // Handle visibility refresh via centralized counter from AuthContext
   useEffect(() => {
-    if (visibilityCounter > 0 && user) {
+    if (visibilityCounter > 0 && user?.id) {
       console.log('[DashboardClient] Visibility refresh triggered via AuthContext');
       loadDashboardData();
     }
-  }, [visibilityCounter, user, loadDashboardData]);
+  }, [visibilityCounter, user?.id, loadDashboardData]);
 
 
   // Loading State Logic:
@@ -297,6 +305,44 @@ export default function DashboardClient() {
                   }}
                 />
               </Tooltip>
+            )}
+
+            {/* Con-Board Badges */}
+            {board.parent_id && (
+              <>
+                <Chip
+                  label="C"
+                  size="small"
+                  variant="outlined"
+                  sx={{
+                    height: 20,
+                    fontSize: '0.7rem',
+                    fontWeight: 'bold',
+                    borderColor: 'secondary.main',
+                    color: 'secondary.main',
+                    minWidth: '24px',
+                    '& .MuiChip-label': { px: 0.5 }
+                  }}
+                />
+                {(() => {
+                  const pName = boards.find(pb => pb.id === board.parent_id)?.name;
+                  if (!pName) return null;
+                  return (
+                    <Chip
+                      label={pName}
+                      size="small"
+                      variant="outlined"
+                      sx={{
+                        height: 20,
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        borderColor: 'secondary.main',
+                        color: 'secondary.main'
+                      }}
+                    />
+                  );
+                })()}
+              </>
             )}
           </Box>
           <Typography variant="body2" color="text.secondary" sx={{

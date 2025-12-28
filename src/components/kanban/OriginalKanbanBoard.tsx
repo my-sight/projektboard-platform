@@ -90,7 +90,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
       rows, setRows, cols, lanes, checklistTemplates, setChecklistTemplates,
       customLabels, completedCount, boardName, setBoardName, boardDescription, setBoardDescription, topTopics,
       loadCards, loadSettings, loadTopTopics, saveSettings, saveCards, patchCard, handleCreateCard,
-      inferStage, idFor
+      inferStage, idFor, boardMeta
     } = useKanbanData(boardId, permissions, viewMode, setViewMode, setDensity);
 
     const { kpis, distribution, memberDistribution, laneDistribution, kpiBadgeCount } = useKanbanKPIs(rows, inferStage, users);
@@ -112,12 +112,16 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         const loadedUsers = await fetchClientProfiles();
         setUsers(loadedUsers);
 
+
+        // Sequence loading to ensure cols are set (via loadSettings) before loadCards uses them for stage inference
+        await loadSettings();
+        // loadTopTopics and boardMembers can run in parallel with each other if desired, but let's keep it simple
         await Promise.all([
-          loadCards(),
-          loadSettings(),
           loadTopTopics(),
-          loadBoardMembers() // This was in init before
+          loadBoardMembers()
         ]);
+
+        await loadCards(); // Now runs with updated cols if re-triggered, or at least after settings fetch
       };
       if (boardId) loadData();
 
@@ -230,6 +234,12 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
     };
 
     const handleDeletePermanently = async (card: ProjectBoardCard) => {
+      // Con-Board Check: Cannot delete shared cards
+      if (boardMeta && (boardMeta as any).parent_id) {
+        alert(t('kanban.conBoardDeleteError') || 'Karten können in Con-Boards nicht gelöscht werden.');
+        return;
+      }
+
       if (!confirm(t('kanban.deleteConfirm'))) return;
       if (!card.id) return;
       const { error } = await supabase.from('kanban_cards').delete().eq('id', card.id);
@@ -382,7 +392,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           onOpenTopTopics={() => setTopTopicsOpen(true)}
           onOpenArchive={handleOpenArchive}
           onNewCard={() => setNewCardOpen(true)}
-          canModify={canModifyBoard || isSuperForce}
+          canModify={(canModifyBoard || isSuperForce) && !(boardMeta as any)?.parent_id}
           canManageSettings={permissions.canManageSettings}
           kpiBadgeCount={kpiBadgeCount}
         />
@@ -416,6 +426,8 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           loadCards={loadCards}
           onOpenArchive={handleOpenArchive}
           lanes={lanes}
+          boardMeta={boardMeta}
+          boardId={boardId}
         />
 
         <KanbanKPIDialog
@@ -496,6 +508,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           }}
           trLabel={customLabels.tr}
           sopLabel={customLabels.sop}
+          boardId={boardId}
         />
       </Box>
     );

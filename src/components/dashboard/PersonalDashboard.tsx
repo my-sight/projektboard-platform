@@ -103,12 +103,14 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
       } catch (e) { console.warn('Profile fetch warning', e); }
 
       // Boards laden für Namen
-      const { data: boards } = await supabase.from('kanban_boards').select('id,name,settings');
+      const { data: boards } = await supabase.from('kanban_boards').select('id,name,settings,parent_id');
+
       const bMap: Record<string, any> = {};
       (boards || []).forEach((b: any) => {
         const settings = b.settings as Record<string, any> | null;
-        bMap[b.id] = { name: b.name, type: settings?.boardType || 'standard' };
+        bMap[b.id] = { name: b.name, type: settings?.boardType || 'standard', parentId: b.parent_id };
       });
+      // console.log('DEBUG: bMap', bMap); 
 
       const { data: cards } = await supabase.from('kanban_cards').select('*');
 
@@ -123,6 +125,8 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
           if (d.Archived === '1' || d.archived) return;
 
           const boardInfo = bMap[row.board_id] || { name: t('kanban.unknown'), type: 'standard' };
+          const parentBoardName = boardInfo.parentId ? bMap[boardInfo.parentId]?.name : null;
+
           let isMine = false;
 
           // A) Strikter ID Check (Sicherste Methode)
@@ -152,14 +156,114 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
             const isWatch = (d.watch === true);
 
             foundTasks.push({
-              id: row.card_id || row.id, // Using row.id if card_id is missing? Scheme says card_id exists.
-              rowId: row.id, // KEEP ROW ID for updates
+              id: row.card_id || row.id,
+              rowId: row.id,
               title: d.Nummer ? `${d.Nummer} ${d.Teil}` : (d.description || t('dashboard.task')),
-              boardName: boardInfo.name, boardId: row.board_id, dueDate,
-              type: isTeamBoard ? 'team' : 'standard', isCritical, isPriority, isWatch, stage: d['Board Stage'], originalData: d
+              boardName: boardInfo.name,
+              boardId: row.board_id,
+              dueDate,
+              type: isTeamBoard ? 'team' : 'standard',
+              isCritical,
+              isPriority,
+              isWatch,
+              stage: d['Board Stage'],
+              originalData: d,
+              isConBoard: !!boardInfo.parentId,
+              parentBoardName
             });
           }
         });
+
+        // --- CON-BOARD TASKS LOADING ---
+        // Fetch statuses for Con-Boards involved
+        const conBoardIds = Object.keys(bMap).filter(id => bMap[id].parentId);
+        if (conBoardIds.length > 0) {
+          const { data: conStatuses } = await supabase
+            .from('board_card_statuses')
+            .select('*')
+            .in('board_id', conBoardIds);
+
+          if (conStatuses) {
+            conStatuses.forEach((st: any) => {
+              if (st.archived) return; // Skip archived locally?
+
+              const ld = st.local_data || {};
+              let isMyConTask = false;
+
+              // ID Check
+              const cIds = [ld.VerantwortlichId, ld.userId, ld.assigneeId].filter(Boolean);
+              if (cIds.includes(user.id)) isMyConTask = true;
+
+              // Name Check
+              if (!isMyConTask) {
+                const cNames = [ld.Verantwortlich, ld.assigneeName].filter(s => typeof s === 'string');
+                for (const cand of cNames) {
+                  const raw = cand.toLowerCase().trim();
+                  if (myIds.has(raw)) { isMyConTask = true; break; }
+                  if (metaName && raw.includes(metaName.toLowerCase().trim())) { isMyConTask = true; break; }
+                }
+                // Check Email
+                if (ld.VerantwortlichEmail === user.email) isMyConTask = true;
+              }
+
+              if (isMyConTask) {
+                // Find Parent Card
+                const parentRow = cards.find((c: any) => c.id === st.card_id);
+                if (parentRow) {
+                  let pd = parentRow.card_data;
+                  if (typeof pd === 'string') { try { pd = JSON.parse(pd); } catch { pd = {}; } }
+                  pd = pd || {};
+
+                  // Merge Data: Parent Data + Local Data Overrides
+                  const mergedData = { ...pd, ...ld };
+
+                  const boardInfo = bMap[st.board_id];
+                  const parentBoardName = boardInfo?.parentId ? bMap[boardInfo.parentId]?.name : null;
+
+                  const rawDate = mergedData['Due Date'] || mergedData.dueDate;
+                  const dueDate = rawDate ? String(rawDate).split('T')[0] : null;
+
+                  const isCritical = (mergedData.Ampel && String(mergedData.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(mergedData.Eskalation || '').toUpperCase());
+                  const isPriority = (toBoolean(mergedData.Priorität));
+                  const isWatch = (mergedData.watch === true);
+
+                  // Push as new task
+                  // Note: ID might duplicate if responsible on Parent & Con-Board?
+                  // Ideally we use a unique composite ID for dashboard keys, e.g. `${st.board_id}-${st.card_id}`
+                  // But `foundTasks` expects `id` to open the card. `onOpenBoard` uses `boardId` and `taskId`.
+                  // If we use same `taskId` but different `boardId`, it opens correct board.
+                  // The `key` in React list needs to be unique though. 
+                  // The Dashboard rendering uses `task.id`. If duplicates exist, React warns.
+                  // I should ensure uniqueness in `allTasks` state later or add a suffix.
+                  // But `id` field is used for `onOpenBoard(task.boardId, task.id)`. This must be the card ID.
+                  // React key usually comes from `task.id` in `map`. 
+                  // I will modify the loop in rendering to use index or composite key if possible.
+                  // Or I can make the `id` property composite? No, `onOpenBoard` needs real ID.
+                  // I'll add `uniqueKey` property? Typescript needs update? `any` type used here.
+
+                  foundTasks.push({
+                    id: st.card_id,
+                    rowId: parentRow.id, // For updates? Con-Board updates via patchCard anyway.
+                    uniqueKey: `${st.board_id}-${st.card_id}`, // Helper for React Key
+                    title: mergedData.Nummer ? `${mergedData.Nummer} ${mergedData.Teil}` : (mergedData.description || t('dashboard.task')),
+                    boardName: boardInfo?.name || 'Con-Board',
+                    boardId: st.board_id,
+                    dueDate,
+                    type: 'standard', // Con-Boards are Project Boards
+                    isCritical,
+                    isPriority,
+                    isWatch,
+                    stage: st.column_id, // Local Stage
+                    originalData: mergedData,
+                    isConBoard: true,
+                    parentBoardName
+                  });
+                }
+              }
+            });
+          }
+        }
+
         setAllTasks(foundTasks);
       }
 
@@ -190,7 +294,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
     return () => {
       active = false;
     };
-  }, [user, loadData]); // user dependency
+  }, [user, loadData]);
 
   // visibility refresh via centralized trigger
   useEffect(() => {
@@ -286,6 +390,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
         borderLeft: `4px solid ${theme.palette[color].main}`,
         transition: 'all 0.2s',
         transform: active ? 'scale(1.02)' : 'none',
+        transformOrigin: 'center center',
         boxShadow: active ? `0 0 20px ${theme.palette[color].main}40` : undefined
       }}
       onClick={onClick}
@@ -339,62 +444,108 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                 }}
                 onClick={() => onOpenBoard(task.boardId, task.id, type)}
               >
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 0.5 }}>
-                  <Chip
-                    label={task.boardName}
-                    size="small"
-                    variant="outlined"
-                    sx={{
-                      fontSize: '0.6rem',
-                      height: 16,
-                      borderColor: 'primary.main',
-                      color: 'primary.main',
-                      fontWeight: 700,
-                      maxWidth: '60%',
-                      px: 0.5
-                    }}
-                  />
-                  {task.dueDate && (
-                    <Chip
-                      icon={<Event sx={{ fontSize: '10px !important' }} />}
-                      label={new Date(task.dueDate).toLocaleDateString('de-DE')}
-                      size="small"
-                      color={new Date(task.dueDate) < new Date() ? 'error' : 'default'}
-                      variant={new Date(task.dueDate) < new Date() ? 'filled' : 'outlined'}
-                      sx={{ height: 16, fontSize: '0.6rem' }}
-                    />
-                  )}
-                  {task.stage && (
-                    <Chip
-                      label={task.stage}
-                      size="small"
-                      variant="outlined"
-                      sx={{
-                        fontSize: '0.6rem',
-                        height: 16,
-                        borderColor: 'text.secondary',
-                        color: 'text.secondary',
-                        maxWidth: '80px',
-                        px: 0.5
-                      }}
-                    />
-                  )}
-                </Box>
+                {/* Title at the Top */}
                 <Tooltip title={task.title} placement="top-start" enterDelay={500}>
                   <Typography variant="body2" sx={{
-                    fontWeight: 500,
+                    fontWeight: 600,
                     lineHeight: 1.2,
-                    fontSize: '0.8rem',
-                    mb: 0.5,
+                    fontSize: '0.85rem',
+                    mb: 1, // Increased margin for separation
                     display: '-webkit-box',
                     overflow: 'hidden',
                     WebkitBoxOrient: 'vertical',
                     WebkitLineClamp: 2,
-                    // minHeight removed for compactness
                   }}>
                     {task.title}
                   </Typography>
                 </Tooltip>
+
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 0.5 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                    {/* Row 1: Board Name + Stage */}
+                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Chip
+                        label={task.boardName}
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                          fontSize: '0.6rem',
+                          height: 16,
+                          borderColor: 'primary.main',
+                          color: 'primary.main',
+                          fontWeight: 700,
+                          px: 0.5
+                        }}
+                      />
+
+                      {task.stage && type !== 'team' && (
+                        <Chip
+                          label={task.stage}
+                          size="small"
+                          variant="outlined"
+                          sx={{
+                            fontSize: '0.6rem',
+                            height: 16,
+                            borderColor: 'text.secondary',
+                            color: 'text.secondary',
+                            px: 0.5
+                          }}
+                        />
+                      )}
+                    </Box>
+
+                    {/* Row 2: Con-Board Badges (C + Parent Name) */}
+                    {(task.isConBoard || task.parentBoardName) && (
+                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mt: 0.5 }}>
+                        {task.isConBoard && (
+                          <Chip
+                            label="C"
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              fontSize: '0.6rem',
+                              height: 16,
+                              borderColor: 'secondary.main', // Outlined as requested
+                              color: 'secondary.main',
+                              fontWeight: 'bold',
+                              minWidth: 16,
+                              px: 0
+                            }}
+                          />
+                        )}
+
+                        {task.parentBoardName && (
+                          <Chip
+                            label={task.parentBoardName}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              fontSize: '0.6rem',
+                              height: 16,
+                              borderColor: 'secondary.main',
+                              color: 'secondary.main',
+                              fontWeight: 700,
+                              px: 0.5
+                            }}
+                          />
+                        )}
+                      </Box>
+                    )}
+                  </Box>
+
+                  <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+                    {task.dueDate && (
+                      <Chip
+                        icon={<Event sx={{ fontSize: '10px !important' }} />}
+                        label={new Date(task.dueDate).toLocaleDateString('de-DE')}
+                        size="small"
+                        color={new Date(task.dueDate) < new Date() ? 'error' : 'default'}
+                        variant={new Date(task.dueDate) < new Date() ? 'filled' : 'outlined'}
+                        sx={{ height: 16, fontSize: '0.6rem' }}
+                      />
+                    )}
+                  </Box>
+                </Box>
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 20 }}>
                   <Box sx={{ display: 'flex', gap: 0.5 }}>
                     {task.isWatch && <AccessTime sx={{ fontSize: 14, color: 'info.main' }} />}

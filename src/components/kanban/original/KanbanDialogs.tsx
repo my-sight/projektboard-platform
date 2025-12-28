@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { toBoolean } from '@/utils/booleans';
 import {
   Box,
@@ -40,6 +40,7 @@ import { Delete, Add, DeleteOutline, CloudUpload } from '@mui/icons-material';
 import { StandardDatePicker } from '@/components/common/StandardDatePicker';
 import dayjs from 'dayjs';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { supabase } from '@/lib/supabaseClient';
 
 // --- HELPER: BILD KOMPRIMIERUNG ---
 const compressImage = (file: File): Promise<string> => {
@@ -84,6 +85,154 @@ const compressImage = (file: File): Promise<string> => {
   });
 };
 
+function ConBoardStatusView({ selectedCard, boardId }: { selectedCard: ProjectBoardCard, boardId: string }) {
+  const { t } = useLanguage();
+  const [loading, setLoading] = useState(true);
+  const [conBoards, setConBoards] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchStatus = async () => {
+      if (!selectedCard || !selectedCard.id) {
+        console.warn('ConBoardStatusView: No card/id', selectedCard);
+        return;
+      }
+      setLoading(true);
+      try {
+        console.log('ConBoardStatusView: Fetching for card', selectedCard.id, 'boardId', boardId);
+
+        // 1. Get all Con-Boards
+        const { data: boards, error: bErr } = await supabase.from('kanban_boards').select('id, name').eq('parent_id', boardId);
+        if (bErr) {
+          console.error('ConBoardStatusView: Board fetch error', bErr);
+          throw bErr;
+        }
+
+        console.log('ConBoardStatusView: Found boards', boards);
+
+        if (!boards || boards.length === 0) {
+          setConBoards([]);
+          setLoading(false);
+          return;
+        }
+
+        // 2. Get status for this card in those boards
+        const boardIds = boards.map(b => b.id);
+        const { data: statuses, error: sErr } = await supabase.from('board_card_statuses')
+          .select('*')
+          .in('board_id', boardIds)
+          .eq('card_id', selectedCard.id);
+
+        if (sErr) {
+          console.error('ConBoardStatusView: Status fetch error', sErr);
+          throw sErr;
+        }
+
+        console.log('ConBoardStatusView: Found statuses', statuses);
+
+        // Merge
+        const merged = boards.map(b => {
+          const st = statuses?.find(s => s.board_id === b.id);
+          const localData = st?.local_data || {};
+
+          return {
+            ...b,
+            status: st ? (st.archived ? 'Archiviert' : st.column_id) : 'Speicher (Standard)',
+            archived: st?.archived,
+            updated_at: st?.updated_at,
+            escalation: localData.Eskalation,
+            ampel: localData.Ampel,
+            statusKurz: localData['Status Kurz'],
+            statusHistoryText: localData.StatusHistory?.[0]?.message?.text
+          };
+        });
+        setConBoards(merged);
+
+      } catch (e: any) { // Type explicitly as any to catch structured errors
+        console.error("Error fetching Con-Board status:", e, e?.message, e?.details);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStatus();
+  }, [selectedCard, boardId]);
+
+  return (
+    <Box>
+      <Typography variant="h6" sx={{ mb: 2 }}>Verbundene Boards (Con-Boards)</Typography>
+      {loading ? <CircularProgress size={20} /> : (
+        conBoards.length === 0 ? <Typography color="text.secondary">Keine verbundenen Boards gefunden.</Typography> : (
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Con-Board Name</TableCell>
+                <TableCell>Phase</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Letzte Änderung</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {conBoards.map(b => (
+                <TableRow key={b.id}>
+                  <TableCell sx={{ fontWeight: 'bold' }}>{b.name}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={b.status}
+                      color={b.archived ? 'default' : 'primary'}
+                      size="small"
+                      variant={b.archived ? 'outlined' : 'filled'}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                        {/* Ampel / Escalation */}
+                        {(b.escalation || b.ampel) && (
+                          <Box sx={{
+                            width: 16, height: 16, borderRadius: '50%',
+                            bgcolor: (b.escalation === 'Eskalation' || b.escalation === 'R' || b.ampel === 'Rot' || b.ampel === 'rot') ? 'error.main' :
+                              (b.ampel === 'Gelb' || b.ampel === 'gelb') ? 'warning.main' : 'success.main',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            color: 'white', fontSize: 10, fontWeight: 'bold'
+                          }}>
+                            {(b.escalation) ? '!' : ''}
+                          </Box>
+                        )}
+
+                        {/* Status Kurz */}
+                        {b.statusKurz && (
+                          <Typography variant="caption" sx={{ bgcolor: 'grey.100', px: 1, borderRadius: 1 }}>
+                            {b.statusKurz}
+                          </Typography>
+                        )}
+                      </Box>
+
+                      {/* Latest History Text */}
+                      {b.statusHistoryText && (
+                        <Typography variant="body2" sx={{
+                          fontSize: '0.8rem',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden'
+                        }}>
+                          {b.statusHistoryText}
+                        </Typography>
+                      )}
+                    </Box>
+                  </TableCell>
+                  <TableCell>{b.updated_at ? new Date(b.updated_at).toLocaleDateString() : '-'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )
+      )
+      }
+    </Box >
+  );
+}
+
+
 export interface EditCardDialogProps {
   selectedCard: ProjectBoardCard | null;
   editModalOpen: boolean;
@@ -108,6 +257,7 @@ export interface EditCardDialogProps {
   onDelete: (card: ProjectBoardCard) => void;
   trLabel?: string;
   sopLabel?: string;
+  boardId: string;
 }
 
 export function EditCardDialog({
@@ -134,6 +284,7 @@ export function EditCardDialog({
   onDelete,
   trLabel = 'TR',
   sopLabel = 'SOP',
+  boardId
 }: EditCardDialogProps) {
   const { t } = useLanguage();
   const [uploading, setUploading] = useState(false);
@@ -203,7 +354,7 @@ export function EditCardDialog({
   };
 
   const handleClose = () => {
-    saveCards();
+    // saveCards(); // REMOVED: Rely on patchCard (onBlur/onChange) to avoid bulk overwrite race conditions
     setEditModalOpen(false);
   };
 
@@ -245,6 +396,7 @@ export function EditCardDialog({
           <Tab label={t('kanban.tabStatus')} />
           <Tab label={t('kanban.tabTeam')} />
           <Tab label={t('kanban.tabDetails')} />
+          <Tab label="Con-Boards" />
         </Tabs>
 
         {/* TAB 0: STATUS & CHECKLISTE */}
@@ -346,11 +498,16 @@ export function EditCardDialog({
                         checked={Boolean(checked)}
                         disabled={!canEdit}
                         onChange={(e) => {
-                          if (!selectedCard.ChecklistDone) selectedCard.ChecklistDone = {};
-                          if (!selectedCard.ChecklistDone[stage]) selectedCard.ChecklistDone[stage] = {};
                           selectedCard.ChecklistDone[stage][task] = e.target.checked;
-                          setRows([...rows]);
-                          saveCards();
+                          // setRows([...rows]); // Mutation + Realign
+                          // saveCards(); // REMOVED
+
+                          // Use patchCard for atomic update
+                          // We need to pass the updated ChecklistDone
+                          const updated = { ...selectedCard }; // Shallow clone is enough if we just patched the ref
+                          // Actually, existing code mutated the ref `selectedCard`.
+                          setRows([...rows]); // Update UI
+                          patchCard(updated, { ChecklistDone: selectedCard.ChecklistDone });
                         }}
                       />
                       <Typography variant="body2">{task}</Typography>
@@ -575,8 +732,9 @@ export function EditCardDialog({
                   const selectedUser = users.find(u => (u.full_name || u.name || u.email) === selectedName);
 
                   const updates: any = { Verantwortlich: selectedName };
-                  if (selectedUser && selectedUser.email) {
-                    updates['VerantwortlichEmail'] = selectedUser.email;
+                  if (selectedUser) {
+                    if (selectedUser.email) updates['VerantwortlichEmail'] = selectedUser.email;
+                    if (selectedUser.id) updates['VerantwortlichId'] = selectedUser.id;
                   }
 
                   if (selectedCard) {
@@ -684,6 +842,13 @@ export function EditCardDialog({
                 />
               </Box>
             )}
+          </Box>
+        )}
+
+        {/* TAB 3: CON-BOARDS */}
+        {editTabValue === 3 && (
+          <Box sx={{ p: 3 }}>
+            <ConBoardStatusView selectedCard={selectedCard} boardId={boardId} />
           </Box>
         )}
 

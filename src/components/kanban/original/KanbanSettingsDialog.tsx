@@ -5,8 +5,9 @@ import {
     Box, Button, Dialog, DialogActions, DialogContent, DialogTitle,
     Typography, TextField, IconButton, Tabs, Tab, List, ListItem, Card, Tooltip
 } from '@mui/material';
-import { Settings, Close, ArrowUpward, ArrowDownward, Delete, Add, Inventory2 } from '@mui/icons-material';
+import { Settings, Close, ArrowUpward, ArrowDownward, Delete, Add, Inventory2, Share } from '@mui/icons-material';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { supabase } from '@/lib/supabaseClient';
 
 interface KanbanSettingsDialogProps {
     open: boolean;
@@ -26,6 +27,8 @@ interface KanbanSettingsDialogProps {
     loadCards: () => Promise<boolean>;
     onOpenArchive: () => void;
     lanes: string[];
+    boardMeta?: any;
+    boardId?: string;
 }
 
 export function KanbanSettingsDialog({
@@ -45,17 +48,49 @@ export function KanbanSettingsDialog({
     onSave,
     loadCards,
     onOpenArchive,
-    lanes
+    lanes,
+    boardMeta,
+    boardId
 }: KanbanSettingsDialogProps) {
     const { t } = useLanguage();
     const [currentCols, setCurrentCols] = useState(cols);
     const [currentLanes, setCurrentLanes] = useState(lanes || []);
     const [currentTemplates, setCurrentTemplates] = useState(checklistTemplates);
     const [localCustomLabels, setLocalCustomLabels] = useState(customLabels);
+    const [localName, setLocalName] = useState(boardName);
+    const [localDesc, setLocalDesc] = useState(boardDescription);
     const [tab, setTab] = useState(0);
+    const [conBoards, setConBoards] = useState<any[]>([]);
+
+    useEffect(() => {
+        if (open && tab === 4 && boardId && !boardMeta?.parent_id) {
+            supabase.from('kanban_boards').select('*').eq('parent_id', boardId)
+                .then(({ data }) => {
+                    if (data) setConBoards(data);
+                });
+        }
+    }, [open, tab, boardId, boardMeta]);
     const [newColName, setNewColName] = useState('');
     const [newLaneName, setNewLaneName] = useState('');
     const [newChecklistItems, setNewChecklistItems] = useState<Record<string, string>>({});
+    const [conBoardsList, setConBoardsList] = useState<any[]>([]);
+
+    useEffect(() => {
+        // Use boardId if available, fallback to boardMeta.id
+        const bId = boardId || boardMeta?.id;
+        console.log('Fetching Con-Boards for Parent ID:', bId, 'Tab:', tab, 'Open:', open);
+        if (open && tab === 4 && bId) {
+            const fetch = async () => {
+                const { data, error } = await supabase.from('kanban_boards').select('*').eq('parent_id', bId);
+                if (error) console.error('Error fetching Con-Boards:', error);
+                if (data) {
+                    console.log('Fetched Con-Boards:', data);
+                    setConBoardsList(data);
+                }
+            };
+            fetch();
+        }
+    }, [open, tab, boardMeta, boardId]);
 
     // Sync state when dialog opens
     useEffect(() => {
@@ -64,11 +99,13 @@ export function KanbanSettingsDialog({
             setCurrentLanes(lanes || []);
             setCurrentTemplates(checklistTemplates);
             setLocalCustomLabels(customLabels);
+            setLocalName(boardName);
+            setLocalDesc(boardDescription);
             setNewLaneName('');
             setNewChecklistItems({});
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, cols, lanes, checklistTemplates, customLabels]);
+    }, [open]);
 
     const handleSave = async () => {
         // We pass the new settings to the parent via onSave
@@ -78,8 +115,8 @@ export function KanbanSettingsDialog({
         // NOTE: In the original code, `saveSettings` reads from state. 
         // Since state updates are async, passing overrides is safer.
         const success = await onSave({
-            boardName,
-            boardDescription,
+            boardName: localName,
+            boardDescription: localDesc,
             settingsOverrides: {
                 cols: currentCols,
                 lanes: currentLanes,
@@ -157,12 +194,13 @@ export function KanbanSettingsDialog({
                     <Tab label={t('kanban.columns')} />
                     <Tab label="Lanes" />
                     <Tab label={t('kanban.checklists')} />
+                    {!boardMeta?.parent_id && <Tab label="Con-Boards" />}
                 </Tabs>
 
                 {tab === 0 && (
                     <Box sx={{ pt: 1 }}>
-                        <TextField label={t('kanban.boardName')} value={boardName} onChange={(e) => setBoardName(e.target.value)} fullWidth sx={{ mt: 2 }} disabled={!canManageSettings} />
-                        <TextField label={t('kanban.description')} value={boardDescription} onChange={(e) => setBoardDescription(e.target.value)} fullWidth multiline rows={2} sx={{ mt: 2 }} disabled={!canManageSettings} />
+                        <TextField label={t('kanban.boardName')} value={localName} onChange={(e) => setLocalName(e.target.value)} fullWidth sx={{ mt: 2 }} disabled={!canManageSettings} />
+                        <TextField label={t('kanban.description')} value={localDesc} onChange={(e) => setLocalDesc(e.target.value)} fullWidth multiline rows={2} sx={{ mt: 2 }} disabled={!canManageSettings} />
                         <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
                             <TextField label="MS Label" value={localCustomLabels.tr} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, tr: e.target.value }))} fullWidth size="small" disabled={!canManageSettings} />
                             <TextField label={t('kanban.completionLabel')} value={localCustomLabels.sop} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, sop: e.target.value }))} fullWidth size="small" disabled={!canManageSettings} />
@@ -201,11 +239,11 @@ export function KanbanSettingsDialog({
                                             }}
                                             size="small"
                                             fullWidth
-                                            disabled={!canManageSettings}
+                                            disabled={!canManageSettings || (idx === 0 && boardMeta?.parent_id)}
                                         />
                                         <Box sx={{ display: 'flex', flexShrink: 0 }}>
                                             <IconButton size="small" onClick={() => handleMove(col.id, 'up')} disabled={!canManageSettings || idx === 0}><ArrowUpward fontSize="small" /></IconButton>
-                                            <IconButton size="small" onClick={() => handleMove(col.id, 'down')} disabled={!canManageSettings || idx === currentCols.length - 1}><ArrowDownward fontSize="small" /></IconButton>
+                                            <IconButton size="small" onClick={() => handleMove(col.id, 'down')} disabled={!canManageSettings || idx === currentCols.length - 1 || (idx === 0 && boardMeta?.parent_id)}><ArrowDownward fontSize="small" /></IconButton>
                                             <Button size="small" onClick={() => handleToggleDone(col.id)} disabled={!canManageSettings} sx={{ ml: 1, border: '1px solid', borderColor: col.done ? 'success.main' : 'grey.400', color: col.done ? 'success.main' : 'text.primary', minWidth: '80px' }}>{col.done ? t('kanban.done') : t('kanban.normal')}</Button>
                                             <IconButton size="small" onClick={() => handleDelCol(col.id)} disabled={!canManageSettings} sx={{ ml: 0.5 }}><Delete fontSize="small" /></IconButton>
                                         </Box>
@@ -306,6 +344,38 @@ export function KanbanSettingsDialog({
                                 <Button variant="outlined" startIcon={<Add />} onClick={handleAddLane} disabled={!canManageSettings}>{t('kanban.add')}</Button>
                             </Box>
                         </Card>
+                    </Box>
+                )}
+
+                {tab === 4 && !boardMeta?.parent_id && (
+                    <Box sx={{ pt: 1 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                            Con-Boards sind verbundene Boards, die Kopien aller Karten dieses Boards erhalten, aber einen eigenen Fortschritts-Status pflegen.
+                        </Typography>
+                        <TextField
+                            label="Neues Con-Board erstellen"
+                            placeholder="Name des Con-Boards"
+                            fullWidth
+                            disabled={!canManageSettings}
+                            onKeyDown={async (e) => {
+                                if (e.key === 'Enter') {
+                                    const val = (e.target as HTMLInputElement).value;
+                                    if (val.trim()) {
+                                        await onSave({ createConBoard: val.trim() });
+                                        (e.target as HTMLInputElement).value = '';
+                                        loadCards(); // Reload to refresh list if needed
+                                    }
+                                }
+                            }}
+                        />
+                        <Box sx={{ mt: 2 }}>
+                            {/* List of existing con-boards would be loaded here, passed as prop? 
+                              For now, we just rely on parent component to handle creation and maybe passing list down if needed.
+                              But user requirement just said "ein elternboard kann beliebig viele con-boards haben".
+                              We might need to pass `conBoards` prop to list them here.
+                          */}
+                            <Typography variant="caption">Drücken Sie Enter zum Erstellen.</Typography>
+                        </Box>
                     </Box>
                 )}
             </DialogContent>
