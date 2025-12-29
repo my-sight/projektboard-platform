@@ -4,7 +4,8 @@
 import { useState, useEffect } from 'react';
 import { Box, Paper, Typography, TextField, Button, Alert, useTheme } from '@mui/material';
 import { VpnKey, CheckCircle } from '@mui/icons-material';
-import { saveLicenseToken, getLicenseStatus } from '@/lib/license';
+import { getLicenseStatus } from '@/lib/license';
+import { submitLicenseKey } from '@/app/actions/license';
 import { useRouter } from 'next/navigation';
 
 export default function LicensePage() {
@@ -36,7 +37,13 @@ export default function LicensePage() {
                 cleanToken = match[0];
             }
 
-            await saveLicenseToken(cleanToken);
+            // Using Server Action to verify & save (avoiding client-side crypto issues)
+            const result = await submitLicenseKey(cleanToken);
+
+            if (!result.success) {
+                throw new Error(result.error);
+            }
+
             setStatus('success');
             setMsg('License verified successfully! Redirecting...');
             setTimeout(() => {

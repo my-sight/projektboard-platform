@@ -13,7 +13,8 @@ import {
     Grid
 } from '@mui/material';
 import { VpnKey, CheckCircle, Warning, Cached } from '@mui/icons-material';
-import { saveLicenseToken, getLicenseStatus, LicenseStatus } from '@/lib/license';
+import { getLicenseStatus, LicenseStatus } from '@/lib/license';
+import { submitLicenseKey } from '@/app/actions/license';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function SystemLicensePanel() {
@@ -43,7 +44,10 @@ export default function SystemLicensePanel() {
     const handleUpdate = async () => {
         setLoading(true);
         try {
-            await saveLicenseToken(token.trim());
+            const result = await submitLicenseKey(token.trim());
+            if (!result.success) {
+                throw new Error(result.error);
+            }
             await loadStatus();
             setMsg('Lizenz erfolgreich aktualisiert!');
             setToken('');

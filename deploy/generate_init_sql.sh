@@ -73,7 +73,8 @@ done
 # 3. Seed License
 echo "" >> $OUTPUT_FILE
 echo "-- Seed License" >> $OUTPUT_FILE
-echo "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;" >> $OUTPUT_FILE
+# Use standard quotes and ensure valid JSON format
+echo "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;" >> $OUTPUT_FILE
 
 # 4. Seed Superuser (michael@mysight.net / mysight123)
 echo "" >> $OUTPUT_FILE

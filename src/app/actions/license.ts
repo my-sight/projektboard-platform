@@ -35,3 +35,26 @@ export async function checkLicenseServerAction() {
         return { valid: false, error: error.message || 'Server Action Error', expiry: null, customer: null };
     }
 }
+
+export async function submitLicenseKey(token: string) {
+    try {
+        // 1. Verify
+        const status = await verifyLicenseToken(token);
+        if (!status.valid) {
+            return { success: false, error: status.error || 'Invalid Token' };
+        }
+
+        // 2. Save (Admin context)
+        const { error } = await supabase
+            .from('system_settings')
+            .upsert({
+                key: 'license_key',
+                value: { token, customer: status.customer, expiry: status.expiry }
+            });
+
+        if (error) throw error;
+        return { success: true, status };
+    } catch (e: any) {
+        return { success: false, error: e.message };
+    }
+}
