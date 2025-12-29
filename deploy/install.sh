@@ -82,17 +82,26 @@ fi
 # 3. Setup Database Schema
 echo "Preparing database initialization..."
 mkdir -p volumes/db/init
-if [ -f init_schema.sql ]; then
-    cp init_schema.sql volumes/db/init/00-schema.sql
-    echo "Schema copied."
+
+# Generate consolidated schema
+echo "Generating init_schema.sql..."
+if [ -f generate_init_sql.sh ]; then
+    bash generate_init_sql.sh
 else
-    echo -e "${RED}Warning: init_schema.sql not found. Database will be empty.${NC}"
+    echo -e "${RED}Error: generate_init_sql.sh not found.${NC}"
+    exit 1
 fi
 
-if [ -f seed_superuser.sql ]; then
-    cp seed_superuser.sql volumes/db/init/99-seed-superuser.sql
-    echo "Superuser seed copied."
+if [ -f init_schema.sql ]; then
+    cp init_schema.sql volumes/db/init/00-schema.sql
+    echo "Schema and Seed data copied to docker init."
+else
+    echo -e "${RED}Error: init_schema.sql creation failed.${NC}"
+    exit 1
 fi
+
+# Superuser is now seeded via init_schema.sql
+# if [ -f seed_superuser.sql ]; then ...
 
 # 4. Build and Start
 echo "Building and starting services..."

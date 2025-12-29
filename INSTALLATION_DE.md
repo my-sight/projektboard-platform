@@ -38,6 +38,21 @@ Wir empfehlen **Ubuntu Server 24.04 LTS** (stabil, sicher, kein unnötiger Schni
         *   Navigiere mit den Pfeiltasten zu "docker".
         *   Drücke LEERTASTE zum Auswählen (ein Sternchen * erscheint).
         *   Das erspart dir später die manuelle Installation!
+    *   **Falls "docker" nicht in der Liste ist:**
+        *   Kein Problem! Wähle nichts aus (LXD ist **nicht** das Richtige).
+        *   Wir installieren es später mit einem Befehl nach (siehe Punkt 3).
+
+---
+
+## 🔧 3. Vorbereitung (Falls Docker fehlte)
+Falls du Docker bei der Installation nicht auswählen konntest, mache dies **direkt nach dem ersten Einloggen** (noch vor dem USB-Stick):
+
+```bash
+sudo apt update
+sudo apt install docker.io docker-compose-v2 -y
+sudo usermod -aG docker $USER
+```
+*Danach einmal ausloggen (`exit`) und wieder einloggen, damit die Rechte wirksam werden!*
 
 ---
 
@@ -78,11 +93,22 @@ Nach dem Neustart siehst du nur schwarzen Text (**Befehlszeile**). Das ist norma
 
 Sobald du eingeloggt bist, müssen wir den USB-Stick manuell einbinden ("mounten").
 
-1.  **Stick vorbereiten:**
-    *   Kopiere den Ordner `projektboard-platform` auf einen USB-Stick (formatiert als **FAT32** oder **ExFAT**).
-    *   Stecke den Stick in den NUC.
+1.  **Stick vorbereiten (am Mac):**
+    *   Stecke den USB-Stick an deinen Mac.
+    *   Format: **ExFAT** oder **MS-DOS (FAT)** (im Festplattendienstprogramm).
+    *   **Kopieren per Terminal (Empfohlen, da schneller & sauberer):**
+        ```bash
+        # 1. Prüfen, wo der Stick ist (meist /Volumes/NAME)
+        ls /Volumes
 
-2.  **Stick finden:**
+        # 2. Kopieren (ohne node_modules, das spart Zeit!)
+        # Ersetze USB_NAME mit dem Namen deines Sticks
+        rsync -av --progress --exclude='node_modules' --exclude='.git' ./ /Volumes/USB_NAME/projektboard-platform
+        ```
+    *   Stick auswerfen und abziehen.
+    *   Stecke den Stick nun in den **NUC**.
+
+2.  **Stick finden (am NUC):**
     Gib diesen Befehl ein, um alle Laufwerke zu sehen:
     ```bash
     lsblk
@@ -120,7 +146,7 @@ Sobald du eingeloggt bist, müssen wir den USB-Stick manuell einbinden ("mounten
 
 ---
 
-## � 4. ProjektBoard installieren
+## 🚀 4. ProjektBoard installieren (Plug & Play)
 (Da du Docker schon bei der Ubuntu-Installation ausgewählt hast, können wir direkt loslegen!)
 
 Gehe in den Projektordner auf dem NUC:
@@ -138,25 +164,50 @@ cd deploy
 
 **Was passiert jetzt?**
 - Das Skript prüft, ob Docker läuft.
-- **NEU:** Es fragt dich nach der **IP-Adresse** des NUC. Drücke ENTER für `localhost` (nur lokal) oder gib die echte IP ein (z.B. `192.168.1.50`), damit Zugriff vom Mac möglich ist.
-- Es generiert **sichere Passwörter** für die Datenbank.
-- Es baut die Anwendung (das kann beim ersten Mal 5-10 Minuten dauern).
-- Es startet alles.
+- **NEU:** Es fragt dich nach der **IP-Adresse** des NUC. Gib die echte IP ein (z.B. `192.168.1.50`), damit Zugriff vom Mac möglich ist.
+- Es generiert **automatisch** alle nötigen Datenbank-Tabellen (`init_schema.sql`).
+- Es legt den **Superuser** `michael@mysight.net` an.
+- Es installiert eine **Standard-Lizenz** (2 User).
+- Es baut die Anwendung und startet alles.
 
 ---
 
-## ✅ 5. Der erste Start
-Sobald das Skript "Installation Complete" meldet:
+## ✅ 5. Der erste Start (Plug & Play)
+
+Sobald das Skript "Installation Complete" meldet ist alles bereit:
 
 1.  Gehe an deinem Mac in den Browser.
 2.  Tippe die IP-Adresse des NUC ein: `http://IP-ADRESSE-DES-NUC:3000`
 3.  Du siehst den Login-Screen!
-4.  **Registrierung:** Klicke auf "Sign Up" und erstelle deinen Admin-Account.
-    *   Nutze die E-Mail-Adresse, die du im Code als Superuser hinterlegt hast (z.B. `admin@projektboard.de`), um Zugriff auf die System-Steuerung zu haben.
+4.  **Einloggen:** Nutze den vorinstallierten Superuser:
+    *   **Email:** `michael@mysight.net`
+    *   **Passwort:** `Serum4x!`
+
+Du bist sofort eingeloggt und kannst loslegen!
 
 ---
 
-## 🔄 6. Updates einspielen
+## � 6. Umzug zum Kunden (IP-Wechsel)
+Wenn du den NUC in der Werkstatt eingerichtet hast und ihn dann zum Kunden bringst, ändert sich meist die IP-Adresse (anderes Netzwerk).
+
+**Das ist kein Problem!**
+1.  Schließe den NUC beim Kunden an.
+2.  Logge dich ein (Bildschirm/Tastatur oder SSH via neue IP).
+3.  Gehe in den Ordner:
+    ```bash
+    cd projektboard-platform/deploy
+    ```
+4.  Führe den Installer erneut aus:
+    ```bash
+    ./install.sh
+    ```
+5.  Gib die **neue IP-Adresse** ein, die der NUC beim Kunden hat.
+
+Das System passt sich automatisch an. Deine Daten bleiben erhalten! (Es werden nur die Netzwerkgrundeinstellungen aktualisiert).
+
+---
+
+## �🔄 7. Updates einspielen
 Wenn du am Code weiterentwickelt hast:
 1.  Kopiere die neuen Dateien auf den NUC (überschreiben).
 2.  Führe das Update-Skript aus:
@@ -170,23 +221,21 @@ Das Skript prüft automatisch den Ordner `supabase/migrations`. Wenn du neue Tab
 
 ---
 
-## 🔑 7. Lizenzierung (Wichtig!)
-Damit das System dauerhaft läuft, benötigst du eine **Lizenz**. Ohne diese sperrt sich das System nach dem Start.
+## 🔑 7. Lizenzierung (Automatisch)
+Das System wird mit einer **Standard-Lizenz** ausgeliefert:
+- **Gültig bis:** 31.12.2030
+- **Max. Benutzer:** 2
 
+Du musst nichts tun. Das System ist sofort freigeschaltet.
+
+**Falls eine eigene Firmen-Lizenz nötig ist:**
+Nur wenn du die Firma ändern oder mehr User brauchst:
 1.  **Lizenz generieren (auf deinem Mac):**
-    Öffne dein Terminal im Projektordner und führe aus:
     ```bash
-    node scripts/generate_license.js 2026-12-12 "xyz-Firma" 50
+    node scripts/generate_license.js 2026-12-31 "Firmenname" 50
     ```
-    *(Das "50" am Ende ist die maximale Anzahl der Benutzer. Wenn du es weglässt, sind es standardmäßig 50).*
-
-    Das Terminal spuckt einen langen Text aus (den "Token"). Kopiere diesen komplett.
-
-2.  **Lizenz eingeben (im Browser):**
-    Sobald du dich auf dem NUC eingeloggt hast, wirst du automatisch auf die Seite `/license` umgeleitet (falls keine Lizenz da ist).
-    -   Füge den kopierten Token dort ein.
-    -   Klicke "Aktivieren".
-    -   Fertig! Das System ist nun für 1 Jahr freigeschaltet.
+2.  Token kopieren.
+3.  Im Browser unter `/license` eingeben.
 
 ---
 
