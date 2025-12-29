@@ -98,12 +98,15 @@ Sobald du eingeloggt bist, müssen wir den USB-Stick manuell einbinden ("mounten
     *   Format: **ExFAT** oder **MS-DOS (FAT)** (im Festplattendienstprogramm).
     *   **Kopieren per Terminal (Empfohlen, da schneller & sauberer):**
         ```bash
-        # 1. Prüfen, wo der Stick ist (meist /Volumes/NAME)
+        # 1. In deinen Projektordner wechseln (wo die Dateien liegen)
+        # (Pfad ggf. anpassen)
+        cd "/Users/michael/Documents/mysight pmo/projektboard-platform"
+
+        # 2. Prüfen, wo der Stick ist
         ls /Volumes
 
-        # 2. Kopieren (ohne node_modules, das spart Zeit!)
-        # Ersetze USB_NAME mit dem Namen deines Sticks
-        rsync -av --progress --exclude='node_modules' --exclude='.git' ./ /Volumes/USB_NAME/projektboard-platform
+        # 3. Kopieren (ohne node_modules)
+        rsync -av --progress --exclude='node_modules' --exclude='.git' ./ /Volumes/MYSIGHTPMO/projektboard-platform
         ```
     *   Stick auswerfen und abziehen.
     *   Stecke den Stick nun in den **NUC**.
@@ -164,7 +167,9 @@ cd deploy
 
 **Was passiert jetzt?**
 - Das Skript prüft, ob Docker läuft.
-- **NEU:** Es fragt dich nach der **IP-Adresse** des NUC. Gib die echte IP ein (z.B. `192.168.1.50`), damit Zugriff vom Mac möglich ist.
+- **NEU:** Es fragt dich nach der **IP-Adresse** des NUC.
+    *   **Tipp:** Wenn du die IP nicht kennst, öffne ein zweites Terminal auf dem NUC und gib ein: `hostname -I` (das große I wie Ida).
+    *   Gib die echte IP ein (z.B. `192.168.1.50`), damit Zugriff vom Mac möglich ist.
 - Es generiert **automatisch** alle nötigen Datenbank-Tabellen (`init_schema.sql`).
 - Es legt den **Superuser** `michael@mysight.net` an.
 - Es installiert eine **Standard-Lizenz** (2 User).
@@ -261,6 +266,27 @@ Wenn du am Projekt arbeitest, brauchst du zwei Dinge:
 1.  Docker Desktop starten
 2.  `npm run db:start` (Warten bis "Started" kommt)
 3.  `npm run dev`
+
+---
+
+## ❓ 9. Problembehebung (Troubleshooting)
+
+**Falls die Installation fehlschlägt (z.B. Datenbank startet nicht):**
+Wenn beim ersten `install.sh` etwas schiefgeht, kann die Datenbank in einem "halb-fertigen" Zustand sein. Das System denkt dann, es sei installiert, aber es fehlen Daten.
+
+**Lösung: Alles zurücksetzen und neu starten**
+Führe diese Befehle im `deploy`-Ordner aus:
+
+```bash
+# 1. Alles stoppen
+docker compose down
+
+# 2. Datenbank-Daten löschen (ACHTUNG: Löscht alle Daten auf dem NUC!)
+sudo rm -rf volumes/db
+
+# 3. Installation erneut starten
+./install.sh
+```
 
 ---
 

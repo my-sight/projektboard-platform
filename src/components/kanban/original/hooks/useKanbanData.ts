@@ -167,12 +167,12 @@ export function useKanbanData(
                                 name: parentResp,
                                 id: parentRespId, // propagate if available
                                 isParentResp: true
-                            });
+                            } as any);
                         } else {
                             // Mark existing
                             const idx = currentTeam.findIndex((m: any) => m.name === parentResp || m.id === parentResp);
                             if (idx >= 0) {
-                                currentTeam[idx] = { ...currentTeam[idx], isParentResp: true };
+                                currentTeam[idx] = { ...currentTeam[idx], isParentResp: true } as any;
                             }
                         }
                         baseCard.Team = currentTeam;

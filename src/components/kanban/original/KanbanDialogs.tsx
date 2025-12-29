@@ -498,6 +498,9 @@ export function EditCardDialog({
                         checked={Boolean(checked)}
                         disabled={!canEdit}
                         onChange={(e) => {
+                          if (!selectedCard.ChecklistDone) selectedCard.ChecklistDone = {};
+                          if (!selectedCard.ChecklistDone[stage]) selectedCard.ChecklistDone[stage] = {};
+
                           selectedCard.ChecklistDone[stage][task] = e.target.checked;
                           // setRows([...rows]); // Mutation + Realign
                           // saveCards(); // REMOVED
