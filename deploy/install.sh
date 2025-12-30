@@ -108,17 +108,53 @@ echo "Building and starting services..."
 docker compose build
 docker compose up -d
 
-echo "Waiting for Database to be ready..."
-sleep 10 # Give it a moment to wake up
+# Wait for DB to be ready
+RETRIES=30
+until docker exec supabase-db psql -U postgres -d postgres -c "SELECT 1" &> /dev/null || [ $RETRIES -eq 0 ]; do
+  echo "Waiting for DB... ($RETRIES left)"
+  sleep 2
+  RETRIES=$((RETRIES-1))
+done
 
-# Ensure License is definitely present (fixes silent seed failure)
-echo "Ensuring License Key is active..."
-LICENSE_TOKEN="eyJleHBpcnkiOiIyMDMwLTEyLTMxIiwiY3VzdG9tZXIiOiJEZWZhdWx0IEluc3RhbGwiLCJtYXhVc2VycyI6MiwiY3JlYXRlZCI6IjIwMjUtMTItMjlUMDg6Mzk6NTQuNDY0WiJ9.+T3gqn8IBUkFTLbfI+nNSipA2FPfSd5umVgHDqZV78YQU7GgRrY4gy8M3Sczm2IAhYGMjzzPnbQRlgwh/Ka6DA=="
-docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;" || echo "Warning: License injection failed (DB might be booting)"
+if [ $RETRIES -eq 0 ]; then
+    echo -e "${RED}Error: Database failed to start.${NC}"
+    exit 1
+fi
 
 echo "Checking Schema Status..."
-# Optional: Verify auth.users or similar
-docker exec supabase-db psql -U postgres -d postgres -c "SELECT count(*) FROM auth.users;" || echo "Warning: Could not check users (DB might be booting)"
+# 1. Check if public.system_settings exists
+if ! docker exec supabase-db psql -U postgres -d postgres -c "SELECT 1 FROM public.system_settings LIMIT 1;" &> /dev/null; then
+    echo "Schema missing or incomplete. Attempting to apply init_schema.sql..."
+    
+    # Locate schema file depending on run context
+    if [ -f "volumes/db/init/00-schema.sql" ]; then
+        SCHEMA_FILE="volumes/db/init/00-schema.sql"
+    elif [ -f "deploy/volumes/db/init/00-schema.sql" ]; then
+        SCHEMA_FILE="deploy/volumes/db/init/00-schema.sql"
+    else
+        echo -e "${RED}Error: Could not locate init_schema.sql (00-schema.sql).${NC}"
+        exit 1
+    fi
+    
+    # Run the init script
+    if cat "$SCHEMA_FILE" | docker exec -i supabase-db psql -U postgres -d postgres; then
+        echo "Schema verified/applied."
+    else
+        echo -e "${RED}Error: Failed to apply schema.${NC}"
+        echo "Likely cause: Volume contains partial data. Please run: rm -rf volumes/db/data"
+        exit 1
+    fi
+else
+    echo "Schema appears valid."
+fi
+
+# Ensure License Key is active...
+echo "Ensuring License Key is active..."
+LICENSE_TOKEN="eyJleHBpcnkiOiIyMDMwLTEyLTMxIiwiY3VzdG9tZXIiOiJEZWZhdWx0IEluc3RhbGwiLCJtYXhVc2VycyI6MiwiY3JlYXRlZCI6IjIwMjUtMTItMjlUMDg6Mzk6NTQuNDY0WiJ9.+T3gqn8IBUkFTLbfI+nNSipA2FPfSd5umVgHDqZV78YQU7GgRrY4gy8M3Sczm2IAhYGMjzzPnbQRlgwh/Ka6DA=="
+docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
+
+echo "Verifying users..."
+docker exec supabase-db psql -U postgres -d postgres -c "SELECT count(*) FROM auth.users;"
 
 echo -e "${GREEN}=== Installation Complete ===${NC}"
 echo "App should be running at: http://localhost:3000"

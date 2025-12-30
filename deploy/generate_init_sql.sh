@@ -1,8 +1,10 @@
 #!/bin/bash
 
 # Configuration
+[ -f .env ] && source .env
 MIGRATIONS_DIR="../supabase/migrations"
 OUTPUT_FILE="init_schema.sql"
+
 # License: 2 Users, Expires 2030, Default Install
 LICENSE_TOKEN="eyJleHBpcnkiOiIyMDMwLTEyLTMxIiwiY3VzdG9tZXIiOiJEZWZhdWx0IEluc3RhbGwiLCJtYXhVc2VycyI6MiwiY3JlYXRlZCI6IjIwMjUtMTItMjlUMDg6Mzk6NTQuNDY0WiJ9.+T3gqn8IBUkFTLbfI+nNSipA2FPfSd5umVgHDqZV78YQU7GgRrY4gy8M3Sczm2IAhYGMjzzPnbQRlgwh/Ka6DA=="
 
@@ -14,9 +16,29 @@ echo "-- Generated at $(date)" >> $OUTPUT_FILE
 echo "BEGIN;" >> $OUTPUT_FILE
 
 echo "" >> $OUTPUT_FILE
-echo "-- 1.0 Pre-provision Auth Schema (Required for foreign keys in migrations)" >> $OUTPUT_FILE
-echo "CREATE SCHEMA IF NOT EXISTS auth;" >> $OUTPUT_FILE
-echo "CREATE SCHEMA IF NOT EXISTS storage;" >> $OUTPUT_FILE
+echo "-- 1.0 Pre-provision Roles and Schemas" >> $OUTPUT_FILE
+echo "DO \$\$" >> $OUTPUT_FILE
+echo "BEGIN" >> $OUTPUT_FILE
+echo "    -- Create schemas" >> $OUTPUT_FILE
+echo "    CREATE SCHEMA IF NOT EXISTS auth;" >> $OUTPUT_FILE
+echo "    CREATE SCHEMA IF NOT EXISTS storage;" >> $OUTPUT_FILE
+echo "    CREATE SCHEMA IF NOT EXISTS extensions;" >> $OUTPUT_FILE
+echo "" >> $OUTPUT_FILE
+echo "    -- Create roles if they don't exist" >> $OUTPUT_FILE
+echo "    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon nologin; END IF;" >> $OUTPUT_FILE
+echo "    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated nologin; END IF;" >> $OUTPUT_FILE
+echo "    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') THEN CREATE ROLE service_role nologin; END IF;" >> $OUTPUT_FILE
+echo "    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticator') THEN CREATE ROLE authenticator noinherit login password '${POSTGRES_PASSWORD:-postgres}'; END IF;" >> $OUTPUT_FILE
+echo "    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN CREATE ROLE supabase_admin WITH SUPERUSER CREATEDB CREATEROLE REPLICATION BYPASSRLS; END IF;" >> $OUTPUT_FILE
+echo "    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN CREATE ROLE supabase_auth_admin WITH CREATEROLE login password '${POSTGRES_PASSWORD:-postgres}'; END IF;" >> $OUTPUT_FILE
+echo "    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_storage_admin') THEN CREATE ROLE supabase_storage_admin WITH CREATEROLE login password '${POSTGRES_PASSWORD:-postgres}'; END IF;" >> $OUTPUT_FILE
+echo "    " >> $OUTPUT_FILE
+echo "    -- Grant memberships" >> $OUTPUT_FILE
+echo "    GRANT anon, authenticated, service_role TO authenticator;" >> $OUTPUT_FILE
+echo "    GRANT ALL ON SCHEMA auth TO supabase_auth_admin;" >> $OUTPUT_FILE
+echo "    GRANT ALL ON SCHEMA storage TO supabase_storage_admin;" >> $OUTPUT_FILE
+echo "END \$\$;" >> $OUTPUT_FILE
+echo "" >> $OUTPUT_FILE
 echo "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\" WITH SCHEMA extensions;" >> $OUTPUT_FILE
 echo "CREATE EXTENSION IF NOT EXISTS \"pgcrypto\" WITH SCHEMA extensions;" >> $OUTPUT_FILE
 echo "CREATE EXTENSION IF NOT EXISTS \"pg_trgm\" WITH SCHEMA extensions;" >> $OUTPUT_FILE
