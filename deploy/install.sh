@@ -108,6 +108,18 @@ echo "Building and starting services..."
 docker compose build
 docker compose up -d
 
+echo "Waiting for Database to be ready..."
+sleep 10 # Give it a moment to wake up
+
+# Ensure License is definitely present (fixes silent seed failure)
+echo "Ensuring License Key is active..."
+LICENSE_TOKEN="eyJleHBpcnkiOiIyMDMwLTEyLTMxIiwiY3VzdG9tZXIiOiJEZWZhdWx0IEluc3RhbGwiLCJtYXhVc2VycyI6MiwiY3JlYXRlZCI6IjIwMjUtMTItMjlUMDg6Mzk6NTQuNDY0WiJ9.+T3gqn8IBUkFTLbfI+nNSipA2FPfSd5umVgHDqZV78YQU7GgRrY4gy8M3Sczm2IAhYGMjzzPnbQRlgwh/Ka6DA=="
+docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;" || echo "Warning: License injection failed (DB might be booting)"
+
+echo "Checking Schema Status..."
+# Optional: Verify auth.users or similar
+docker exec supabase-db psql -U postgres -d postgres -c "SELECT count(*) FROM auth.users;" || echo "Warning: Could not check users (DB might be booting)"
+
 echo -e "${GREEN}=== Installation Complete ===${NC}"
 echo "App should be running at: http://localhost:3000"
 echo "Supabase Studio: http://localhost:3001"
