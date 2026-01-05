@@ -1,5 +1,4 @@
-version: '3.8'
-
+# supabase services
 services:
   # 1. Database (PostgreSQL)
   db:
@@ -18,6 +17,8 @@ services:
     volumes:
       - ./volumes/db/data:/var/lib/postgresql/data
       - ./volumes/db/init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - projektboard-network
 
   # 2. API Gateway (Kong)
   kong:
@@ -30,8 +31,12 @@ services:
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
-      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_DNS_ORDER: A,CNAME
+      KONG_DNS_RESOLVER: 127.0.0.11
       KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_PROXY_LISTEN: 0.0.0.0:8000, 0.0.0.0:8443 ssl
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
     volumes:
       - ./volumes/api/kong.yml:/var/lib/kong/kong.yml:ro
     depends_on:
@@ -40,6 +45,8 @@ services:
       - realtime
       - storage
       - meta
+    networks:
+      - projektboard-network
 
   # 3. Auth Service (GoTrue)
   auth:
@@ -52,13 +59,14 @@ services:
     environment:
       GOTRUE_API_HOST: 0.0.0.0
       GOTRUE_API_PORT: 9999
-      API_EXTERNAL_URL: http://localhost:8000/auth/v1
+      API_EXTERNAL_URL: ${NEXT_PUBLIC_SUPABASE_URL}/auth/v1
       GOTRUE_DB_DRIVER: postgres
       GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
-      GOTRUE_SITE_URL: http://localhost:3000
+      GOTRUE_SITE_URL: ${GOTRUE_SITE_URL:-http://localhost:3000}
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
-      GOTRUE_JWT_EXP: 3600
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+    networks:
+      - projektboard-network
 
   # 4. REST API (PostgREST)
   rest:
@@ -74,6 +82,8 @@ services:
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: ${JWT_SECRET}
       PGRST_DB_USE_LEGACY_GUCS: "false"
+    networks:
+      - projektboard-network
 
   # 5. Realtime
   realtime:
@@ -95,6 +105,8 @@ services:
       REPLICATION_MODE: RLS
     command: >
       bash -c "./your_migration_script.sh && /app/bin/server"
+    networks:
+      - projektboard-network
 
   # 6. Storage
   storage:
@@ -116,6 +128,8 @@ services:
       GLOBAL_S3_BUCKET: stub
     volumes:
       - ./volumes/storage:/var/lib/storage
+    networks:
+      - projektboard-network
 
   # 7. Studio (Dashboard)
   studio:
@@ -128,9 +142,11 @@ services:
       STUDIO_PG_META_URL: http://meta:8080
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       SUPABASE_URL: http://kong:8000
-      SUPABASE_PUBLIC_URL: http://localhost:8000
+      SUPABASE_PUBLIC_URL: ${NEXT_PUBLIC_SUPABASE_URL}
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+    networks:
+      - projektboard-network
 
   # 8. Meta (PG Meta)
   meta:
@@ -144,6 +160,8 @@ services:
       PG_META_PORT: 8080
       PG_META_DB_HOST: db
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
+    networks:
+      - projektboard-network
 
   # 9. YOUR APP
   app:
@@ -161,6 +179,13 @@ services:
       - kong
       - db
     environment:
-      NEXT_PUBLIC_SUPABASE_URL: http://kong:8000
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      INTERNAL_SUPABASE_URL: http://kong:8000
+    networks:
+      - projektboard-network
+
+networks:
+  projektboard-network:
+    driver: bridge

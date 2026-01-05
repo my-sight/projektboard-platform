@@ -8,7 +8,13 @@ NC='\033[0m'
 
 echo -e "${GREEN}=== ProjektBoard Appliance Installer ===${NC}"
 
-# 1. Check Requirements
+# 1. Berechtigungen sicherstellen (WICHTIG für Kong/Docker)
+echo "Sichere Dateiberechtigungen für Volumes..."
+# Nur Ordner anfassen, die uns gehören, um Fehler zu vermeiden
+find ./volumes -maxdepth 2 -user $(whoami) -exec chmod 755 {} + 2>/dev/null || true
+chmod 644 ./volumes/api/kong.yml 2>/dev/null || true
+
+# 2. Bestehende Daten prüfen
 echo "Checking requirements..."
 if ! command -v docker &> /dev/null; then
     echo -e "${RED}Error: Docker is not installed.${NC}"
@@ -18,6 +24,10 @@ fi
 
 # 2. Setup Environment
 echo "Configuring environment..."
+
+# Cleanup potential conflicting .env.local files
+if [ -f .env.local ]; then rm .env.local; fi
+if [ -f ../.env.local ]; then rm ../.env.local; fi
 
 # Load existing values if they exist
 if [ -f .env ]; then
@@ -104,9 +114,41 @@ fi
 # if [ -f seed_superuser.sql ]; then ...
 
 # 4. Build and Start
+echo "Ensuring volume permissions..."
+# Give containers read/write access to volumes. 
+# On NUC, rsync might preserve Mac user IDs which don't exist in the Linux container.
+chmod -R 777 volumes/
+# Check for required source files (since we are building from context ..)
+if [ ! -f "../Dockerfile" ] || [ ! -d "../src" ]; then
+    echo -e "${RED}Error: Source files missing in parent directory.${NC}"
+    echo -e "Make sure you copied the entire 'projektboard-platform' folder to the NUC,"
+    echo -e "not just the 'deploy' sub-folder."
+    exit 1
+fi
+
+# Check for existing DB data that blocks automatic init
+DB_DATA_DIR="./volumes/db/data"
+if [ -d "$DB_DATA_DIR" ] && [ "$(ls -A $DB_DATA_DIR 2>/dev/null)" ]; then
+    echo -e "${YELLOW}Warning: Existing database data found in $DB_DATA_DIR.${NC}"
+    echo -e "Docker's automatic initialization (/docker-entrypoint-initdb.d/) only runs on a fresh installation."
+    echo -e "If this is a new installation attempt, you may need to clear it first."
+fi
+
 echo "Building and starting services..."
-docker compose build
-docker compose up -d
+# Export variables so docker compose interpolation and build args work correctly
+export NEXT_PUBLIC_SUPABASE_URL="http://${NEW_IP}:8000"
+export NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY"
+export ANON_KEY="$ANON_KEY" # Also export the original name for interpolation
+export SERVICE_ROLE_KEY="$SERVICE_ROLE_KEY"
+
+# Explicitly pass build args to ensure they are available during 'npm run build'
+docker compose build \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+  --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+# STEP A: Start DB first to apply permission patches
+echo "Starting Database for patching..."
+docker compose up -d supabase-db
 
 # Wait for DB to be ready
 RETRIES=30
@@ -121,36 +163,92 @@ if [ $RETRIES -eq 0 ]; then
     exit 1
 fi
 
+# STEP B: Apply Mandatory Permissions & Role Patch (Fixes Auth crashing and PostgREST 401s)
+echo "Ensuring critical database role permissions (The Hammer)..."
+docker exec -i supabase-db psql -U postgres -d postgres <<EOF
+  -- ESCALATED PERMISSIONS ("THE HAMMER")
+  -- Granting superuser rights to service admins to ensure they can manage their own schema
+  ALTER ROLE supabase_auth_admin WITH SUPERUSER;
+  ALTER ROLE supabase_storage_admin WITH SUPERUSER;
+  GRANT postgres TO supabase_auth_admin;
+  GRANT postgres TO supabase_storage_admin;
+
+  -- Auth Admin needs to manage migrations in public schema
+  GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
+  GRANT USAGE ON SCHEMA auth TO supabase_auth_admin;
+  ALTER ROLE supabase_auth_admin SET search_path TO auth, public;
+
+  -- Ensure authenticator role can see schemas
+  GRANT USAGE ON SCHEMA public TO authenticator;
+  GRANT USAGE ON SCHEMA auth TO authenticator;
+  GRANT USAGE ON SCHEMA extensions TO authenticator;
+  
+  -- Ensure anon and authenticated can see public
+  GRANT USAGE ON SCHEMA public TO anon, authenticated;
+  GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+  GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+  GRANT ALL ON ALL ROUTINES IN SCHEMA public TO service_role;
+
+  -- FUNCTION RESTORATION (Critical after CASCADE drop)
+  CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS \$\$ SELECT NULLIF(current_setting('request.jwt.claims', true)::json->>'sub', '')::uuid; \$\$;
+  CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS \$\$ SELECT NULLIF(current_setting('request.jwt.claims', true)::json->>'role', '')::text; \$\$;
+  CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS \$\$ SELECT NULLIF(current_setting('request.jwt.claims', true), '')::jsonb; \$\$;
+
+  -- ROBUST OWNERSHIP FIX
+  DO \$\$
+  DECLARE
+      item record;
+      r record;
+      v_admin text;
+  BEGIN
+      FOR item IN (SELECT nspname FROM pg_namespace WHERE nspname IN ('auth', 'storage')) LOOP
+          v_admin := CASE WHEN item.nspname = 'auth' THEN 'supabase_auth_admin' ELSE 'supabase_storage_admin' END;
+          -- Tables
+          FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = item.nspname) LOOP
+              EXECUTE 'ALTER TABLE ' || item.nspname || '.' || quote_ident(r.tablename) || ' OWNER TO ' || v_admin;
+          END LOOP;
+          -- Views
+          FOR r IN (SELECT viewname FROM pg_views WHERE schemaname = item.nspname) LOOP
+              EXECUTE 'ALTER VIEW ' || item.nspname || '.' || quote_ident(r.viewname) || ' OWNER TO ' || v_admin;
+          END LOOP;
+          -- Sequences
+          FOR r IN (SELECT relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relkind = 'S' AND n.nspname = item.nspname) LOOP
+              EXECUTE 'ALTER SEQUENCE ' || item.nspname || '.' || quote_ident(r.relname) || ' OWNER TO ' || v_admin;
+          END LOOP;
+          -- Functions/Routines
+          FOR r IN (SELECT proname, oidvectortypes(proargtypes) as args FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = item.nspname) LOOP
+              EXECUTE 'ALTER FUNCTION ' || item.nspname || '.' || quote_ident(r.proname) || '(' || r.args || ') OWNER TO ' || v_admin;
+          END LOOP;
+          -- Schema itself
+          EXECUTE 'ALTER SCHEMA ' || item.nspname || ' OWNER TO ' || v_admin;
+      END LOOP;
+  END \$\$;
+EOF
+
+# STEP C: Restore RLS Policies (Recover from previous CASCADE drop)
+echo "Restoring RLS Policies from migrations..."
+# Robust extraction of multi-line CREATE POLICY statements (case-insensitive)
+cat ../supabase/migrations/*.sql | awk '
+  tolower($0) ~ /create policy/ {in_block=1}
+  in_block {print}
+  in_block && /;/ {in_block=0}
+' | docker exec -i supabase-db psql -U postgres -d postgres
+
+# STEP D: Start the rest of the services
+echo "Starting application services..."
+docker compose up -d
+
 echo "Checking Schema Status..."
-# 1. Check if public.system_settings exists
 if ! docker exec supabase-db psql -U postgres -d postgres -c "SELECT 1 FROM public.system_settings LIMIT 1;" &> /dev/null; then
     echo "Schema missing or incomplete. Attempting to apply init_schema.sql..."
-    
-    # Locate schema file depending on run context
-    if [ -f "volumes/db/init/00-schema.sql" ]; then
-        SCHEMA_FILE="volumes/db/init/00-schema.sql"
-    elif [ -f "deploy/volumes/db/init/00-schema.sql" ]; then
-        SCHEMA_FILE="deploy/volumes/db/init/00-schema.sql"
-    else
-        echo -e "${RED}Error: Could not locate init_schema.sql (00-schema.sql).${NC}"
-        exit 1
-    fi
-    
-    # Run the init script
-    if cat "$SCHEMA_FILE" | docker exec -i supabase-db psql -U postgres -d postgres; then
-        echo "Schema verified/applied."
-    else
-        echo -e "${RED}Error: Failed to apply schema.${NC}"
-        echo "Likely cause: Volume contains partial data. Please run: rm -rf volumes/db/data"
-        exit 1
-    fi
+    cat volumes/db/init/00-schema.sql | docker exec -i supabase-db psql -U postgres -d postgres -v ON_ERROR_STOP=1
 else
     echo "Schema appears valid."
 fi
 
 # Ensure License Key is active...
 echo "Ensuring License Key is active..."
-LICENSE_TOKEN="eyJleHBpcnkiOiIyMDMwLTEyLTMxIiwiY3VzdG9tZXIiOiJEZWZhdWx0IEluc3RhbGwiLCJtYXhVc2VycyI6MiwiY3JlYXRlZCI6IjIwMjUtMTItMjlUMDg6Mzk6NTQuNDY0WiJ9.+T3gqn8IBUkFTLbfI+nNSipA2FPfSd5umVgHDqZV78YQU7GgRrY4gy8M3Sczm2IAhYGMjzzPnbQRlgwh/Ka6DA=="
+LICENSE_TOKEN="eyJleHBpcnkiOiIyMDI2LTEyLTMxIiwiY3VzdG9tZXIiOiJGaXJtZW5uYW1lIiwibWF4VXNlcnMiOjUwLCJjcmVhdGVkIjoiMjAyNS0xMi0yOVQxMzozMjozOS42NTNaIn0=.6AIcBmhbL0c+N/Ju4uCXWo4mK4UYIwD9lr3W8BEpp78O7ETlhqSoFoYbPUJklmKSBxSJbBW5Bvdk2BxQn7BACA=="
 docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
 
 echo "Verifying users..."

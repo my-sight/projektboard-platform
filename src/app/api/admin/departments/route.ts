@@ -1,7 +1,7 @@
-
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabaseConfig } from '@/lib/supabaseClient';
 
 // Helper to verify admin - DUPLICATED from users/route.ts for now
 async function verifyAdmin(req: NextRequest) {
@@ -9,10 +9,9 @@ async function verifyAdmin(req: NextRequest) {
     if (!authHeader) return null;
 
     const token = authHeader.replace('Bearer ', '');
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const { supabaseUrl, supabaseKey } = getSupabaseConfig();
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey);
+    const supabase = createClient(supabaseUrl, supabaseKey);
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) return null;

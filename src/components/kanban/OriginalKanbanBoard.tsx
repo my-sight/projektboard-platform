@@ -102,16 +102,18 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
       onKpiCountChange?.(kpiBadgeCount);
     }, [kpiBadgeCount, onKpiCountChange]);
 
+    // 0. View Reset Effect (ONLY on boardId change)
+    useEffect(() => {
+      // Force starting view to 'columns' and density to 'compact' on every NEW board load
+      setViewMode('columns');
+      setDensity('compact');
+    }, [boardId]);
+
     // 1. Data Loading Effect (Stable, only on Board ID change)
     useEffect(() => {
       const loadData = async () => {
-        // Force starting view to 'columns' and density to 'compact' on every board load
-        setViewMode('columns');
-        setDensity('compact');
-
         const loadedUsers = await fetchClientProfiles();
         setUsers(loadedUsers);
-
 
         // Sequence loading to ensure cols are set (via loadSettings) before loadCards uses them for stage inference
         await loadSettings();

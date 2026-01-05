@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase, getSupabaseConfig } from '@/lib/supabaseClient';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { getLicenseStatus } from '@/lib/license';
 
@@ -51,12 +51,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [visibilityCounter, setVisibilityCounter] = useState(0);
 
   const fetchProfile = useCallback(async (userId: string) => {
+    // Add a safety timeout for the profile fetch
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
+    );
+
     try {
-      const { data, error } = await supabase
+      const fetchPromise = supabase
         .from('profiles')
         .select('*, departments(name)')
         .eq('id', userId)
         .maybeSingle();
+
+      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as any;
 
       if (error) {
         console.warn('Error fetching profile:', error);
@@ -77,7 +84,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Simple Tab Visibility Reload Logic
   useEffect(() => {
     // 1. Mark the current time as the "last reload" on initial mount
-    // This prevents a double-reload if the user focuses the window immediately after opening it.
     if (!sessionStorage.getItem('last_visibility_reload')) {
       sessionStorage.setItem('last_visibility_reload', Date.now().toString());
     }
@@ -88,19 +94,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const lastReload = lastReloadStr ? parseInt(lastReloadStr, 10) : 0;
         const now = Date.now();
 
-        // Throttle background refresh to once every 1 second
         if (now - lastReload > 1000) {
           console.log('[AuthContext] Tab became visible/focused, triggering silent background refresh...');
           sessionStorage.setItem('last_visibility_reload', now.toString());
           setVisibilityCounter(prev => prev + 1);
-        } else {
-          console.log('[AuthContext] Tab became visible, but throttled (last reload < 1s ago)');
         }
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    // Focus can also trigger it for consistency
     window.addEventListener('focus', handleVisibilityChange);
 
     return () => {
@@ -117,39 +119,66 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   useEffect(() => {
-    // 1. Initial Sync
     const initAuth = async () => {
       setLoading(true);
-      // 1. Initial Session Load
-      supabase.auth.getSession().then(async ({ data: { session } }) => {
+      console.log('[AuthContext] Initializing Auth...');
+
+      // Safety timeout: Auth must not block the app forever
+      const initTimeout = setTimeout(() => {
+        setLoading(prev => {
+          if (prev) {
+            console.warn('[AuthContext] Auth initialization timed out (8s). Proceeding with current state.');
+            return false;
+          }
+          return prev;
+        });
+      }, 8000);
+
+      try {
+        const { supabaseUrl } = getSupabaseConfig();
+        console.log('[AuthContext] Supabase Client URL:', supabaseUrl);
+        console.log('[AuthContext] Fetching initial session...');
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error('[AuthContext] getSession Error:', error);
+          throw error;
+        }
+
         if (session?.user) {
+          console.log('[AuthContext] Session confirmed for:', session.user.email, 'ID:', session.user.id);
           setUser(session.user);
-          setProfile(await fetchProfile(session.user.id));
+          const p = await fetchProfile(session.user.id);
+          console.log('[AuthContext] Profile fetch result:', p ? 'Success' : 'Null/Failed');
+          setProfile(p);
         } else {
+          console.log('[AuthContext] No initial session found in cookies/storage.');
           setUser(null);
           setProfile(null);
         }
+      } catch (e: any) {
+        console.error('[AuthContext] Initialization Crash:', e.message);
+      } finally {
+        clearTimeout(initTimeout);
+        console.log('[AuthContext] Initialization complete. Loading -> false');
         setLoading(false);
-      });
+      }
     };
 
     initAuth();
 
     // 2. Subscribe to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[AuthContext] Auth State Change:', event);
       if (session?.user) {
         setUser(session.user);
-        // Only fetch profile if not already set or if user changed
         if (!profile || profile.id !== session.user.id) {
+          console.log('[AuthContext] Fetching profile for user...', session.user.id);
           const p = await fetchProfile(session.user.id);
           if (!p) {
-            console.warn('User has no profile (stale session?). Signing out...');
-            await supabase.auth.signOut();
-            setUser(null);
-            setProfile(null);
-          } else {
-            setProfile(p);
+            console.warn('[AuthContext] User has no profile record. Continuing without profile state.');
           }
+          setProfile(p);
         }
       } else {
         setUser(null);

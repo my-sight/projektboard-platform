@@ -141,17 +141,19 @@ export default function DashboardClient() {
     // Safety timeout to prevent infinite loading screen
     const safetyTimeout = setTimeout(() => {
       if (loadingData) {
-        console.warn('[DashboardClient] Force-clearing loading state after timeout.');
+        console.warn('[DashboardClient] Data loading timed out (8s). Force-clearing loading state.');
         setLoadingData(false);
       }
-    }, 5000);
+    }, 8000);
 
-    // If we have a user, load data immediately, don't wait for authLoading to finish (it might be background revalidating)
     if (user) {
+      console.log('[DashboardClient] User active, loading dashboard data...');
       loadDashboardData();
-    } else if (!authLoading && !user) {
-      console.log('[DashboardClient] No user. Redirecting to /login');
+    } else if (!authLoading) {
+      console.log('[DashboardClient] No user and auth finished loading. Redirecting to /login');
       router.push('/login');
+    } else {
+      console.log('[DashboardClient] Waiting for Auth to finish loading...');
     }
 
     return () => clearTimeout(safetyTimeout);
@@ -167,10 +169,9 @@ export default function DashboardClient() {
 
 
   // Loading State Logic:
-  // Only show generic loader if:
-  // 1. Auth is truly loading AND we have no user yet
-  // 2. OR Data is loading AND we have no data yet
-  const showLoader = (authLoading && !user) || (loadingData && boards.length === 0);
+  const isWaitingForAuth = authLoading && !user;
+  const isWaitingForData = user && loadingData && boards.length === 0;
+  const showLoader = isWaitingForAuth || isWaitingForData;
 
   const favoriteBoards = useMemo(() => boards.filter(b => favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
   const standardBoards = useMemo(() => boards.filter(b => b.boardType === 'standard' && !favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
@@ -240,9 +241,29 @@ export default function DashboardClient() {
   };
 
   if (showLoader) {
-    return <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-      <Typography variant="h6" color="text.secondary">Lade Dashboard...</Typography>
-    </Box>;
+    return (
+      <Box sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        gap: 2,
+        bgcolor: 'background.default'
+      }}>
+        <Typography variant="h6" color="text.secondary">
+          {isWaitingForAuth ? 'Initialisiere Anmeldung...' : 'Lade Board-Daten...'}
+        </Typography>
+        <Typography variant="body2" color="text.disabled">
+          {isWaitingForAuth ? 'Prüfe Verbindung zum Server...' : 'Empfange Daten...'}
+        </Typography>
+        {!isWaitingForData && !authLoading && (
+          <Button variant="text" size="small" onClick={() => router.push('/login')}>
+            Zur Login-Seite wechseln
+          </Button>
+        )}
+      </Box>
+    );
   }
 
   if (!user && !authLoading) return null;

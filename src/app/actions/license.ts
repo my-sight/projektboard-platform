@@ -1,23 +1,23 @@
 'use server';
 
-import { createClient } from '@supabase/supabase-js';
 import { verifyLicenseToken } from '@/lib/license';
-
-const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { supabaseAdmin as supabase } from '@/lib/supabaseAdmin';
 
 export async function checkLicenseServerAction() {
     try {
-        const { data } = await supabase
+        const { data, error } = await supabase
             .from('system_settings')
             .select('value')
             .eq('key', 'license_key')
             .maybeSingle();
 
+        if (error) {
+            console.error('DB Error checking license:', error);
+            return { valid: false, error: `Database Error: ${error.message} (Code: ${error.code})`, expiry: null, customer: null };
+        }
+
         if (!data || !data.value || !data.value.token) {
-            return { valid: false, error: 'No License Found (Server Action)', expiry: null, customer: null };
+            return { valid: false, error: 'No License Found in DB (Server Action)', expiry: null, customer: null };
         }
 
         const status = await verifyLicenseToken(data.value.token);
@@ -36,6 +36,8 @@ export async function checkLicenseServerAction() {
     }
 }
 
+import { revalidatePath } from 'next/cache';
+
 export async function submitLicenseKey(token: string) {
     try {
         // 1. Verify
@@ -53,6 +55,10 @@ export async function submitLicenseKey(token: string) {
             });
 
         if (error) throw error;
+
+        // 3. Clear cache to avoid redirection loop
+        revalidatePath('/');
+
         return { success: true, status };
     } catch (e: any) {
         return { success: false, error: e.message };
