@@ -64,6 +64,7 @@ import isoWeek from 'dayjs/plugin/isoWeek';
 dayjs.extend(isoWeek);
 
 import { useLanguage } from '@/contexts/LanguageContext';
+import { generateUUID } from '@/lib/uuid';
 
 // --- Styles & Konstanten ---
 const blinkAnimation = keyframes`
@@ -684,7 +685,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 const existingInCol = cards.filter(c => c.assigneeId === draft.assigneeId && c.status === draft.status).length;
                 await supabase.from('kanban_cards').insert({
                     board_id: boardId,
-                    card_id: crypto.randomUUID(),
+                    card_id: generateUUID(),
                     stage: draft.status === 'done' ? 'Fertig' : 'Backlog',
                     position: existingInCol,
                     card_data: {

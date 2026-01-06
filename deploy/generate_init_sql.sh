@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # Configuration
+DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$DEPLOY_DIR"
 [ -f .env ] && source .env
 MIGRATIONS_DIR="../supabase/migrations"
 OUTPUT_FILE="init_schema.sql"

@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase, getSupabaseConfig } from '@/lib/supabaseClient';
+import { generateUUID } from '@/lib/uuid';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { getLicenseStatus } from '@/lib/license';
 
@@ -215,7 +216,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (typeof window !== 'undefined') {
       const saved = sessionStorage.getItem('kanban_session_id');
       if (saved) return saved;
-      const id = typeof crypto !== 'undefined' && crypto.randomUUID && typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+      const id = generateUUID();
       sessionStorage.setItem('kanban_session_id', id);
       return id;
     }

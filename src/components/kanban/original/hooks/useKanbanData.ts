@@ -8,6 +8,7 @@ import { KanbanPermissions } from './useKanbanPermissions';
 import { useKanbanUtils } from './useKanbanUtils';
 import { useKanbanRealtime } from './useKanbanRealtime';
 import { DEFAULT_COLS, DEFAULT_TEMPLATES } from '../constants';
+import { generateUUID } from '@/lib/uuid';
 
 export function useKanbanData(
     boardId: string,
@@ -642,8 +643,8 @@ export function useKanbanData(
         try {
             const payload = {
                 board_id: targetBoardId,
-                card_id: crypto.randomUUID(),
-                card_data: { ...newCardData, id: crypto.randomUUID(), board_id: targetBoardId },
+                card_id: generateUUID(),
+                card_data: { ...newCardData, id: generateUUID(), board_id: targetBoardId },
                 stage: newCardData['Board Stage'],
                 position: 0,
                 project_number: newCardData.Nummer || null,
