@@ -14,7 +14,17 @@ cd "$DEPLOY_DIR"
 echo "Arbeitsverzeichnis: $DEPLOY_DIR"
 
 # 1. Berechtigungen sicherstellen (WICHTIG für Kong/Docker)
+# 1. Berechtigungen sicherstellen (WICHTIG für Kong/Docker/Storage)
 echo "Sichere Dateiberechtigungen für Volumes..."
+# Explicitly create deep storage structure to prevent 500 Errors
+mkdir -p ./volumes/storage/stub/branding
+mkdir -p ./volumes/storage/stub/avatars
+mkdir -p ./volumes/storage/stub/kanban-thumbnails
+
+# Nuclear Permissions for Storage (avoid "Operation not permitted")
+chmod -R 777 ./volumes/storage
+
+# General permissions
 find ./volumes -maxdepth 2 -user $(whoami) -exec chmod 755 {} + 2>/dev/null || true
 chmod 644 ./volumes/api/kong.yml 2>/dev/null || true
 

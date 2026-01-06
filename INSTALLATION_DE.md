@@ -282,7 +282,7 @@ Führe diese Befehle im `deploy`-Ordner aus:
 docker compose down
 
 # 2. Datenbank-Daten löschen (ACHTUNG: Löscht alle Daten auf dem NUC!)
-sudo rm -rf volumes/db
+sudo rm -rf volumes/
 
 # 3. Installation erneut starten
 ./install.sh

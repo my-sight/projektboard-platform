@@ -128,7 +128,10 @@ services:
       FILE_STORAGE_BACKEND_PATH: /var/lib/storage
       STORAGE_BACKEND: file
       TENANT_ID: stub
-      # AWS Credentials removed as we are strictly using FILE backend
+      # REGION and GLOBAL_S3_BUCKET are required by storage-api even for file backend
+      REGION: stub
+      GLOBAL_S3_BUCKET: stub
+      FILE_SIZE_LIMIT: 52428800
     volumes:
       - ./volumes/storage:/var/lib/storage
     networks:
