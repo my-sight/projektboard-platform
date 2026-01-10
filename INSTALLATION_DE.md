@@ -39,7 +39,7 @@ Wir empfehlen **Ubuntu Server 24.04 LTS** (stabil, sicher, kein unnötiger Schni
         *   Drücke LEERTASTE zum Auswählen (ein Sternchen * erscheint).
         *   Das erspart dir später die manuelle Installation!
     *   **Falls "docker" nicht in der Liste ist:**
-        *   Kein Problem! Wähle nichts aus (LXD ist **nicht** das Richtige).
+        *   Kein Problem! Wähle nichts aus 
         *   Wir installieren es später mit einem Befehl nach (siehe Punkt 3).
 
 ---
@@ -269,7 +269,28 @@ Nur wenn du die Firma ändern oder mehr User brauchst:
 
 ---
 
-## 🛠️ 8. Tägliche Arbeit (Entwicklung)
+## � 8. Backups (Extern & Standardkonform)
+
+Das System erstellt automatisch verschlüsselte Backups (AES-256).
+Um IT-Standards (Off-Site Storage) zu erfüllen, solltest du ein externes Laufwerk (USB-Stick/Platte) einbinden.
+
+1.  **USB-Laufwerk anschließen.**
+2.  **Einrichtungs-Assistent starten:**
+    ```bash
+    cd projektboard-platform/deploy
+    sudo chmod +x setup_usb_backup.sh
+    sudo ./setup_usb_backup.sh
+    ```
+    Der Assistent hilft dir, das Laufwerk zu finden und dauerhaft als Backup-Ziel einzurichten.
+
+3.  **Backup manuell testen:**
+    ```bash
+    sudo ./backup-appliance.sh
+    ```
+
+---
+
+## �🛠️ 9. Tägliche Arbeit (Entwicklung)
 
 Wenn du am Projekt arbeitest, brauchst du zwei Dinge:
 

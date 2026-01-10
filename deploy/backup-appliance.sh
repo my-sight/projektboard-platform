@@ -17,9 +17,10 @@ else
     exit 1
 fi
 
-ENCRYPTION_KEY="$JWT_SECRET" # Use JWT_SECRET as backup key
-
-# Ensure backup directory exists
+# Define Backup Directory (Use ENV var or default)
+BACKUP_DIR="${PROJECT_BACKUP_PATH:-$SCRIPT_DIR/backups}"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+FILENAME="$BACKUP_DIR/enc_backup_$TIMESTAMP.sql.gz.enc"
 if [ ! -d "$BACKUP_DIR" ]; then
     mkdir -p "$BACKUP_DIR"
 fi
