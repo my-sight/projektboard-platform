@@ -16,10 +16,12 @@ import {
 } from '@mui/material';
 import { AccessTime, LockClock } from '@mui/icons-material';
 import { supabase } from '@/lib/supabaseClient';
+import { useLanguage } from '@/contexts/LanguageContext';
 import dayjs from 'dayjs';
 import 'dayjs/locale/de';
 
 export default function SystemLockoutPanel() {
+    const { t } = useLanguage();
     const [enabled, setEnabled] = useState(false);
     const [lockoutTime, setLockoutTime] = useState<string>('');
     const [message, setMessage] = useState('');
@@ -75,10 +77,10 @@ export default function SystemLockoutPanel() {
 
             if (error) throw error;
 
-            setSuccess('Einstellungen gespeichert. Serverzeit aktualisiert.');
+            setSuccess(t('admin.lockout.success'));
             fetchSettings(); // Refresh to get new 'updated' time
         } catch (e: any) {
-            alert('Fehler beim Speichern: ' + e.message);
+            alert(t('admin.lockout.error') + ': ' + e.message);
         } finally {
             setLoading(false);
         }
@@ -90,22 +92,21 @@ export default function SystemLockoutPanel() {
                 <Stack spacing={3}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <LockClock color="primary" />
-                        <Typography variant="h6">System-Sperre (Timer)</Typography>
+                        <Typography variant="h6">{t('admin.lockout.title')}</Typography>
                     </Box>
                     <Typography variant="body2" color="text.secondary">
-                        Hier können Sie einen Zeitpunkt festlegen, ab dem das System für alle Nicht-Superuser gesperrt wird.
-                        Die Prüfung erfolgt basierend auf der <strong>Serverzeit</strong>, um Manipulationen zu verhindern.
+                        {t('admin.lockout.description')}
                     </Typography>
 
                     <Divider />
 
                     <FormControlLabel
                         control={<Switch checked={enabled} onChange={e => setEnabled(e.target.checked)} />}
-                        label={enabled ? "Sperre AKTIV (Timer läuft)" : "Sperre DEAKTIVIERT"}
+                        label={enabled ? t('admin.lockout.active') : t('admin.lockout.inactive')}
                     />
 
                     <TextField
-                        label="Sperr-Zeitpunkt (Serverzeit)"
+                        label={t('admin.lockout.time')}
                         type="datetime-local"
                         value={lockoutTime}
                         onChange={(e) => setLockoutTime(e.target.value)}
@@ -116,19 +117,19 @@ export default function SystemLockoutPanel() {
 
                     {serverTime && (
                         <Typography variant="caption" color="text.secondary">
-                            Letzter Server-Sync: {serverTime}
+                            {t('admin.lockout.lastSync')}: {serverTime}
                         </Typography>
                     )}
 
                     <Button variant="contained" onClick={handleSave} disabled={loading}>
-                        {loading ? 'Speichere...' : 'Speichern'}
+                        {loading ? t('admin.lockout.saving') : t('admin.lockout.save')}
                     </Button>
 
                     {success && <Alert severity="success">{success}</Alert>}
 
                     {enabled && lockoutTime && (
                         <Alert severity="warning">
-                            Achtung: Ab <strong>{new Date(lockoutTime).toLocaleString()}</strong> wird das System gesperrt sein.
+                            {t('admin.lockout.warning').replace('{time}', new Date(lockoutTime).toLocaleString())}
                         </Alert>
                     )}
                 </Stack>

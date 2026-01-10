@@ -9,10 +9,12 @@ import { Save, CloudUpload, Refresh, ColorLens, Image as ImageIcon } from '@mui/
 import { useSystemConfig, defaultSettings } from '@/contexts/SystemConfigContext';
 import { supabase } from '@/lib/supabaseClient';
 import { useSnackbar } from 'notistack';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function SystemBranding() {
   const { config, refreshConfig } = useSystemConfig();
   const { enqueueSnackbar } = useSnackbar();
+  const { t } = useLanguage();
 
   const [localConfig, setLocalConfig] = useState(config);
   const [uploading, setUploading] = useState(false);
@@ -40,9 +42,9 @@ export default function SystemBranding() {
       if (error) throw error;
 
       await refreshConfig();
-      enqueueSnackbar('Design gespeichert!', { variant: 'success' });
+      enqueueSnackbar(t('admin.branding.saved'), { variant: 'success' });
     } catch (e: any) {
-      enqueueSnackbar('Fehler: ' + e.message, { variant: 'error' });
+      enqueueSnackbar(t('common.error') + ': ' + e.message, { variant: 'error' });
     }
   };
 
@@ -82,10 +84,10 @@ export default function SystemBranding() {
       // Update local state and save config with new URL (optional, depends on if context prefers file url)
       setLocalConfig(prev => ({ ...prev, logoUrl: url }));
 
-      enqueueSnackbar('Logo hochgeladen!', { variant: 'info' });
+      enqueueSnackbar(t('admin.branding.logoUploaded'), { variant: 'info' });
       refreshConfig();
     } catch (error: any) {
-      enqueueSnackbar('Fehler: ' + error.message, { variant: 'error' });
+      enqueueSnackbar(t('common.error') + ': ' + error.message, { variant: 'error' });
     } finally {
       setUploading(false);
     }
@@ -95,32 +97,32 @@ export default function SystemBranding() {
     <Card variant="outlined" sx={{ mt: 4, mb: 10 }}>
       <CardContent>
         <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h5">🎨 Design & Branding</Typography>
-          <Button startIcon={<Refresh />} onClick={() => setLocalConfig(config)}>Reset</Button>
+          <Typography variant="h5">🎨 {t('admin.branding.title')}</Typography>
+          <Button startIcon={<Refresh />} onClick={() => setLocalConfig(config)}>{t('admin.branding.reset')}</Button>
         </Stack>
 
         <Grid container spacing={4}>
           <Grid item xs={12} md={6}>
-            <Typography variant="subtitle1" gutterBottom>Farben</Typography>
+            <Typography variant="subtitle1" gutterBottom>{t('admin.branding.colors')}</Typography>
             <Stack spacing={2}>
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 <input type="color" value={localConfig.primaryColor} onChange={e => handleChange('primaryColor', e.target.value)} style={{ height: 40 }} />
-                <TextField label="Hauptfarbe" value={localConfig.primaryColor} onChange={e => handleChange('primaryColor', e.target.value)} size="small" fullWidth />
+                <TextField label={t('admin.branding.primaryColor')} value={localConfig.primaryColor} onChange={e => handleChange('primaryColor', e.target.value)} size="small" fullWidth />
               </Box>
               <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                 <input type="color" value={localConfig.secondaryColor} onChange={e => handleChange('secondaryColor', e.target.value)} style={{ height: 40 }} />
-                <TextField label="Akzentfarbe" value={localConfig.secondaryColor} onChange={e => handleChange('secondaryColor', e.target.value)} size="small" fullWidth />
+                <TextField label={t('admin.branding.secondaryColor')} value={localConfig.secondaryColor} onChange={e => handleChange('secondaryColor', e.target.value)} size="small" fullWidth />
               </Box>
             </Stack>
           </Grid>
 
           <Grid item xs={12} md={6}>
-            <Typography variant="subtitle1" gutterBottom>App Details</Typography>
+            <Typography variant="subtitle1" gutterBottom>{t('admin.branding.appDetails')}</Typography>
             <Stack spacing={2}>
-              <TextField label="App-Name" value={localConfig.appName} onChange={e => handleChange('appName', e.target.value)} size="small" fullWidth />
+              <TextField label={t('admin.branding.appName')} value={localConfig.appName} onChange={e => handleChange('appName', e.target.value)} size="small" fullWidth />
               <FormControl fullWidth size="small">
-                <InputLabel>Schriftart</InputLabel>
-                <Select value={localConfig.fontFamily} label="Schriftart" onChange={e => handleChange('fontFamily', e.target.value)}>
+                <InputLabel>{t('admin.branding.font')}</InputLabel>
+                <Select value={localConfig.fontFamily} label={t('admin.branding.font')} onChange={e => handleChange('fontFamily', e.target.value)}>
                   <MenuItem value="Inter">Inter</MenuItem>
                   <MenuItem value="Roboto">Roboto</MenuItem>
                   <MenuItem value="Open Sans">Open Sans</MenuItem>
@@ -131,20 +133,20 @@ export default function SystemBranding() {
           </Grid>
 
           <Grid item xs={12} md={6}>
-            <Typography variant="subtitle1" gutterBottom>Logo</Typography>
+            <Typography variant="subtitle1" gutterBottom>{t('admin.branding.logo')}</Typography>
             <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
               <Box sx={{ width: 150, height: 60, border: '1px dashed #ccc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {localConfig.logoUrl ? <img src={localConfig.logoUrl} alt="Logo" style={{ maxHeight: '100%', maxWidth: '100%' }} /> : <ImageIcon color="disabled" />}
               </Box>
               <Button variant="outlined" component="label" startIcon={uploading ? <CircularProgress size={20} /> : <CloudUpload />} disabled={uploading}>
-                Logo wählen
+                {t('admin.branding.chooseLogo')}
                 <input type="file" hidden accept="image/*" onChange={handleLogoUpload} />
               </Button>
             </Box>
           </Grid>
 
           <Grid item xs={12}>
-            <Button variant="contained" size="large" startIcon={<Save />} onClick={handleSave}>Speichern</Button>
+            <Button variant="contained" size="large" startIcon={<Save />} onClick={handleSave}>{t('admin.branding.save') || t('common.save')}</Button>
           </Grid>
         </Grid>
       </CardContent>

@@ -58,6 +58,7 @@ import {
 import { isSuperuserEmail } from '@/constants/superuser';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLanguage } from '@/contexts/LanguageContext';
 import { getLicenseStatus } from '@/lib/license';
 
 // --- TYPEN ---
@@ -177,6 +178,7 @@ function CustomTabPanel(props: TabPanelProps) {
 
 // ✅ HIER IST DER FIX: Props übernehmen
 export default function UserManagement({ isSuperUser = false }: UserManagementProps) {
+  const { t } = useLanguage();
   // const supabase = useMemo(() => getSupabaseBrowserClient(), []);
 
   // --- STATE ---
@@ -607,16 +609,16 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
       <Box sx={{ mb: 4 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Button variant="text" onClick={() => (window.location.href = '/')}>← Zurück</Button>
-            <Typography variant="h4" component="h1">Verwaltung</Typography>
+            <Button variant="text" onClick={() => (window.location.href = '/')}>← {t('admin.back')}</Button>
+            <Typography variant="h4" component="h1">{t('admin.title')}</Typography>
           </Box>
         </Box>
 
         <Grid container spacing={2}>
-          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="primary">{users.length} {maxUsers ? <span style={{ fontSize: '0.6em', opacity: 0.7 }}>/ {maxUsers}</span> : ''}</Typography><Typography variant="caption">Benutzer</Typography></CardContent></Card></Grid>
-          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="success.main">{users.filter(u => u.is_active).length}</Typography><Typography variant="caption">Aktiv</Typography></CardContent></Card></Grid>
-          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="info.main">{departments.length}</Typography><Typography variant="caption">Abteilungen</Typography></CardContent></Card></Grid>
-          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="warning.main">{users.filter(u => u.role === 'admin').length}</Typography><Typography variant="caption">Admins</Typography></CardContent></Card></Grid>
+          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="primary">{users.length} {maxUsers ? <span style={{ fontSize: '0.6em', opacity: 0.7 }}>/ {maxUsers}</span> : ''}</Typography><Typography variant="caption">{t('admin.users')}</Typography></CardContent></Card></Grid>
+          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="success.main">{users.filter(u => u.is_active).length}</Typography><Typography variant="caption">{t('admin.active')}</Typography></CardContent></Card></Grid>
+          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="info.main">{departments.length}</Typography><Typography variant="caption">{t('admin.departments')}</Typography></CardContent></Card></Grid>
+          <Grid item xs={6} md={3}><Card variant="outlined"><CardContent sx={{ textAlign: 'center' }}><Typography variant="h4" color="warning.main">{users.filter(u => u.role === 'admin').length}</Typography><Typography variant="caption">{t('admin.admins')}</Typography></CardContent></Card></Grid>
         </Grid>
       </Box>
 
@@ -625,10 +627,10 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
       {/* TABS NAVIGATION */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
         <Tabs value={currentTab} onChange={handleTabChange}>
-          <Tab icon={<PeopleIcon />} label="Benutzer" iconPosition="start" />
-          <Tab icon={<BusinessIcon />} label="Abteilungen" iconPosition="start" />
-          <Tab icon={<DashboardIcon />} label="Boards & Rechte" iconPosition="start" />
-          <Tab icon={<DnsIcon />} label="Systemstatus" iconPosition="start" />
+          <Tab icon={<PeopleIcon />} label={t('admin.users')} iconPosition="start" />
+          <Tab icon={<BusinessIcon />} label={t('admin.departments')} iconPosition="start" />
+          <Tab icon={<DashboardIcon />} label={t('admin.boards')} iconPosition="start" />
+          <Tab icon={<DnsIcon />} label={t('admin.systemStatus')} iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -638,25 +640,25 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
           {/* NEW BULK DELETE BUTTON (Nur für Superuser sichtbar) */}
           {isSuperUser && (
             <Button variant="outlined" color="error" startIcon={<DeleteForeverIcon />} onClick={bulkDeleteOthers}>
-              Alle anderen löschen
+              {t('admin.deleteAll')}
             </Button>
           )}
 
-          <Button variant="contained" startIcon={<PersonAddIcon />} onClick={() => setCreateUserDialogOpen(true)}>Neuer Benutzer</Button>
+          <Button variant="contained" startIcon={<PersonAddIcon />} onClick={() => setCreateUserDialogOpen(true)}>{t('admin.newUser')}</Button>
           <Button variant="outlined" component="label" startIcon={<UploadFileIcon />}>
-            CSV Import <input type="file" hidden accept=".csv,.txt" onChange={handleFileChange} />
+            {t('admin.importCsv')} <input type="file" hidden accept=".csv,.txt" onChange={handleFileChange} />
           </Button>
         </Stack>
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Email</TableCell>
-                <TableCell>Abteilung</TableCell>
-                <TableCell>Rolle</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Aktion</TableCell>
+                <TableCell>{t('admin.name')}</TableCell>
+                <TableCell>{t('admin.email')}</TableCell>
+                <TableCell>{t('admin.department')}</TableCell>
+                <TableCell>{t('admin.role')}</TableCell>
+                <TableCell>{t('admin.status')}</TableCell>
+                <TableCell align="right">{t('admin.action')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -706,7 +708,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
       {/* --- TAB 1: ABTEILUNGEN --- */}
       <CustomTabPanel value={currentTab} index={1}>
         <Stack direction="row" justifyContent="flex-end" sx={{ mb: 2 }}>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDepartmentDialogOpen(true)}>Neue Abteilung</Button>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDepartmentDialogOpen(true)}>{t('admin.newDepartment')}</Button>
         </Stack>
         <Grid container spacing={2}>
           {departments.map(d => (
@@ -786,7 +788,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
               <CardContent>
                 <Stack direction="row" alignItems="center" gap={1} mb={2}>
                   <SecurityIcon color="primary" />
-                  <Typography variant="h6">Lizenz</Typography>
+                  <Typography variant="h6">{t('admin.license')}</Typography>
                 </Stack>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <Typography variant="body2" color="text.secondary">Status</Typography>

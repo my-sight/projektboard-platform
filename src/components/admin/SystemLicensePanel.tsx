@@ -16,8 +16,10 @@ import { VpnKey, CheckCircle, Warning, Cached } from '@mui/icons-material';
 import { getLicenseStatus, LicenseStatus } from '@/lib/license';
 import { submitLicenseKey } from '@/app/actions/license';
 import { supabase } from '@/lib/supabaseClient';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function SystemLicensePanel() {
+    const { t } = useLanguage();
     const [token, setToken] = useState('');
     const [status, setStatus] = useState<LicenseStatus | null>(null);
     const [userCount, setUserCount] = useState<number | null>(null);
@@ -49,10 +51,10 @@ export default function SystemLicensePanel() {
                 throw new Error(result.error);
             }
             await loadStatus();
-            setMsg('Lizenz erfolgreich aktualisiert!');
+            setMsg(t('admin.licensePanel.success'));
             setToken('');
         } catch (e: any) {
-            setMsg('Fehler: ' + e.message);
+            setMsg(t('common.error') + ': ' + e.message);
         } finally {
             setLoading(false);
         }
@@ -70,27 +72,27 @@ export default function SystemLicensePanel() {
         <Paper sx={{ p: 3, mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <VpnKey sx={{ mr: 1, color: 'primary.main' }} />
-                <Typography variant="h6">System-Lizenz</Typography>
+                <Typography variant="h6">{t('admin.licensePanel.title')}</Typography>
             </Box>
 
             <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
                     <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>Aktueller Status</Typography>
+                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>{t('admin.licensePanel.currentStatus')}</Typography>
 
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Kunde:</Typography>
-                            <Typography>{status.customer || 'Unbekannt'}</Typography>
+                            <Typography sx={{ mr: 1, fontWeight: 'bold' }}>{t('admin.licensePanel.customer')}:</Typography>
+                            <Typography>{status.customer || t('admin.licensePanel.unknown')}</Typography>
                         </Box>
 
                         <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                            <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Gültig bis:</Typography>
-                            <Typography>{status.expiry || 'Nie'}</Typography>
+                            <Typography sx={{ mr: 1, fontWeight: 'bold' }}>{t('admin.licensePanel.validUntil')}:</Typography>
+                            <Typography>{status.expiry || t('admin.licensePanel.never')}</Typography>
                         </Box>
 
                         {status.maxUsers && (
                             <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                                <Typography sx={{ mr: 1, fontWeight: 'bold' }}>Benutzer:</Typography>
+                                <Typography sx={{ mr: 1, fontWeight: 'bold' }}>{t('admin.users')}:</Typography>
                                 <Typography>
                                     {userCount !== null ? `${userCount} / ` : ''}{status.maxUsers}
                                 </Typography>
@@ -101,14 +103,14 @@ export default function SystemLicensePanel() {
                             {status.valid ? (
                                 <Chip
                                     icon={<CheckCircle />}
-                                    label={`Gültig (${getDaysRemaining()} Tage verbleibend)`}
+                                    label={t('admin.licensePanel.validDays').replace('{days}', getDaysRemaining().toString())}
                                     color="success"
                                     variant="outlined"
                                 />
                             ) : (
                                 <Chip
                                     icon={<Warning />}
-                                    label="Ungültig / Abgelaufen"
+                                    label={t('admin.licensePanel.invalid')}
                                     color="error"
                                     variant="filled"
                                 />
@@ -118,11 +120,11 @@ export default function SystemLicensePanel() {
                 </Grid>
 
                 <Grid item xs={12} md={6}>
-                    <Typography variant="subtitle2" gutterBottom>Lizenz aktualisieren</Typography>
+                    <Typography variant="subtitle2" gutterBottom>{t('admin.licensePanel.updateTitle')}</Typography>
                     <TextField
                         fullWidth
                         size="small"
-                        placeholder="Lizenzschlüssel hier einfügen..."
+                        placeholder={t('admin.licensePanel.placeholder')}
                         value={token}
                         onChange={(e) => setToken(e.target.value)}
                         multiline
@@ -135,11 +137,11 @@ export default function SystemLicensePanel() {
                         disabled={loading || !token}
                         startIcon={<Cached />}
                     >
-                        Lizenz speichern
+                        {t('admin.licensePanel.save')}
                     </Button>
                     {msg && (
                         <Alert severity={msg.startsWith('Error') || msg.startsWith('Fehler') ? 'error' : 'success'} sx={{ mt: 1 }}>
-                            {msg.replace('License updated successfully!', 'Lizenz erfolgreich aktualisiert!').replace('Error:', 'Fehler:')}
+                            {msg.replace('License updated successfully!', t('admin.licensePanel.success')).replace('Error:', t('common.error') + ':')}
                         </Alert>
                     )}
                 </Grid>
