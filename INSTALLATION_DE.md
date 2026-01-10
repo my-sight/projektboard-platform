@@ -212,7 +212,29 @@ Das System passt sich automatisch an. Deine Daten bleiben erhalten! (Es werden n
 
 ---
 
-## �🔄 7. Updates einspielen
+## 🔒 6b. HTTPS / SSL (Produktion)
+Falls der Kunde HTTPS (Verschlüsselung) wünscht, benötigst du Zertifikate.
+
+**Anforderungen an das Zertifikat:**
+1.  **Format:** PEM-Format (Base64 ASCII).
+2.  **Dateinamen:**
+    *   `server.crt`: Das öffentliche Zertifikat (inkl. Intermediate Chain, falls vorhanden).
+    *   `server.key`: Der private Schlüssel (ohne Passphrase!).
+3.  **Hostnames (SAN):** Das Zertifikat muss den Hostnamen enthalten, unter dem der NUC erreichbar ist (z.B. `kanban.kunde.internal` oder `kanban.local`).
+
+**Installation:**
+Lege die Dateien auf dem NUC an folgendem Ort ab:
+```bash
+sudo mkdir -p /etc/nginx/ssl
+sudo cp dein-zertifikat.crt /etc/nginx/ssl/server.crt
+sudo cp dein-key.key /etc/nginx/ssl/server.key
+sudo chmod 600 /etc/nginx/ssl/server.key
+```
+Danach installiere mit `./install.sh --prod`.
+
+---
+
+## 🔄 7. Updates einspielen
 Wenn du am Code weiterentwickelt hast:
 1.  Kopiere die neuen Dateien auf den NUC (überschreiben).
 2.  Führe das Update-Skript aus:

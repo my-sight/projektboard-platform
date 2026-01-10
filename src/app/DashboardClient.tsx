@@ -50,6 +50,7 @@ import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import PersonalDashboard from '@/components/dashboard/PersonalDashboard';
 import UserSettingsDialog from '@/components/dashboard/UserSettingsDialog';
+import LicenseWarningDialog from '@/components/admin/LicenseWarningDialog';
 import { supabase } from '@/lib/supabaseClient';
 import { isSuperuserEmail } from '@/constants/superuser';
 
@@ -404,6 +405,7 @@ export default function DashboardClient() {
   // --- RENDER ---
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
+      <LicenseWarningDialog />
       {/* Header Bar */}
       <Box sx={{
         display: 'flex',

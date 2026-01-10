@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Box,
   Button,
@@ -13,6 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function LoginForm() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,7 +34,7 @@ export default function LoginForm() {
       await signIn(email, password);
 
       // Successful login
-      window.location.href = '/';
+      router.push('/');
 
     } catch (err: any) {
       console.error(err);

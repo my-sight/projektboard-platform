@@ -21,8 +21,8 @@ ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
 ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 # Helper: provide dummy keys for build-time static generation (avoids "supabaseUrl/Key required" errors)
-# We use kanban.local as a default to ensure the build succeeds and points to the NUC by default.
-RUN NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL:-http://kanban.local:8000} \
+# We use https://kanban.local as a default to ensure the build succeeds and defaults to HTTPS (Prod).
+RUN NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL:-https://kanban.local} \
     NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzY1NDk2NjAyLCJleHAiOjIwODA4NTY2MDJ9.guLZtDt7lOwdzwCzBiiItMqvcujx4P6INoLd-dTGI0M} \
     SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-build-time-placeholder} \
     npm run build

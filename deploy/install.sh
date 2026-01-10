@@ -8,25 +8,64 @@ NC='\033[0m'
 
 echo -e "${GREEN}=== ProjektBoard Appliance Installer ===${NC}"
 
+# Parse Arguments
+MODE="dev"
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --prod) MODE="prod" ;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+echo -e "Installation Mode: ${YELLOW}$MODE${NC}"
+
+# Pre-flight Check (Prod Only)
+if [ "$MODE" == "prod" ]; then
+    echo "Running Production Pre-flight Checks..."
+    if [ ! -f "/etc/nginx/ssl/server.crt" ] || [ ! -f "/etc/nginx/ssl/server.key" ]; then
+        echo -e "${RED}CRITICAL ERROR: SSL Certificates missing in /etc/nginx/ssl/${NC}"
+        echo "Production mode requires valid certificates."
+        exit 1
+    fi
+    echo -e "${GREEN}SSL Certificates found.${NC}"
+fi
+
 # 0. Pfad-unabhängigkeit sicherstellen (WICHTIG!)
 DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DEPLOY_DIR"
 echo "Arbeitsverzeichnis: $DEPLOY_DIR"
 
-# 1. Berechtigungen sicherstellen (WICHTIG für Kong/Docker)
+
+# 1. Persistence & Permissions
+# Check for RAID Mount (Prod Only)
+if [ "$MODE" == "prod" ] && [ -d "/mnt/raid/data" ]; then
+    echo "RAID array detected at /mnt/raid/data"
+    if [ ! -L "./volumes" ]; then
+        if [ -d "./volumes" ]; then
+            echo "WARNING: Local ./volumes exists. Moving to ./volumes.bak..."
+            mv ./volumes ./volumes.bak
+        fi
+        echo "Symlinking volumes -> /mnt/raid/data"
+        ln -s /mnt/raid/data ./volumes
+    fi
+fi
+
 # 1. Berechtigungen sicherstellen (WICHTIG für Kong/Docker/Storage)
 echo "Sichere Dateiberechtigungen für Volumes..."
 # Explicitly create deep storage structure to prevent 500 Errors
 mkdir -p ./volumes/storage/stub/branding
 mkdir -p ./volumes/storage/stub/avatars
 mkdir -p ./volumes/storage/stub/kanban-thumbnails
+mkdir -p ./volumes/storage/stub/kanban-thumbnails
 
 # Nuclear Permissions for Storage (avoid "Operation not permitted")
-chmod -R 777 ./volumes/storage
+# Use sudo to overcome root ownership by Docker
+sudo chmod -R 777 ./volumes/storage
 
 # General permissions
-find ./volumes -maxdepth 2 -user $(whoami) -exec chmod 755 {} + 2>/dev/null || true
-chmod 644 ./volumes/api/kong.yml 2>/dev/null || true
+sudo find ./volumes -maxdepth 2 -user $(whoami) -exec chmod 755 {} + 2>/dev/null || true
+sudo chmod 644 ./volumes/api/kong.yml 2>/dev/null || true
 
 # 2. Setup Environment
 echo "Configuring environment..."
@@ -77,6 +116,38 @@ if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$JWT_SECRET" ] || [ -z "$ANON_KEY" ] || 
     SERVICE_ROLE_KEY=$(echo "$KEYS" | grep SERVICE_ROLE_KEY | cut -d= -f2)
 fi
 
+# Determine Protocols based on Mode
+if [ "$MODE" == "prod" ]; then
+    PROTOCOL="https"
+    SITE_URL_BASE="https://${NEW_IP}"
+    
+    # ----------------------------------------------------
+    # PROD MODE: FORCE HTTPS (Unified Proxy on Port 443)
+    # ----------------------------------------------------
+    echo -e "${GREEN}Detecting PROD Mode: Enforcing HTTPS...${NC}"
+    SUPABASE_URL_VAL="https://${NEW_IP}"
+    SITE_URL_VAL="https://${NEW_IP}"
+    
+else
+    # ----------------------------------------------------
+    # DEV MODE: DIRECT HTTP (Ports 8000/3000)
+    # ----------------------------------------------------
+    echo -e "${YELLOW}Detecting DEV Mode: Using HTTP Ports...${NC}"
+    PROTOCOL="http"
+    SUPABASE_URL_VAL="http://${NEW_IP}:8000"
+    SITE_URL_VAL="http://${NEW_IP}:3000"
+fi
+
+echo "----------------------------------------------------"
+echo "DEBUG: BUILD ARGUMENTS"
+echo "MODE: $MODE"
+echo "NEW_IP: $NEW_IP"
+echo "SUPABASE_URL_VAL: $SUPABASE_URL_VAL"
+echo "SITE_URL_VAL: $SITE_URL_VAL"
+echo "----------------------------------------------------"
+read -p "Press Enter if these match your expectation..."
+
+
 # Write updated .env
 cat <<EOF > .env
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
@@ -84,9 +155,9 @@ JWT_SECRET=$JWT_SECRET
 ANON_KEY=$ANON_KEY
 SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY
 NUC_IP=$NEW_IP
-NEXT_PUBLIC_SUPABASE_URL=http://${NEW_IP}:8000
+NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL_VAL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY
-GOTRUE_SITE_URL=http://${NEW_IP}:3000
+GOTRUE_SITE_URL=$SITE_URL_VAL
 EOF
 
 export POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY NEW_IP
@@ -114,10 +185,11 @@ cp init_schema.sql volumes/db/init/00-schema.sql
 
 # 5. Build and Start
 echo "Building and starting services..."
-chmod -R 777 volumes/
+echo "Building and starting services..."
+sudo chmod -R 777 volumes/
 
-docker compose --env-file .env build \
-  --build-arg NEXT_PUBLIC_SUPABASE_URL="http://${NEW_IP}:8000" \
+docker compose --env-file .env build --no-cache \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL="$SUPABASE_URL_VAL" \
   --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="$ANON_KEY"
 
 # Start DB for patching (Service name is 'db')
@@ -135,6 +207,7 @@ docker exec -i supabase-db psql -U postgres -d postgres <<EOF
   ALTER ROLE supabase_auth_admin WITH SUPERUSER;
   ALTER ROLE supabase_storage_admin WITH SUPERUSER;
   GRANT postgres TO supabase_auth_admin, supabase_storage_admin;
+  ALTER ROLE service_role BYPASSRLS; -- FIX: Ensure Service Key bypasses RLS
   
   -- Mandatory USAGE on Extensions
   GRANT USAGE ON SCHEMA extensions TO anon, authenticated, authenticator;
@@ -187,20 +260,14 @@ echo "Waiting for Auth Service to be accessible..."
 sleep 10
 
 # API-Based User Seeding (Definitive Solution for Hash Compatibility)
+# API-Based User Seeding (Definitive Solution for Hash Compatibility)
 echo "Creating Superuser via GoTrue API..."
-RESPONSE=$(docker exec projektboard-app curl -s -X POST 'http://kong:8000/auth/v1/admin/users' \
-  -H "Authorization: Bearer $SERVICE_ROLE_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "michael@mysight.net",
-    "password": "Serum4x!",
-    "email_confirm": true,
-    "user_metadata": {
-      "full_name": "Michael",
-      "role": "admin",
-      "company": "MySight"
-    }
-  }')
+# Using wget since Alpine images often lack curl
+RESPONSE=$(docker exec projektboard-app wget -qO- \
+  --header="Authorization: Bearer $SERVICE_ROLE_KEY" \
+  --header="Content-Type: application/json" \
+  --post-data='{"email": "michael@mysight.net", "password": "Serum4x!", "email_confirm": true, "user_metadata": {"full_name": "Michael", "role": "admin", "company": "MySight"}}' \
+  http://kong:8000/auth/v1/admin/users)
 
 echo "User Creation Response: $RESPONSE"
 
@@ -218,3 +285,72 @@ docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.syst
 echo -e "${GREEN}=== Installation Complete ===${NC}"
 echo "Check: http://${NEW_IP}:3000"
 echo "Login: michael@mysight.net / Serum4x!"
+
+# 6. Appliance Configuration (Nginx)
+echo "----------------------------------------------------------------"
+echo "Configuring Nginx Host Proxy..."
+
+NGINX_SITE_AVAILABLE="/etc/nginx/sites-available/projektboard"
+NGINX_SITE_ENABLED="/etc/nginx/sites-enabled/projektboard"
+
+# Helper to link config
+setup_nginx() {
+    local CONFIG_FILE=$1
+    echo "Linking Nginx Config: $CONFIG_FILE"
+    
+    # Check if we have sudo/root access to modify Nginx
+    if [ -w "/etc/nginx/sites-enabled" ] || sudo -n true 2>/dev/null; then
+        
+        # Auto-Install Nginx if missing (Prod Only)
+        if ! command -v nginx &> /dev/null; then
+             echo "Nginx not found. Installing..."
+             sudo apt-get update && sudo apt-get install -y nginx
+        fi
+
+        # Remove old link & default site
+        sudo rm -f "$NGINX_SITE_ENABLED" || true
+        sudo rm -f "/etc/nginx/sites-enabled/default" || true
+
+        
+        # Link new config (Use absolute path to deploy/nginx)
+        ABS_CONFIG_PATH="$DEPLOY_DIR/nginx/$CONFIG_FILE"
+        sudo ln -s "$ABS_CONFIG_PATH" "$NGINX_SITE_ENABLED"
+        
+        # Test and Reload
+        if sudo nginx -t; then
+            sudo systemctl reload nginx
+            echo -e "${GREEN}Nginx reloaded successfully.${NC}"
+            
+            if [ "$MODE" == "prod" ]; then
+                echo -e "${GREEN}Appliance is live at https://${NEW_IP}${NC}"
+            else
+                echo -e "${GREEN}Dev Interface at http://${NEW_IP}:8080${NC}"
+            fi
+        else
+            echo -e "${RED}Nginx configuration failed! Check logs.${NC}"
+        fi
+    else
+        echo -e "${YELLOW}WARNING: No root access to configure Nginx automatically.${NC}"
+        echo "Please manually link $DEPLOY_DIR/nginx/$CONFIG_FILE to /etc/nginx/sites-enabled/projektboard"
+    fi
+}
+
+if [ "$MODE" == "prod" ]; then
+    setup_nginx "landing.prod.conf"
+else
+    setup_nginx "landing.local.conf"
+fi
+
+# 7. Automatisierung (Cron Backup - Prod Only)
+if [ "$MODE" == "prod" ]; then
+    echo "Configuring Backup Cronjob..."
+    CRON_CMD="0 3 * * * $DEPLOY_DIR/backup-appliance.sh >> $DEPLOY_DIR/backups/backup.log 2>&1"
+    
+    # Check if job already exists
+    (crontab -l 2>/dev/null | grep -F "backup-appliance.sh") && echo "Cronjob already exists." || {
+        (crontab -l 2>/dev/null; echo "$CRON_CMD") | crontab -
+        echo -e "${GREEN}Cronjob added: $CRON_CMD${NC}"
+    }
+else
+    echo "Skipping Cronjob (Dev Mode)"
+fi

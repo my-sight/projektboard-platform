@@ -47,7 +47,13 @@ import {
   Dashboard as DashboardIcon,
   Add as AddIcon,
   DeleteForever as DeleteForeverIcon,
-  Edit as EditIcon
+  Edit as EditIcon,
+  Dns as DnsIcon,
+  Storage as StorageIcon,
+  Security as SecurityIcon,
+  CheckCircle as CheckCircleIcon,
+  Error as ErrorIcon,
+  Warning as WarningIcon
 } from '@mui/icons-material';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { supabase } from '@/lib/supabaseClient';
@@ -180,9 +186,10 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const [boardAdminSelections, setBoardAdminSelections] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
-  const { user: currentUser } = useAuth(); // Removed session if not in context
+  const { user: currentUser } = useAuth();
   const currentUserId = currentUser?.id || null;
   const [maxUsers, setMaxUsers] = useState<number | null>(null);
+  const [systemStatus, setSystemStatus] = useState<any>(null);
 
   // Tabs
   const [currentTab, setCurrentTab] = useState(0);
@@ -292,6 +299,15 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
       getLicenseStatus().then(status => {
         if (status.valid && status.maxUsers) setMaxUsers(status.maxUsers);
       }).catch(() => { });
+
+      // Load System Status
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        fetch('/api/admin/system-status', { headers: { Authorization: `Bearer ${session.access_token}` } })
+          .then(res => res.json())
+          .then(data => setSystemStatus(data))
+          .catch(err => console.error('Status fetch error', err));
+      }
     }
   };
 
@@ -612,6 +628,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
           <Tab icon={<PeopleIcon />} label="Benutzer" iconPosition="start" />
           <Tab icon={<BusinessIcon />} label="Abteilungen" iconPosition="start" />
           <Tab icon={<DashboardIcon />} label="Boards & Rechte" iconPosition="start" />
+          <Tab icon={<DnsIcon />} label="Systemstatus" iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -758,6 +775,117 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
             </TableBody>
           </Table>
         </TableContainer>
+      </CustomTabPanel>
+
+      {/* --- TAB 3: SYSTEM STATUS --- */}
+      <CustomTabPanel value={currentTab} index={3}>
+        <Grid container spacing={3}>
+          {/* LIZENZ */}
+          <Grid item xs={12} md={4}>
+            <Card variant="outlined">
+              <CardContent>
+                <Stack direction="row" alignItems="center" gap={1} mb={2}>
+                  <SecurityIcon color="primary" />
+                  <Typography variant="h6">Lizenz</Typography>
+                </Stack>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Typography variant="body2" color="text.secondary">Status</Typography>
+                  <Chip
+                    icon={systemStatus?.license?.valid ? <CheckCircleIcon /> : <ErrorIcon />}
+                    label={systemStatus?.license?.valid ? 'Aktiv' : 'Ungültig'}
+                    color={systemStatus?.license?.valid ? 'success' : 'error'}
+                    size="small"
+                    sx={{ width: 'fit-content' }}
+                  />
+
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Kunde</Typography>
+                  <Typography variant="body1" fontWeight="medium">{systemStatus?.license?.customer || '-'}</Typography>
+
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Gültig bis</Typography>
+                  <Typography variant="body1" fontWeight="medium">
+                    {systemStatus?.license?.expiry ? new Date(systemStatus.license.expiry).toLocaleDateString('de-DE') : '-'}
+                  </Typography>
+
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                    {systemStatus?.license?.expiry ? (() => {
+                      const diff = new Date(systemStatus.license.expiry).getTime() - Date.now();
+                      const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+                      return `Noch ${days} Tage`;
+                    })() : ''}
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* BACKUP */}
+          <Grid item xs={12} md={4}>
+            <Card variant="outlined">
+              <CardContent>
+                <Stack direction="row" alignItems="center" gap={1} mb={2}>
+                  <StorageIcon color="info" />
+                  <Typography variant="h6">Backup Backup</Typography>
+                </Stack>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Typography variant="body2" color="text.secondary">Status</Typography>
+                  <Chip
+                    label={
+                      systemStatus?.backup?.status === 'ok' ? 'Aktuell' :
+                        systemStatus?.backup?.status === 'warning' ? 'Veraltet / Leer' :
+                          systemStatus?.backup?.status === 'not_configured' ? 'Nicht Konfiguriert' : 'Fehler'
+                    }
+                    color={
+                      systemStatus?.backup?.status === 'ok' ? 'success' :
+                        systemStatus?.backup?.status === 'not_configured' ? 'default' : 'warning'
+                    }
+                    size="small"
+                    sx={{ width: 'fit-content' }}
+                  />
+
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Letztes Backup</Typography>
+                  <Typography variant="body1">
+                    {systemStatus?.backup?.lastBackup ? new Date(systemStatus.backup.lastBackup).toLocaleString('de-DE') : 'Nie'}
+                  </Typography>
+
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Anzahl Backups</Typography>
+                  <Typography variant="body1">{systemStatus?.backup?.totalBackups || 0}</Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+
+          {/* RAID */}
+          <Grid item xs={12} md={4}>
+            <Card variant="outlined">
+              <CardContent>
+                <Stack direction="row" alignItems="center" gap={1} mb={2}>
+                  <DnsIcon color={systemStatus?.raid?.healthy === false ? 'error' : 'secondary'} />
+                  <Typography variant="h6">System RAID1</Typography>
+                </Stack>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Typography variant="body2" color="text.secondary">Status</Typography>
+                  <Chip
+                    label={
+                      systemStatus?.raid?.healthy === true ? 'Healthy' :
+                        systemStatus?.raid?.healthy === false ? 'DEGRADED' : 'Unbekannt'
+                    }
+                    color={
+                      systemStatus?.raid?.healthy === true ? 'success' :
+                        systemStatus?.raid?.healthy === false ? 'error' : 'default'
+                    }
+                    size="small"
+                    sx={{ width: 'fit-content' }}
+                  />
+
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Details</Typography>
+                  <Typography variant="body1" sx={{ fontFamily: 'monospace', fontSize: '0.9em' }}>
+                    {systemStatus?.raid?.details || 'Keine Information'}
+                  </Typography>
+                </Box>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
       </CustomTabPanel>
 
       {/* --- DIALOGE --- */}
