@@ -50,8 +50,9 @@ Der Zugriff auf Daten wird nicht nur auf Applikationsebene, sondern direkt in de
 *   **Datenbank:** PostgreSQL 15 (Enterprise Standard).
 *   **Dateien:** Lokales Dateisystem (kein Upload in öffentliche Clouds wie AWS S3).
 
-### 4.2 Backups
-*   **Verschlüsselung:** Backups werden mit **AES-256** (OpenSSL) verschlüsselt, bevor sie auf externe Datenträger geschrieben werden.
+### 4.2 Backups & Disaster Recovery
+*   **Verschlüsselung:** Alle Backups werden automatisch mit **AES-256** (OpenSSL) verschlüsselt, bevor sie geschrieben werden.
+*   **Off-Site Storage:** Das System unterstützt nativ die Einbindung externer Speichermedien (USB, NAS-Mounts). Ein integrierter Prozess ermöglicht die Konfiguration eines dedizierten, externen Backup-Ziels, um IT-Compliance-Anforderungen (z.B. räumliche Trennung) zu erfüllen.
 *   **Inhalt:** Vollständiger Dump der Datenbank + Dateispeicher.
 
 ### 4.3 Physische Sicherheit (TPM Binding)

@@ -279,7 +279,8 @@ docker exec supabase-db psql -U postgres -d postgres -c "
   ON CONFLICT (id) DO UPDATE SET role = 'admin', is_active = true;"
 
 # Final Verification
-LICENSE_TOKEN="eyJleHBpcnkiOiIyMDI2LTEyLTMxIiwiY3VzdG9tZXIiOiJGaXJtZW5uYW1lIiwibWF4VXNlcnMiOjUwLCJjcmVhdGVkIjoiMjAyNS0xMi0yOVQxMzozMjozOS42NTNaIn0=.6AIcBmhbL0c+N/Ju4uCXWo4mK4UYIwD9lr3W8BEpp78O7ETlhqSoFoYbPUJklmKSBxSJbBW5Bvdk2BxQn7BACA=="
+# Use LICENSE_TOKEN from env or fallback to Dev License
+LICENSE_TOKEN="${LICENSE_TOKEN:-eyJleHBpcnkiOiIyMDI2LTEyLTMxIiwiY3VzdG9tZXIiOiJGaXJtZW5uYW1lIiwibWF4VXNlcnMiOjUwLCJjcmVhdGVkIjoiMjAyNS0xMi0yOVQxMzozMjozOS42NTNaIn0=.6AIcBmhbL0c+N/Ju4uCXWo4mK4UYIwD9lr3W8BEpp78O7ETlhqSoFoYbPUJklmKSBxSJbBW5Bvdk2BxQn7BACA==}"
 docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
 
 echo -e "${GREEN}=== Installation Complete ===${NC}"
