@@ -13,7 +13,8 @@ export async function checkLicenseServerAction() {
 
         if (error) {
             console.error('DB Error checking license:', error);
-            return { valid: false, error: `Database Error: ${error.message} (Code: ${error.code})`, expiry: null, customer: null };
+            const { supabaseUrl } = await import('@/lib/supabaseClient').then(m => m.getSupabaseConfig());
+            return { valid: false, error: `Database Error: ${error.message} (Code: ${error.code}) URL: ${supabaseUrl}`, expiry: null, customer: null };
         }
 
         if (!data || !data.value || !data.value.token) {

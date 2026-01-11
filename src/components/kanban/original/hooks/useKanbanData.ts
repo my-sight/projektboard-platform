@@ -183,6 +183,7 @@ export function useKanbanData(
                     // Reset Responsible on Con-Board so it can be assigned locally
                     baseCard.Verantwortlich = undefined;
                     (baseCard as any).VerantwortlichId = undefined;
+                    (baseCard as any).VerantwortlichEmail = undefined;
 
                     // Overwrite Stage/Position with local status
                     if (localStatus) {

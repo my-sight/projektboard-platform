@@ -41,7 +41,7 @@ export function EvaluationsView({ stageChartData }: EvaluationsViewProps) {
                                 <XAxis dataKey="stage" angle={-15} textAnchor="end" height={60} interval={0} />
                                 <YAxis allowDecimals={false} />
                                 <RechartsTooltip
-                                    formatter={(value: number | string) => [`${value} Projekte`, 'Anzahl']}
+                                    formatter={(value: any) => [`${value} Projekte`, 'Anzahl']}
                                 />
                                 <Line type="monotone" dataKey="count" stroke="#1976d2" strokeWidth={2} dot />
                             </LineChart>
