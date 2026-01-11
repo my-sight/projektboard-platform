@@ -152,6 +152,7 @@ export function useKanbanData(
                     baseCard.StatusHistory = [];
                     baseCard.TR_Neu = undefined;
                     baseCard.SOP_Neu = undefined;
+                    baseCard.PhaseTransition = undefined; // Decouple Phase Transition
 
                     // Move Parent Responsible to Team
                     const parentResp = baseCard.Verantwortlich;
@@ -471,7 +472,7 @@ export function useKanbanData(
             const localKeys = [
                 'Board Stage', 'position', 'Archived', 'ArchivedDate',
                 'Eskalation', 'TR_Datum', 'SOP_Datum', 'Due Date', 'Status Kurz', 'StatusHistory',
-                'TR_Neu', 'SOP_Neu', 'Ampel',
+                'TR_Neu', 'SOP_Neu', 'Ampel', 'PhaseTransition', // ADDED PhaseTransition
                 'Verantwortlich', 'VerantwortlichId', 'VerantwortlichEmail'
             ];
 

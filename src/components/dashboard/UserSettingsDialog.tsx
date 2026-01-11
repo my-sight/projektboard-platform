@@ -308,6 +308,7 @@ export default function UserSettingsDialog({ open, onClose }: UserSettingsDialog
                                 <MenuItem value="de">Deutsch</MenuItem>
                                 <MenuItem value="en">English</MenuItem>
                                 <MenuItem value="pl">Polski</MenuItem>
+                                <MenuItem value="cn">中文 (Chinese)</MenuItem>
                             </Select>
                         </FormControl>
                     </Box>
@@ -360,6 +361,6 @@ export default function UserSettingsDialog({ open, onClose }: UserSettingsDialog
                     {t('common.save')}
                 </Button>
             </DialogActions>
-        </Dialog>
+        </Dialog >
     );
 }

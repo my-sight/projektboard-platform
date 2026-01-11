@@ -15,10 +15,11 @@ interface KanbanKPIDialogProps {
     memberDistribution: { name: string; count: number }[];
     laneDistribution: { name: string; count: number }[];
     trLabel: string;
+    sopLabel: string;
     idFor: (card: any) => string;
 }
 
-export function KanbanKPIDialog({ open, onClose, kpis, distribution, memberDistribution, laneDistribution, trLabel, idFor }: KanbanKPIDialogProps) {
+export function KanbanKPIDialog({ open, onClose, kpis, distribution, memberDistribution, laneDistribution, trLabel, sopLabel, idFor }: KanbanKPIDialogProps) {
     const { t } = useLanguage();
 
     const percentage = (count: number) => {
@@ -117,6 +118,42 @@ export function KanbanKPIDialog({ open, onClose, kpis, distribution, memberDistr
                             ))}
                             {(!kpis.nextTrs || kpis.nextTrs.length === 0) && (
                                 <Grid item xs={12}><Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>Keine anstehenden TRs gefunden.</Typography></Grid>
+                            )}
+                        </Grid>
+
+                        <Typography variant="h6" gutterBottom sx={{ mt: 3, color: 'text.secondary' }}>
+                            {t('kanban.upcoming')} {sopLabel}
+                        </Typography>
+                        <Grid container spacing={2}>
+                            {(kpis.nextSops || []).map((card: any) => (
+                                <Grid item xs={12} md={4} key={idFor(card)}>
+                                    <Card variant="outlined" sx={{ height: '100%', p: 1 }}>
+                                        <CardContent sx={{ p: '16px !important' }}>
+                                            <Typography variant="subtitle2" noWrap title={card.Teil} sx={{ fontWeight: 'bold' }}>
+                                                {card.Teil || 'Kein Titel'}
+                                            </Typography>
+                                            <Typography variant="caption" display="block" color="text.secondary" gutterBottom>
+                                                #{card.Nummer || '-'}
+                                            </Typography>
+
+                                            <Box sx={{ mt: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <Typography variant="caption">Original:</Typography>
+                                                    <Typography variant="caption">{card._originalDate ? card._originalDate.toLocaleDateString('de-DE') : '-'}</Typography>
+                                                </Box>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                    <Typography variant="caption">Aktuell (Neu):</Typography>
+                                                    <Typography variant="caption" sx={{ fontWeight: 'bold', color: card._currentDate ? 'primary.main' : 'text.primary' }}>
+                                                        {card._effectiveDate ? card._effectiveDate.toLocaleDateString('de-DE') : '-'}
+                                                    </Typography>
+                                                </Box>
+                                            </Box>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                            ))}
+                            {(!kpis.nextSops || kpis.nextSops.length === 0) && (
+                                <Grid item xs={12}><Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>Keine anstehenden SOPs gefunden.</Typography></Grid>
                             )}
                         </Grid>
 

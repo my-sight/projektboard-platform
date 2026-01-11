@@ -58,6 +58,9 @@ docker compose ps
 Wenn du mutig bist, kannst du beides in einer Zeile machen:
 
 ```bash
-rsync -avz --exclude 'node_modules' --exclude '.git' --exclude '.next' . michael@kanban.local:~/projektboard-platform && ssh -t michael@kanban.local "cd ~/projektboard-platform/deploy && sudo ./install.sh --prod"
+rsync -avz --exclude 'node_modules' --exclude '.git' --exclude '.next' . michael@kanban.local:~/projektboard-platform && \
+# 2. Update & Rebuild App (Production Mode)
+# WICHTIG: ./install.sh --prod nutzen, damit HTTPS URLs korrekt gesetzt werden!
+ssh -t michael@kanban.local "cd ~/projektboard-platform/deploy && sudo ./install.sh --prod"
 ```
 *(Kopiert erst, und führt nur bei Erfolg das Update aus)*

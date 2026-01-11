@@ -19,6 +19,7 @@ export interface KanbanKPIs {
     laneDistribution: Record<string, number>;
     totalTrDeviation: number;
     nextTrs: ProjectBoardCard[];
+    nextSops: ProjectBoardCard[];
 }
 
 export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: ProjectBoardCard) => string, profiles: any[] = []) {
@@ -39,7 +40,8 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
             memberDistribution: {},
             laneDistribution: {},
             totalTrDeviation: 0,
-            nextTrs: []
+            nextTrs: [],
+            nextSops: []
         };
 
         const now = new Date();
@@ -116,6 +118,24 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
             .map(card => {
                 const original = nullableDate(card["TR_Datum"]);
                 const current = nullableDate(card["TR_Neu"]);
+                const effectiveDate = current || original;
+                return { card, original, current, effectiveDate };
+            })
+            .filter(item => item.effectiveDate && item.effectiveDate >= now)
+            .sort((a, b) => (a.effectiveDate!.getTime() - b.effectiveDate!.getTime()))
+            .slice(0, 3)
+            .map(item => ({
+                ...item.card,
+                _originalDate: item.original,
+                _currentDate: item.current,
+                _effectiveDate: item.effectiveDate
+            }));
+
+        // Calculate Next 3 SOPs
+        kpis.nextSops = activeCards
+            .map(card => {
+                const original = nullableDate(card["SOP_Datum"]);
+                const current = nullableDate(card["SOP_Neu"]);
                 const effectiveDate = current || original;
                 return { card, original, current, effectiveDate };
             })

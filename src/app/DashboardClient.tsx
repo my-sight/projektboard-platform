@@ -425,10 +425,11 @@ export default function DashboardClient() {
 
         <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'center' }}>
           <Button variant="outlined" size="small" onClick={() => {
-            const nextLang: Record<string, 'de' | 'en' | 'pl'> = {
+            const nextLang: Record<string, 'de' | 'en' | 'pl' | 'cn'> = {
               'de': 'en',
               'en': 'pl',
-              'pl': 'de'
+              'pl': 'cn',
+              'cn': 'de'
             };
             setLanguage(nextLang[language] || 'de');
           }}>

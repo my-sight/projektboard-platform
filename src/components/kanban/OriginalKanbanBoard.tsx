@@ -440,6 +440,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           memberDistribution={memberDistribution}
           laneDistribution={laneDistribution}
           trLabel={customLabels.tr}
+          sopLabel={customLabels.sop}
           idFor={idFor}
         />
 

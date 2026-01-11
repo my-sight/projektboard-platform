@@ -17,7 +17,7 @@ export interface Profile {
   company: string | null;
   department_id: string | null;
   department_name?: string | null;
-  preferred_language: 'de' | 'en' | 'pl' | null;
+  preferred_language: 'de' | 'en' | 'pl' | 'cn' | null;
   is_active: boolean;
 }
 
