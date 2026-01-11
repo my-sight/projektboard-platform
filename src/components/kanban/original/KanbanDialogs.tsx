@@ -630,15 +630,17 @@ export function EditCardDialog({
                       <MenuItem value=""><em>{t('kanban.select')}</em></MenuItem>
                       {(() => {
                         // Sort users by department then name
-                        const sortedUsers = [...users].sort((a, b) => {
-                          const deptA = (a.department || a.company || t('kanban.noDepartment')).toLowerCase();
-                          const deptB = (b.department || b.company || t('kanban.noDepartment')).toLowerCase();
-                          if (deptA < deptB) return -1;
-                          if (deptA > deptB) return 1;
-                          const nameA = (a.full_name || a.name || a.email).toLowerCase();
-                          const nameB = (b.full_name || b.name || b.email).toLowerCase();
-                          return nameA.localeCompare(nameB);
-                        });
+                        const sortedUsers = [...users]
+                          .filter(u => !['michael@mysight.net'].includes(u.email))
+                          .sort((a, b) => {
+                            const deptA = (a.department || a.company || t('kanban.noDepartment')).toLowerCase();
+                            const deptB = (b.department || b.company || t('kanban.noDepartment')).toLowerCase();
+                            if (deptA < deptB) return -1;
+                            if (deptA > deptB) return 1;
+                            const nameA = (a.full_name || a.name || a.email).toLowerCase();
+                            const nameB = (b.full_name || b.name || b.email).toLowerCase();
+                            return nameA.localeCompare(nameB);
+                          });
 
                         const items: JSX.Element[] = [];
                         let lastDept = '';
@@ -748,18 +750,20 @@ export function EditCardDialog({
                 }}
               >
                 <MenuItem value=""><em>{t('kanban.notAssigned')}</em></MenuItem>
-                {boardMembers.map((user: any) => (
-                  <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {(user.full_name || user.name || user.email) ?? t('kanban.unknown')}
-                        {user.alias ? ` (${user.alias})` : ''}
-                        {user.department || user.company ? ` – ${user.department || user.company}` : ''}
-                      </Typography>
-                      {user.email && <Typography variant="caption" color="text.secondary">{user.email}</Typography>}
-                    </Box>
-                  </MenuItem>
-                ))}
+                {boardMembers
+                  .filter((user: any) => !['michael@mysight.net'].includes(user.email))
+                  .map((user: any) => (
+                    <MenuItem key={user.id || user.email} value={user.full_name || user.name || user.email}>
+                      <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {(user.full_name || user.name || user.email) ?? t('kanban.unknown')}
+                          {user.alias ? ` (${user.alias})` : ''}
+                          {user.department || user.company ? ` – ${user.department || user.company}` : ''}
+                        </Typography>
+                        {user.email && <Typography variant="caption" color="text.secondary">{user.email}</Typography>}
+                      </Box>
+                    </MenuItem>
+                  ))}
               </Select>
 
               <Typography>{t('kanban.dueDate')}</Typography>

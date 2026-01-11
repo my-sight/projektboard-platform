@@ -236,19 +236,66 @@ Danach installiere mit `./install.sh --prod`.
 
 ## 🔄 7. Updates einspielen
 Wenn du am Code weiterentwickelt hast:
-1.  Kopiere die neuen Dateien auf den NUC (überschreiben).
-2.  Führe das Update-Skript aus:
+1.  **Code Übertragen (Safe Mode):**
+    Führe dies **auf deinem Entwickler-Mac** aus (nicht auf dem NUC!).
+    
     ```bash
-    cd projektboard-platform/deploy
-    ./update.sh
+    # WICHTIG: --exclude '.env' verhindert, dass deine lokale Config die Prod-Config überschreibt!
+    rsync -avz --exclude 'node_modules' --exclude '.git' --exclude '.next' --exclude '.env' --exclude '.env.local' ./ michael@kanban.local:~/projektboard-platform
     ```
+
+2.  **Update anwenden:**
+    Führe dies auf dem Mac aus (oder per SSH):
+    ```bash
+    ssh -t michael@kanban.local "cd ~/projektboard-platform/deploy && \
+    docker compose build --no-cache app && \
+    docker compose up -d app"
+    ```
+    *(Dies baut den App-Container neu und startet ihn neu. Die Datenbank bleibt unberührt!)*
 
 **Hinweis zur Datenbank:**
 Das Skript prüft automatisch den Ordner `supabase/migrations`. Wenn du neue Tabellen angelegt hast (und eine Migrations-Datei erstellt hast), werden diese automatisch in die Datenbank eingespielt!
 
 ---
 
-## 🔑 7. Lizenzierung (Automatisch)
+## 💾 8. Offline-Update per USB-Stick
+Für Kunden ohne Internetzugang oder VPN kannst du Updates einfach per USB-Stick einspielen.
+
+### A) Stick vorbereiten (am Mac)
+1.  Nimm einen USB-Stick (Format: ExFAT oder FAT32).
+2.  **Kopieren per Terminal (Empfohlen):**
+    So kopierst du das Projekt sauber (ohne riesige `node_modules`) auf den Stick.
+
+    ```bash
+    # 1. In deinen Projektordner wechseln
+    cd "/Users/michael/Documents/mysight pmo/projektboard-platform"
+
+    # 2. Prüfen, wie der Stick heißt
+    ls /Volumes
+
+    # 3. Kopieren (ohne unnötigen Ballast)
+    # Ersetze 'NAME_DES_STICKS' mit dem Namen aus Schritt 2
+    rsync -av --progress --exclude='node_modules' --exclude='.git' --exclude='.next' ./ /Volumes/NAME_DES_STICKS/projektboard-platform
+    ```
+    *(Die `.env` Datei wird mitkopiert, aber vom Update-Script auf dem NUC ignoriert, sodass deine Produktions-Passwörter sicher bleiben).*
+
+### B) Update am NUC durchführen
+1.  Stecke den Stick in den NUC.
+2.  Logge dich am NUC ein.
+3.  Starte das Update:
+    ```bash
+    cd projektboard-platform/deploy
+    sudo ./usb_update.sh
+    ```
+4.  Das Script macht den Rest:
+    *   Erkennt den Stick.
+    *   Kopiert den Code (ohne die geheimen Passwörter zu überschreiben).
+    *   Baut die App neu und startet sie neu.
+5.  Sobald "Update Complete" erscheint, kannst du den Stick abziehen.
+
+---
+
+## 🔑 9. Lizenzierung (Automatisch)
 Das System wird mit einer **Standard-Lizenz** ausgeliefert:
 - **Gültig bis:** 31.12.2030
 - **Max. Benutzer:** 2
