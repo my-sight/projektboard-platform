@@ -7,7 +7,8 @@ export const cn = {
         edit: "编辑",
         back: "返回",
         error: "错误",
-        success: "成功"
+        success: "成功",
+        today: "今天"
     },
     dashboard: {
         welcome: "欢迎回来",
@@ -338,6 +339,8 @@ export const cn = {
         addMemberError: '添加成员时出错',
         removeMemberError: '移除成员时出错',
         deleteTopicError: '删除热门话题时出错',
+        projectTimeline: '🗓️ 项目时间表 (至 {label} + 3 个月)',
+        noSopProjects: '未找到包含 SOP 日期的项目。',
     },
     auth: {
         loginTitle: '登录',

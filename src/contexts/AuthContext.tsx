@@ -54,7 +54,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const fetchProfile = useCallback(async (userId: string) => {
     // Add a safety timeout for the profile fetch
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Profile fetch timeout')), 5000)
+      setTimeout(() => reject(new Error('Profile fetch timeout')), 15000)
     );
 
     try {
@@ -128,12 +128,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       const initTimeout = setTimeout(() => {
         setLoading(prev => {
           if (prev) {
-            console.warn('[AuthContext] Auth initialization timed out (8s). Proceeding with current state.');
+            console.warn('[AuthContext] Auth initialization timed out (15s). Proceeding with current state.');
             return false;
           }
           return prev;
         });
-      }, 8000);
+      }, 15000);
 
       try {
         const { supabaseUrl } = getSupabaseConfig();

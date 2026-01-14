@@ -7,7 +7,8 @@ export const pl = {
         edit: "Edytuj",
         back: "Wstecz",
         error: "Błąd",
-        success: "Sukces"
+        success: "Sukces",
+        today: "Dziś"
     },
     dashboard: {
         welcome: "Witaj z powrotem",
@@ -337,6 +338,8 @@ export const pl = {
         addMemberError: 'Błąd dodawania członka',
         removeMemberError: 'Błąd usuwania członka',
         deleteTopicError: 'Błąd usuwania głównego tematu',
+        projectTimeline: '🗓️ Oś czasu projektu (do {label} + 3 miesiące)',
+        noSopProjects: 'Nie znaleziono projektów z datą SOP.',
     },
     auth: {
         loginTitle: 'Logowanie',

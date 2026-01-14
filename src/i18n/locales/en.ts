@@ -7,7 +7,8 @@ export const en = {
         edit: "Edit",
         back: "Back",
         error: "Error",
-        success: "Success"
+        success: "Success",
+        today: "Today"
     },
     dashboard: {
         welcome: "Welcome back",
@@ -338,6 +339,8 @@ export const en = {
         addMemberError: 'Error adding member',
         removeMemberError: 'Error removing member',
         deleteTopicError: 'Error deleting top topic',
+        projectTimeline: '🗓️ Project Timelines (until {label} + 3 Months)',
+        noSopProjects: 'No projects with SOP date found.',
     },
     auth: {
         loginTitle: 'Login',

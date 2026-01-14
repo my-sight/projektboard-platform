@@ -40,6 +40,7 @@ import {
   formatWeekInputValue,
   parseWeekInputValue
 } from '@/utils/dateUtils';
+import { ProjectTimelineView } from './management/ProjectTimelineView';
 
 
 
@@ -173,6 +174,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
+  // removed effectiveBoardId state as we will use local boardId for actions
+  const [completionLabel, setCompletionLabel] = useState<string>('SOP');
 
   const [profiles, setProfiles] = useState<ClientProfile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -201,6 +204,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const [editingEscalation, setEditingEscalation] = useState<EscalationView | null>(null);
   const [escalationDraft, setEscalationDraft] = useState<EscalationDraft | null>(null);
   const [stageChartData, setStageChartData] = useState<{ stage: string; count: number }[]>([]);
+  const [allCards, setAllCards] = useState<KanbanCardRow[]>([]);
 
   const selectedWeekDate = useMemo(() => {
     if (!selectedWeek) {
@@ -339,26 +343,39 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         setLoading(true);
       }
 
+      // 1. Fetch Board Config first to determine Con-Board status
+      const { data: boardConfig } = await supabase.from('kanban_boards').select('*').eq('id', boardId).single();
+
+      const sopLabel = boardConfig?.settings?.sopLabel || 'SOP';
+      setCompletionLabel(sopLabel);
+
+      const boardResult = boardConfig;
+      const targetBoardId = boardConfig?.parent_id || boardId;
+
+
       const profilePromise = fetchClientProfiles();
 
+      // HYBRID FETCHING:
+      // Cards -> From Parent (targetBoardId)
+      // Everything else -> From Self (boardId)
       const [
         departmentsResult,
         membersResult,
         topicsResult,
         escalationsResult,
         cardsResult,
-        boardResult,
         historyResult,
+        localStatusesResult
       ] = await Promise.all([
         (async () => (await supabase.from('departments').select('*')).data || [])(),
         (async () => (await supabase.from('board_members').select('*').eq('board_id', boardId)).data || [])(),
         (async () => (await supabase.from('board_top_topics').select('*').eq('board_id', boardId)).data || [])(),
         (async () => (await supabase.from('board_escalations').select('*').eq('board_id', boardId)).data || [])(),
-        // kanban_cards: in PB we filtered by board_id. 
-        // Supabase 'kanban_cards' table has 'board_id'.
-        (async () => (await supabase.from('kanban_cards').select('*').eq('board_id', boardId)).data || [])(),
-        (async () => (await supabase.from('kanban_boards').select('*').eq('id', boardId).single()).data)(),
+        // Cards from TARGET (Parent)
+        (async () => (await supabase.from('kanban_cards').select('*').eq('board_id', targetBoardId)).data || [])(),
         (async () => (await supabase.from('board_escalation_history').select('*').eq('board_id', boardId)).data || [])(),
+        // Local Statuses (for Con-Board overrides)
+        (async () => (await supabase.from('board_card_statuses').select('*').eq('board_id', boardId)).data || [])(),
       ]);
 
       // Client-side sorting
@@ -396,40 +413,57 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         completion_steps: e.completion_steps
       })) as EscalationRecord[];
 
-      const cardRows = cardsResult.map(c => ({
-        id: c.id,
-        card_id: c.column_id ? c.id : c.id, // NOTE: PB might not store 'card_id' separately like Supabase did? 
-        // Wait, 'card_id' in Supabase usually referred to the ID of the card.
-        // In PB, id is the ID.
-        // BUT, buildEscalationViews uses c.card_id to map to escalation.card_id.
-        // I should ensure kanban_cards in PB has 'card_data'.
-        // The setup script says: { name: 'card_data', type: 'json' }, { name: 'column_id', ... }
-        // So 'id' is the unique ID.
-        // Let's assume c.id is what we want.
-        card_data: c.card_data,
-        project_number: c.card_data?.Nummer, // Fallback if not explicit column
-        project_name: c.card_data?.Teil
-      })) as KanbanCardRow[];
+      // Build Status Map for Local Overrides
+      const statusMap = new Map();
+      localStatusesResult.forEach((s: any) => statusMap.set(s.card_id, s));
 
-      // Fix assumption: 'card_id' in KanbanCardRow should probably be 'id' from DB
-      // Supabase query was: select('id, card_id, card_data, ...')
-      // If card_id is expected to be a separate field, PB might not have it unless I added it.
-      // But standard kanban cards usually use 'id'.
-      // I'll map id to card_id for compatibility.
-      const compatibleCardRows = cardsResult.map(c => ({
-        id: c.id,
-        card_id: c.id, // Use DB ID
-        card_data: c.card_data,
-        project_number: c.card_data?.Nummer,
-        project_name: c.card_data?.Teil,
-        board_id: c.board_id
-      })) as KanbanCardRow[];
+      // Construct Merged Cards
+      const mergedCardRows = cardsResult.map(c => {
+        // Start with Parent Data
+        const baseData = { ...c.card_data };
 
-      const escalationViews = buildEscalationViews(boardId, compatibleCardRows, escalationRecords);
+        // GLOBAL: Filter out archived cards (Legacy Flag)
+        if (baseData['Archived'] === '1') return null;
+
+        const localStatus = statusMap.get(c.id);
+
+        // If we are on a Con-Board (target != boardId), apply local logic
+        if (targetBoardId !== boardId) {
+          if (localStatus?.archived) return null; // Filter out locally archived
+
+          if (localStatus) {
+            // Apply Local Stage
+            baseData['Board Stage'] = localStatus.column_id;
+            // Apply Local Data Overrides (Dates, Escalations, etc.)
+            if (localStatus.local_data) {
+              Object.assign(baseData, localStatus.local_data);
+            }
+          } else {
+            // Default Appearance for new cards
+            baseData['Board Stage'] = 'Speicher';
+          }
+        }
+
+        // GLOBAL KPI FILTER: Exclude "Fertig" cards from Management View
+        if (baseData['Board Stage'] === 'Fertig') return null;
+
+        return {
+          id: c.id,
+          card_id: c.id,
+          card_data: baseData,
+          project_number: baseData.Nummer,
+          project_name: baseData.Teil,
+          board_id: boardId // Context is Local Board
+        };
+      }).filter(c => c !== null) as KanbanCardRow[];
+
+      // Use merged cards for view generation
+      const escalationViews = buildEscalationViews(boardId, mergedCardRows, escalationRecords);
       const settingsRow = boardResult;
       const stageOrder = extractStageOrder(settingsRow?.settings);
       const baseStages = stageOrder.length ? stageOrder : DEFAULT_STAGE_NAMES;
-      const stageCounts = compatibleCardRows.reduce((map, row) => {
+
+      const stageCounts = mergedCardRows.reduce((map, row) => {
         const raw = (row.card_data ?? {}) as Record<string, unknown>;
         const stage =
           stringOrNull(raw['Board Stage']) ??
@@ -438,6 +472,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         map.set(stage, (map.get(stage) ?? 0) + 1);
         return map;
       }, new Map<string, number>());
+
       baseStages.forEach(stage => {
         if (!stageCounts.has(stage)) {
           stageCounts.set(stage, 0);
@@ -487,7 +522,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       });
       setEscalationHistory(historyMap);
       setEscalationHistoryReady(true);
+      setEscalationHistory(historyMap);
+      setEscalationHistoryReady(true);
       setStageChartData(chartData);
+      setAllCards(mergedCardRows);
       return true;
     } catch (error) {
       handleError(error, t('boardManagement.loadBoardError'));
@@ -938,6 +976,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       />
 
       <EvaluationsView stageChartData={stageChartData} />
+
+      <ProjectTimelineView cards={allCards} members={members} completionLabel={completionLabel} />
 
       <EscalationsView
         filteredEscalations={filteredEscalations}

@@ -542,7 +542,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         }).sort((a, b) => b.count - a.count);
 
         const currentDone = cards.filter(c => c.status === 'done').length;
-        return { activeCount: active.length, backlogCount: backlog.length, doneCount: completedCount + currentDone, overdueCount: overdue.length, importantCount: cards.filter(c => c.important).length, watchCount: cards.filter(c => c.watch).length, memberLoad };
+        return { activeCount: active.length, backlogCount: backlog.length, doneCount: currentDone, overdueCount: overdue.length, importantCount: cards.filter(c => c.important).length, watchCount: cards.filter(c => c.watch).length, memberLoad };
     }, [cards, members, completedCount]);
 
     // --- Actions ---

@@ -44,10 +44,7 @@ export default function LoginForm() {
     }
   };
 
-  // Magic Link removed for local offline version
-  const handleMagicLink = async () => {
-    setError("Magic Link is not supported in offline mode.");
-  };
+
 
   return (
     <Box component="form" onSubmit={handleLogin} sx={{ mt: 1, width: '100%' }}>
@@ -91,14 +88,7 @@ export default function LoginForm() {
         {loading ? <CircularProgress size={24} /> : t('auth.loginButton')}
       </Button>
 
-      <Button
-        fullWidth
-        variant="text"
-        onClick={handleMagicLink}
-        disabled={loading || !email}
-      >
-        {t('auth.magicLinkButton')}
-      </Button>
+
     </Box>
   );
 }

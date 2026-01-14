@@ -96,7 +96,7 @@ export function KanbanCard({
 
   const dueDate = nullableDate(card['Due Date']);
   const trCompleted = toBoolean(card.TR_Completed);
-  const isOverdue = !!dueDate && !trCompleted && dueDate < new Date();
+  const isOverdue = !!dueDate && dueDate < new Date();
   const hasPriority = toBoolean(card.Priorität);
   const sopDate = nullableDate(card.SOP_Datum);
 

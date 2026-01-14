@@ -25,7 +25,7 @@ export interface KanbanKPIs {
 export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: ProjectBoardCard) => string, profiles: any[] = []) {
 
     const calculateKPIs = useCallback((): KanbanKPIs => {
-        const activeCards = rows.filter(card => card["Archived"] !== "1");
+        const activeCards = rows.filter(card => card["Archived"] !== "1" && card["Board Stage"] !== "Fertig");
         const kpis: KanbanKPIs = {
             totalCards: activeCards.length,
             trOverdue: [],
@@ -62,19 +62,19 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
             const eskalation = String(card.Eskalation || '').toUpperCase();
             if (eskalation === 'R' || eskalation === 'SK') kpis.rEscalations.push(card);
 
-            const trDateStr = card['TR_Neu'] || card['TR_Datum'];
-            const trCompleted = toBoolean(card.TR_Completed);
+            // KPI: Overdue (Based on "Due Date" / "Fällig am")
+            // Requirement update: Decoupled from TR status. Independent check.
+            const dueDateStr = card["Due Date"];
+            if (dueDateStr) {
+                const dueDate = nullableDate(dueDateStr);
+                if (dueDate) {
+                    dueDate.setHours(0, 0, 0, 0);
 
-            if (trDateStr && !trCompleted) {
-                const trDate = nullableDate(trDateStr);
-                if (trDate) {
-                    trDate.setHours(0, 0, 0, 0);
-
-                    if (trDate < now) {
+                    if (dueDate < now) {
                         kpis.trOverdue.push(card);
-                    } else if (trDate.toISOString().split('T')[0] === todayStr) {
+                    } else if (dueDate.toISOString().split('T')[0] === todayStr) {
                         kpis.trToday.push(card);
-                    } else if (trDate <= endOfWeek) {
+                    } else if (dueDate <= endOfWeek) {
                         kpis.trThisWeek.push(card);
                     }
                 }
@@ -104,12 +104,8 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
             }
             kpis.memberDistribution[resolvedName] = (kpis.memberDistribution[resolvedName] || 0) + 1;
 
-            // Simplified lane logic: Assuming "Lane" field or mapped from "Board Lane" if applicable from other logic
-            // Based on previous chats, there are "lanes" in settings mapped to card fields.
-            // Often stored in "Lane" or inferred. Let's check card structure briefly?
-            // Relying on previous knowledge: "Lane" field exists on card as key.
-            // If not directly, I'll allow "Allgemein" or check if `card.Lane` works.
-            const lane = (card as any)["Lane"] ? String((card as any)["Lane"]).trim() : 'Allgemein';
+            // Corrected Lane Logic: Use "Swimlane" field
+            const lane = (card as any)["Swimlane"] ? String((card as any)["Swimlane"]).trim() : 'Nicht zugeordnet';
             kpis.laneDistribution[lane] = (kpis.laneDistribution[lane] || 0) + 1;
         });
 
@@ -171,7 +167,11 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
 
     const laneDistribution = useMemo(() => {
         const dist = Object.entries(kpis.laneDistribution).map(([name, count]) => ({ name, count: count as number }));
-        dist.sort((a, b) => b.count - a.count); // Descending by count
+        dist.sort((a, b) => {
+            if (a.name === 'Nicht zugeordnet') return 1;
+            if (b.name === 'Nicht zugeordnet') return -1;
+            return b.count - a.count;
+        });
         return dist;
     }, [kpis.laneDistribution]);
 

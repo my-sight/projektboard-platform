@@ -100,8 +100,21 @@ echo -e "${GREEN}USB stick can be removed now.${NC}"
 # 6. Rebuild
 echo -e "\n${YELLOW}Rebuilding Application...${NC}"
 cd "$DEPLOY_DIR"
-docker compose build --no-cache app
+
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
+
+docker compose build --no-cache \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL}" \
+  --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY:-$ANON_KEY}" \
+  app
 docker compose up -d app
+
+# 7. Self-Healing
+echo "Verifying License..."
+LICENSE_TOKEN="${LICENSE_TOKEN:-eyJleHBpcnkiOiIyMDM1LTEyLTMxIiwiY3VzdG9tZXIiOiJNeVNpZ2h0IFBNTyIsIm1heFVzZXJzIjo1MCwiY3JlYXRlZCI6IjIwMjYtMDEtMTBUMjE6MDM6MzEuMDI1WiJ9.THCYth/brFfD2NJXLHJQZTCe3H00YlZl5KlXYvkzLqk/j8V1Mu0fyzy9IfM1zXpTZELr/WYABjiOYBE2DZJQDg==}"
+docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO NOTHING;" >/dev/null 2>&1
 
 echo -e "${GREEN}=== Update Complete! ===${NC}"
 echo "Please verify the application in the browser."

@@ -42,6 +42,12 @@ docker compose up -d app"
 
 ```bash
 rsync -avz --exclude 'node_modules' --exclude '.git' --exclude '.next' --exclude '.env' --exclude '.env.local' . michael@kanban.local:~/projektboard-platform && \
+ssh -t michael@kanban.local "cd ~/projektboard-platform/deploy && ./update.sh"
+```
+
+**(Alternative: Schritt für Schritt)**
+Falls du kein Script nutzen willst, ist dies der manuelle Weg:
+```bash
 ssh -t michael@kanban.local "cd ~/projektboard-platform/deploy && \
 docker compose build --no-cache app && \
 docker compose up -d app"

@@ -12,7 +12,7 @@ import 'dayjs/locale/zh-cn';
 interface LanguageContextType {
     language: Language;
     setLanguage: (lang: Language) => Promise<void>;
-    t: (key: string) => string;
+    t: (key: string, variables?: Record<string, string | number>) => string;
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
@@ -51,7 +51,7 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
         }
     };
 
-    const t = (key: string): string => {
+    const t = (key: string, variables?: Record<string, string | number>): string => {
         const keys = key.split('.');
         let value: any = translations[language];
 
@@ -63,7 +63,15 @@ export const LanguageProvider = ({ children }: { children: React.ReactNode }) =>
             }
         }
 
-        return typeof value === 'string' ? value : key;
+        let text = typeof value === 'string' ? value : key;
+
+        if (variables) {
+            Object.entries(variables).forEach(([k, v]) => {
+                text = text.replace(new RegExp(`{${k}}`, 'g'), String(v));
+            });
+        }
+
+        return text;
     };
 
     return (

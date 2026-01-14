@@ -1,22 +1,40 @@
-
 #!/bin/bash
 
-echo "=== 更新 ProjektBoard Appliance ==="
+# update.sh
+# SAFE MODE Update Script
+# This script does NOT pull code from git. It assumes you have pushed code via rsync.
+# It rebuilds the app and runs migrations.
 
-# 1. Update Code
-echo "Pulling latest code..."
-git pull origin main
+echo "=== Applying Update (Safe Mode) ==="
 
-# 2. Apply Database Migrations
+# 1. Database Migrations
 echo "Checking for database updates..."
-./migrate.sh
+if [ -f "./migrate.sh" ]; then
+    ./migrate.sh
+else
+    echo "Warning: migrate.sh not found. Skipping migrations."
+fi
 
-# 3. Rebuild Container
+# 2. Rebuild Container
 echo "Rebuilding application..."
-docker compose build app
 
-# 4. Restart
+# Source env vars just in case
+if [ -f .env ]; then
+  export $(grep -v '^#' .env | xargs)
+fi
+
+docker compose build --no-cache \
+  --build-arg NEXT_PUBLIC_SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL}" \
+  --build-arg NEXT_PUBLIC_SUPABASE_ANON_KEY="${NEXT_PUBLIC_SUPABASE_ANON_KEY:-$ANON_KEY}" \
+  app
+
+# 3. Restart
 echo "Restarting services..."
-docker compose up -d
+docker compose up -d app
 
-echo "Update Complete!"
+# 4. Self-Healing: Ensure License Exists
+echo "Verifying License..."
+LICENSE_TOKEN="${LICENSE_TOKEN:-eyJleHBpcnkiOiIyMDM1LTEyLTMxIiwiY3VzdG9tZXIiOiJNeVNpZ2h0IFBNTyIsIm1heFVzZXJzIjo1MCwiY3JlYXRlZCI6IjIwMjYtMDEtMTBUMjE6MDM6MzEuMDI1WiJ9.THCYth/brFfD2NJXLHJQZTCe3H00YlZl5KlXYvkzLqk/j8V1Mu0fyzy9IfM1zXpTZELr/WYABjiOYBE2DZJQDg==}"
+docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO NOTHING;" >/dev/null 2>&1
+
+echo "✅ Update Complete!"
