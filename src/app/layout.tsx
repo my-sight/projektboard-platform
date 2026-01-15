@@ -7,6 +7,7 @@ import { SystemConfigProvider } from '@/contexts/SystemConfigContext';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { LanguageProvider } from '@/contexts/LanguageContext';
+import DevIndicator from '@/components/DevIndicator';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -42,6 +43,7 @@ export default function RootLayout({
               </AuthProvider>
             </SystemConfigProvider>
           </ThemeRegistry>
+          <DevIndicator />
         </AppRouterCacheProvider>
       </body>
     </html>

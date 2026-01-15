@@ -176,6 +176,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const [message, setMessage] = useState('');
   // removed effectiveBoardId state as we will use local boardId for actions
   const [completionLabel, setCompletionLabel] = useState<string>('SOP');
+  const [milestoneLabel, setMilestoneLabel] = useState<string>('Milestone');
 
   const [profiles, setProfiles] = useState<ClientProfile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -348,6 +349,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
       const sopLabel = boardConfig?.settings?.sopLabel || 'SOP';
       setCompletionLabel(sopLabel);
+      const trLabel = boardConfig?.settings?.trLabel || 'Milestone';
+      setMilestoneLabel(trLabel);
 
       const boardResult = boardConfig;
       const targetBoardId = boardConfig?.parent_id || boardId;
@@ -977,7 +980,7 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
       <EvaluationsView stageChartData={stageChartData} />
 
-      <ProjectTimelineView cards={allCards} members={members} completionLabel={completionLabel} />
+      <ProjectTimelineView cards={allCards} members={members} completionLabel={completionLabel} milestoneLabel={milestoneLabel} />
 
       <EscalationsView
         filteredEscalations={filteredEscalations}

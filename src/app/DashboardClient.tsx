@@ -382,19 +382,19 @@ export default function DashboardClient() {
         <CardActions sx={{ justifyContent: 'space-between', px: 1.5, py: 0.5 }}>
           {/* Left: Delete */}
           {isAdmin ? (
-            <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); setBoardToDelete(board); setDeleteDialogOpen(true); }} title={t('delete')}>
+            <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); setBoardToDelete(board); setDeleteDialogOpen(true); }} title={t('common.delete')}>
               <Delete fontSize="small" />
             </IconButton>
           ) : <Box />}
 
           {/* Center: Settings */}
 
-          <IconButton size="small" onClick={(e) => handleOpenSettings(e, board)} title={t('settings')}>
+          <IconButton size="small" onClick={(e) => handleOpenSettings(e, board)} title={t('kanban.settings')}>
             <DashboardCustomize fontSize="small" />
           </IconButton>
 
           {/* Right: Open */}
-          <IconButton color="primary" onClick={() => handleOpenBoard(board.id)} title={t('open')}>
+          <IconButton color="primary" onClick={() => handleOpenBoard(board.id)} title={t('home.open')}>
             <RocketLaunch fontSize="small" />
           </IconButton>
         </CardActions>

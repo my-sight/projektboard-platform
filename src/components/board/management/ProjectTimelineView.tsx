@@ -9,9 +9,10 @@ interface ProjectTimelineViewProps {
     cards: KanbanCardRow[];
     members: (Member & { profile?: ClientProfile })[];
     completionLabel?: string;
+    milestoneLabel?: string;
 }
 
-export function ProjectTimelineView({ cards, members, completionLabel = 'SOP' }: ProjectTimelineViewProps) {
+export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', milestoneLabel = 'Milestone' }: ProjectTimelineViewProps) {
     const { t } = useLanguage();
     const theme = useTheme();
     const today = useMemo(() => dayjs(), []);
@@ -97,6 +98,15 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP' }:
             if (!finalSop) return; // Should be filtered out but safe check
 
             const sop = finalSop;
+
+            // MS Logic (check MS keys first, then TR keys)
+            const rawMs = (c.card_data['MS'] || c.card_data['MS_Datum'] || c.card_data['TR'] || c.card_data['TR_Datum']) as string | undefined;
+            const rawMsNeu = (c.card_data['MS_Neu'] || c.card_data['TR_Neu']) as string | undefined;
+
+            const msDate = parseDate(rawMs);
+            const msNeuDate = parseDate(rawMsNeu);
+            // Priority: MS Neu > MS
+            const finalMs = msNeuDate || msDate;
             const bufferEnd = sop.add(3, 'months');
 
             if (bufferEnd.isAfter(globalMax)) {
@@ -115,6 +125,7 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP' }:
                 name: c.project_name || c.id,
                 number: c.project_number,
                 sop,
+                ms: finalMs,
                 bufferEnd,
                 isPastSop: sop.isBefore(today)
             });
@@ -202,7 +213,7 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP' }:
                                         {group.responsible}
                                     </Typography>
                                     <Typography variant="caption" color="text.secondary">
-                                        ({group.projects.length} {t('kanban.projects')})
+                                        ({group.projects.length})
                                     </Typography>
                                 </Box>
 
@@ -230,6 +241,7 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP' }:
                                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, position: 'relative', zIndex: 1 }}>
                                         {group.projects.map((proj: any) => {
                                             const sopPos = getPosition(proj.sop);
+                                            const msPos = proj.ms ? getPosition(proj.ms) : null;
                                             const bufferWidth = getWidth(proj.sop, proj.bufferEnd);
                                             const mainWidth = sopPos;
 
@@ -280,6 +292,25 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP' }:
                                                                     opacity: 0.85
                                                                 }} />
                                                             </Tooltip>
+
+                                                            {/* MS Marker */}
+                                                            {proj.ms && (
+                                                                <Tooltip title={`${milestoneLabel}: ${proj.ms.format('DD.MM.YYYY')}`}>
+                                                                    <Box sx={{
+                                                                        position: 'absolute',
+                                                                        left: `${msPos}%`,
+                                                                        top: '50%',
+                                                                        transform: 'translate(-50%, -50%) rotate(45deg)',
+                                                                        width: 12,
+                                                                        height: 12,
+                                                                        bgcolor: 'secondary.main',
+                                                                        border: '2px solid #fff',
+                                                                        zIndex: 3,
+                                                                        boxShadow: 2,
+                                                                        cursor: 'help'
+                                                                    }} />
+                                                                </Tooltip>
+                                                            )}
                                                         </Box>
                                                     </Box>
                                                 </Box>

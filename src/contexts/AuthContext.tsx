@@ -310,7 +310,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .single();
 
     if (!error) {
-      setProfile(data as Profile);
+      // Re-fetch full profile to get joined fields (like department name)
+      const fullProfile = await fetchProfile(user.id);
+      setProfile(fullProfile || (data as Profile));
     }
     return { data, error };
   };
