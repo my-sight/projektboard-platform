@@ -4,9 +4,10 @@ import { ProjectBoardCard, ViewMode } from '@/types';
 
 export function useKanbanUtils(cols: any[], viewMode: ViewMode) {
 
-    const inferStage = useCallback((r: ProjectBoardCard) => {
+    const inferStage = useCallback((r: ProjectBoardCard, colsOverride?: any[]) => {
         const s = (r["Board Stage"] || "").trim();
-        const stages = cols.map(c => c.name);
+        const currentCols = colsOverride || cols;
+        const stages = currentCols.map(c => c.name);
         if (s && stages.includes(s)) return s;
         return stages[0] || '';
     }, [cols]);

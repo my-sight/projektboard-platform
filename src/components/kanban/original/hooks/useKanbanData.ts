@@ -69,16 +69,20 @@ export function useKanbanData(
                     });
                 }
                 if (s.completedCount) setCompletedCount(s.completedCount);
-                return true;
+                // Return the settings so they can be used immediately
+                return { cols: s.cols };
             }
-            return false;
+            return null;
         } catch (error) {
-            return false;
+            return null;
         }
     }, [boardId, setViewMode, setDensity]);
 
-    const loadCards = useCallback(async () => {
+    const loadCards = useCallback(async (explicitCols?: any[]) => {
         try {
+            // Use explicitCols if provided, otherwise fallback to state cols
+            const columnsToUse = explicitCols || cols;
+
             // 1. Check if this is a Con-Board (has parent_id)
             let isConBoard = false;
             let parentId: string | null = null;
@@ -224,9 +228,9 @@ export function useKanbanData(
 
             // Initial client-side sort
             loadedCards.sort((a, b) => {
-                const pos = (name: string) => cols.findIndex((c) => c.name === name);
-                const stageA = inferStage(a);
-                const stageB = inferStage(b);
+                const pos = (name: string) => columnsToUse.findIndex((c: any) => c.name === name);
+                const stageA = inferStage(a, columnsToUse); // Pass explicit columns to inferStage
+                const stageB = inferStage(b, columnsToUse);
                 if (stageA !== stageB) return pos(stageA) - pos(stageB);
                 return (a.position || 0) - (b.position || 0);
             });

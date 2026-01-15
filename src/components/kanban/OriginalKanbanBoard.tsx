@@ -116,14 +116,16 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         setUsers(loadedUsers);
 
         // Sequence loading to ensure cols are set (via loadSettings) before loadCards uses them for stage inference
-        await loadSettings();
+        const settings = await loadSettings();
+        const explicitCols = settings?.cols;
+
         // loadTopTopics and boardMembers can run in parallel with each other if desired, but let's keep it simple
         await Promise.all([
           loadTopTopics(),
           loadBoardMembers()
         ]);
 
-        await loadCards(); // Now runs with updated cols if re-triggered, or at least after settings fetch
+        await loadCards(explicitCols); // Now runs with updated cols if re-triggered, or at least after settings fetch
       };
       if (boardId) loadData();
 
@@ -131,7 +133,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         // no cleanup needed for simple data load
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [boardId, loadCards, loadSettings, loadTopTopics]);
+    }, [boardId]);
 
     // visibility refresh via centralized trigger
     useEffect(() => {
@@ -140,11 +142,10 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         isFetchingRef.current = true;
         try {
           console.log('[OriginalKanbanBoard] Visibility refresh triggered via AuthContext');
-          await Promise.all([
-            loadCards(),
-            loadSettings(),
-            loadTopTopics()
-          ]);
+          const settings = await loadSettings();
+          const explicitCols = settings?.cols;
+          await loadTopTopics();
+          await loadCards(explicitCols);
         } finally {
           isFetchingRef.current = false;
         }

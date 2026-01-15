@@ -100,8 +100,8 @@ function ConBoardStatusView({ selectedCard, boardId }: { selectedCard: ProjectBo
       try {
         console.log('ConBoardStatusView: Fetching for card', selectedCard.id, 'boardId', boardId);
 
-        // 1. Get all Con-Boards
-        const { data: boards, error: bErr } = await supabase.from('kanban_boards').select('id, name').eq('parent_id', boardId);
+        // 1. Get all Con-Boards WITH settings (needed for templates)
+        const { data: boards, error: bErr } = await supabase.from('kanban_boards').select('id, name, settings').eq('parent_id', boardId);
         if (bErr) {
           console.error('ConBoardStatusView: Board fetch error', bErr);
           throw bErr;
@@ -133,6 +133,17 @@ function ConBoardStatusView({ selectedCard, boardId }: { selectedCard: ProjectBo
         const merged = boards.map(b => {
           const st = statuses?.find(s => s.board_id === b.id);
           const localData = st?.local_data || {};
+          const currentStage = st ? (st.column_id || 'Speicher') : 'Speicher';
+
+          // Checklist Calculation
+          let checklistText = '';
+          const templates = b.settings?.checklistTemplates;
+          if (templates && templates[currentStage]) {
+            const tasks = templates[currentStage] as string[];
+            const doneMap = selectedCard.ChecklistDone?.[currentStage] || {};
+            const doneCount = tasks.filter(task => doneMap[task]).length;
+            checklistText = `${doneCount} / ${tasks.length}`;
+          }
 
           return {
             ...b,
@@ -142,7 +153,8 @@ function ConBoardStatusView({ selectedCard, boardId }: { selectedCard: ProjectBo
             escalation: localData.Eskalation,
             ampel: localData.Ampel,
             statusKurz: localData['Status Kurz'],
-            statusHistoryText: localData.StatusHistory?.[0]?.message?.text
+            statusHistoryText: localData.StatusHistory?.[0]?.message?.text,
+            checklistText
           };
         });
         setConBoards(merged);
@@ -166,7 +178,7 @@ function ConBoardStatusView({ selectedCard, boardId }: { selectedCard: ProjectBo
               <TableRow>
                 <TableCell>Con-Board Name</TableCell>
                 <TableCell>Phase</TableCell>
-                <TableCell>Status</TableCell>
+                <TableCell>Status (Checkliste)</TableCell>
                 <TableCell>Letzte Änderung</TableCell>
               </TableRow>
             </TableHead>
@@ -198,25 +210,50 @@ function ConBoardStatusView({ selectedCard, boardId }: { selectedCard: ProjectBo
                           </Box>
                         )}
 
-                        {/* Status Kurz */}
+                        {/* Status Kurz with Tooltip */}
                         {b.statusKurz && (
-                          <Typography variant="caption" sx={{ bgcolor: 'grey.100', px: 1, borderRadius: 1 }}>
-                            {b.statusKurz}
-                          </Typography>
+                          <Tooltip title={b.statusKurz}>
+                            <Typography variant="caption" sx={{
+                              bgcolor: 'grey.100',
+                              px: 1,
+                              borderRadius: 1,
+                              maxWidth: 150,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              cursor: 'help'
+                            }}>
+                              {b.statusKurz}
+                            </Typography>
+                          </Tooltip>
+                        )}
+
+                        {/* Checklist Progress */}
+                        {b.checklistText && (
+                          <Chip
+                            label={b.checklistText}
+                            size="small"
+                            variant="outlined"
+                            sx={{ height: 20, fontSize: '0.7rem' }}
+                            icon={<Box component="span" sx={{ fontSize: '1rem' }}>✓</Box>}
+                          />
                         )}
                       </Box>
 
                       {/* Latest History Text */}
                       {b.statusHistoryText && (
-                        <Typography variant="body2" sx={{
-                          fontSize: '0.8rem',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                          overflow: 'hidden'
-                        }}>
-                          {b.statusHistoryText}
-                        </Typography>
+                        <Tooltip title={b.statusHistoryText} arrow placement="top">
+                          <Typography variant="body2" sx={{
+                            fontSize: '0.8rem',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            cursor: 'help'
+                          }}>
+                            {b.statusHistoryText}
+                          </Typography>
+                        </Tooltip>
                       )}
                     </Box>
                   </TableCell>
