@@ -478,10 +478,11 @@ export function useKanbanData(
             const localKeys = [
                 'Board Stage', 'position', 'Archived', 'ArchivedDate',
                 'Eskalation', 'TR_Datum', 'SOP_Datum', 'Due Date', 'Status Kurz', 'StatusHistory',
-                'TR_Neu', 'SOP_Neu', 'Ampel', 'PhaseTransition', // ADDED PhaseTransition
+                'TR_Neu', 'SOP_Neu', 'Ampel', 'PhaseTransition',
                 'Verantwortlich', 'VerantwortlichId', 'VerantwortlichEmail',
-                'ChecklistDone', // ADDED ChecklistDone for Con-Board Persistence
-                'Kerntermine' // ADDED Kerntermine
+                'TR_Completed', 'TR_Completed_At', 'TR_Completed_Date',
+                'ChecklistDone',
+                'Kerntermine'
             ];
 
             const localChanges: any = {};
@@ -559,7 +560,10 @@ export function useKanbanData(
                         Ampel: (card as any).Ampel,
                         Verantwortlich: card.Verantwortlich,
                         VerantwortlichId: (card as any).VerantwortlichId,
-                        ChecklistDone: card.ChecklistDone // Include Checklist in Local Data
+                        ChecklistDone: card.ChecklistDone, // Include Checklist in Local Data
+                        TR_Completed: card.TR_Completed,
+                        TR_Completed_At: card.TR_Completed_At,
+                        TR_Completed_Date: card.TR_Completed_Date
                     };
 
                     const newLocalData = { ...currentLocalDataFromCard, ...localDataUpdates };

@@ -16,10 +16,11 @@ import {
     useTheme,
     alpha
 } from '@mui/material';
-import { Close } from '@mui/icons-material';
+import { Close, CheckCircle } from '@mui/icons-material';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { supabase } from '@/lib/supabaseClient';
 import { KanbanCardRow } from './types'; // Make sure this import path is correct based on where we are
+import { toBoolean } from '@/utils/booleans';
 import dayjs from 'dayjs';
 
 interface ProjectStatusReportDialogProps {
@@ -156,6 +157,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                         checklist,
                         sop,
                         ms,
+                        msCompleted: toBoolean(cardData.TR_Completed) || toBoolean(cardData.MS_Completed),
                         updated: status?.updated_at
                     };
                 });
@@ -201,6 +203,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                     mainStage: mainStageLabel,
                     mainStatusText,
                     mainChecklist,
+                    mainMsCompleted: toBoolean(mainCardData.TR_Completed) || toBoolean(mainCardData.MS_Completed),
                     connectedBoards,
                     customLabels
                 });
@@ -441,12 +444,17 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                         </Typography>
                                                     )}
                                                 </Box>
-                                                <Chip
-                                                    label={msDate ? msDate.format('DD.MM.YYYY') : 'Kein Datum'}
-                                                    size="small"
-                                                    variant="outlined"
-                                                    sx={{ height: 20, fontSize: '0.75rem', bgcolor: 'transparent', color: '#0288d1', borderColor: '#0288d1' }}
-                                                />
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                    <Chip
+                                                        label={msDate ? msDate.format('DD.MM.YYYY') : 'Kein Datum'}
+                                                        size="small"
+                                                        variant="outlined"
+                                                        sx={{ height: 20, fontSize: '0.75rem', bgcolor: 'transparent', color: '#0288d1', borderColor: '#0288d1' }}
+                                                    />
+                                                    {reportData?.mainMsCompleted && (
+                                                        <CheckCircle sx={{ fontSize: 16, color: 'success.main' }} />
+                                                    )}
+                                                </Box>
                                             </div>
 
                                             {/* Kerntermine / Key Dates */}
@@ -604,12 +612,17 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                                 />
                                                             )}
                                                             {board.ms && (
-                                                                <Chip
-                                                                    label={`MS: ${board.ms}`}
-                                                                    size="small"
-                                                                    variant="outlined"
-                                                                    sx={{ height: 16, fontSize: '0.65rem', color: '#0288d1', borderColor: '#0288d1', bgcolor: 'transparent' }}
-                                                                />
+                                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                                                    <Chip
+                                                                        label={`MS: ${board.ms}`}
+                                                                        size="small"
+                                                                        variant="outlined"
+                                                                        sx={{ height: 16, fontSize: '0.65rem', color: '#0288d1', borderColor: '#0288d1', bgcolor: 'transparent' }}
+                                                                    />
+                                                                    {board.msCompleted && (
+                                                                        <CheckCircle sx={{ fontSize: 14, color: 'success.main', ml: -0.25 }} />
+                                                                    )}
+                                                                </Box>
                                                             )}
                                                         </Box>
                                                     )}

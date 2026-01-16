@@ -26,7 +26,9 @@ import {
     useTheme,
     alpha,
     Divider,
-    Paper
+    Paper,
+    Tabs,
+    Tab
 } from '@mui/material';
 import {
     Add as AddIcon,
@@ -297,7 +299,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
     const [collapsedLanes, setCollapsedLanes] = useState<Record<string, boolean>>({});
     const [isHomeBoard, setIsHomeBoard] = useState(false);
     const [tempIsHomeBoard, setTempIsHomeBoard] = useState(false);
+    const [tempMembers, setTempMembers] = useState<MemberWithProfile[]>([]);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [settingsTab, setSettingsTab] = useState(0);
     const [archiveOpen, setArchiveOpen] = useState(false);
     const [boardName, setBoardName] = useState('');
     const [boardDescription, setBoardDescription] = useState('');
@@ -404,21 +408,23 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     // Initial load for settings dialog
     useEffect(() => {
-        if (settingsOpen && boardName === '') {
+        if (settingsOpen) {
             (async () => {
                 try {
-                    const { data: b } = await supabase.from('kanban_boards').select('*').eq('id', boardId).single();
+                    const { data: b } = await supabase.from('kanban_boards').select('name, description').eq('id', boardId).single();
                     if (b) {
                         setBoardName(b.name);
                         setBoardDescription(b.description || '');
                     }
                 } catch (e) { console.error('Error loading board details', e); }
             })();
+            setTempMembers(members); // Ensure members are always initialized for reordering
+            setSettingsTab(0); // Reset to first tab
         }
-    }, [settingsOpen, boardId]);
+    }, [settingsOpen, boardId, members]); // Added 'members' to deps
 
     const saveBoardSettings = async () => {
-        const nextSettings = { ...boardSettings, isHomeBoard: tempIsHomeBoard };
+        const nextSettings = { ...boardSettings, isHomeBoard: tempIsHomeBoard, memberOrder: tempMembers.map(m => m.profile_id) };
         try {
             const { data, error } = await supabase.from('kanban_boards').update({
                 name: boardName,
@@ -433,16 +439,25 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
             setBoardSettings(nextSettings); // Update local state immediately
             setIsHomeBoard(tempIsHomeBoard);
+            setMembers(tempMembers); // Update actual members list with new order
             setSettingsOpen(false);
-            enqueueSnackbar(t('teamBoard.settingsSaved') || 'Einstellungen gespeichert', { variant: 'success' });
+            enqueueSnackbar('Einstellungen gespeichert', { variant: 'success' });
         } catch (e: any) {
             console.error('Fehler beim Speichern der Board-Einstellungen:', e);
             enqueueSnackbar(`Fehler: ${e.message || 'Unbekannter Fehler'}`, { variant: 'error' });
         }
     };
 
+    const handleMemberReorder = (result: DropResult) => {
+        if (!result.destination) return;
+        const items = Array.from(tempMembers);
+        const [reorderedItem] = items.splice(result.source.index, 1);
+        items.splice(result.destination.index, 0, reorderedItem);
+        setTempMembers(items);
+    };
+
     const handleFinishDone = async () => {
-        if (!confirm(t('teamBoard.confirmFinish') || 'Alle erledigten Karten ins Archiv verschieben?')) return;
+        if (!confirm('Alle erledigten Karten ins Archiv verschieben?')) return;
         try {
             // Find all cards in 'done' status
             const cardsToArchive = cards.filter(c => c.status === 'done');
@@ -455,7 +470,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
             await persistCompletedCount(completedCount + cardsToArchive.length);
             setCards(prev => prev.filter(c => c.status !== 'done'));
-            enqueueSnackbar(`${cardsToArchive.length} ${t('teamBoard.tasksArchived') || 'Aufgaben archiviert'}`, { variant: 'success' });
+            enqueueSnackbar(`${cardsToArchive.length} Aufgaben archiviert`, { variant: 'success' });
         } catch (e) {
             console.error(e);
             enqueueSnackbar(t('error'), { variant: 'error' });
@@ -490,14 +505,14 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
             setArchivedCards(prev => prev.filter(c => c.rowId !== card.rowId));
             loadCards(members); // Refresh board
-            enqueueSnackbar(t('teamBoard.cardRestored') || 'Karte wiederhergestellt', { variant: 'success' });
+            enqueueSnackbar('Karte wiederhergestellt', { variant: 'success' });
         } catch (e) {
             enqueueSnackbar(t('error'), { variant: 'error' });
         }
     };
 
     const deleteCardPermanently = async (rowId: string) => {
-        if (!confirm(t('teamBoard.confirmDelete') || 'Endgültig löschen?')) return;
+        if (!confirm('Endgültig löschen?')) return;
         try {
             await supabase.from('kanban_cards').delete().eq('id', rowId);
             setArchivedCards(prev => prev.filter(c => c.rowId !== rowId));
@@ -506,7 +521,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     const loadAllUsers = useCallback(async () => { try { const profiles = await fetchClientProfiles(); setUsers(profiles); return profiles; } catch (err) { return []; } }, []);
 
-    const loadMembers = useCallback(async (availableProfiles: ClientProfile[]) => {
+    const loadMembers = useCallback(async (availableProfiles: ClientProfile[], settings: any) => {
         try {
             const { data } = await supabase
                 .from('board_members')
@@ -520,6 +535,19 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 const profile = availableProfiles.find((c) => c.id === userId) ?? null;
                 return (profile && (profile.is_active ?? true)) ? { ...entry, profile_id: userId, profile } : null;
             }).filter((e) => e !== null) as MemberWithProfile[];
+
+            // Sort members according to settings if order exists
+            if (settings?.memberOrder && Array.isArray(settings.memberOrder)) {
+                mapped.sort((a, b) => {
+                    const idxA = settings.memberOrder.indexOf(a.profile_id);
+                    const idxB = settings.memberOrder.indexOf(b.profile_id);
+                    if (idxA === -1 && idxB === -1) return 0;
+                    if (idxA === -1) return 1;
+                    if (idxB === -1) return -1;
+                    return idxA - idxB;
+                });
+            }
+
             setMembers(mapped);
             return mapped;
         } catch (e) {
@@ -622,9 +650,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         let active = true;
         const init = async () => {
             setLoading(true);
-            await loadBoardSettings();
+            const settings = await loadBoardSettings();
             const profiles = await loadAllUsers();
-            const mems = await loadMembers(profiles);
+            const mems = await loadMembers(profiles, settings);
             if (active) {
                 await loadCards(mems);
                 await loadTopTopics();
@@ -742,7 +770,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 stage: dbStage,
                 card_data: { ...card.originalData, "Board Stage": dbStage, status: 'done' }
             }).eq('id', card.rowId);
-            enqueueSnackbar(t('teamBoard.taskCompleted'), { variant: 'success' });
+            enqueueSnackbar('Aufgabe erledigt', { variant: 'success' });
         } catch (err) { console.error(err); setCards(cards); }
     };
 
@@ -826,7 +854,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                     position: editingCard.position
                 };
                 await supabase.from('kanban_cards').update({ card_data: mergedData }).eq('id', editingCard.rowId);
-                enqueueSnackbar(t('teamBoard.taskUpdated'), { variant: 'success' });
+                enqueueSnackbar('Aufgabe aktualisiert', { variant: 'success' });
             } else {
                 const existingInCol = cards.filter(c => c.assigneeId === draft.assigneeId && c.status === draft.status).length;
                 await supabase.from('kanban_cards').insert({
@@ -845,17 +873,17 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                         status: draft.status
                     }
                 });
-                enqueueSnackbar(t('teamBoard.taskCreated'), { variant: 'success' });
+                enqueueSnackbar('Aufgabe erstellt', { variant: 'success' });
             }
             closeDialog();
-            const mems = await loadMembers(await fetchClientProfiles());
+            const mems = await loadMembers(await fetchClientProfiles(), boardSettings);
             loadCards(mems);
         } catch (e) { console.error(e); } finally { setSaving(false); }
     };
 
     const deleteTask = async () => {
         if (!editingCard) return;
-        if (!confirm(t('teamBoard.deletePrompt'))) return;
+        if (!confirm('Karte wirklich löschen?')) return;
 
         try {
             await supabase.from('kanban_cards').delete().eq('id', editingCard.rowId);
@@ -878,25 +906,25 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             }
             await persistCompletedCount(completedCount + doneCards.length);
             setCards(prev => prev.filter(c => c.status !== 'done'));
-            enqueueSnackbar(t('teamBoard.flowCompleted'), { variant: 'success' });
+            enqueueSnackbar('Flow abgeschlossen', { variant: 'success' });
         } catch (e) { console.error(e); } finally { setFlowSaving(false); }
     };
 
     // --- Sub-Components ---
     const TeamKPIDialog = ({ open, onClose }: any) => (
         <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Assessment color="primary" /> {t('teamBoard.kpis')}</DialogTitle>
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}><Assessment color="primary" /> Kennzahlen</DialogTitle>
             <DialogContent dividers>
                 <Grid container spacing={3}>
-                    <Grid item xs={4}><Card sx={{ bgcolor: 'rgba(25, 118, 210, 0.04)' }}><CardContent><Typography variant="h4" color="primary">{kpiStats.activeCount}</Typography><Typography variant="caption">{t('teamBoard.activeTasks')}</Typography></CardContent></Card></Grid>
-                    <Grid item xs={4}><Card sx={{ bgcolor: 'rgba(46, 125, 50, 0.04)' }}><CardContent><Typography variant="h4" color="success.main">{kpiStats.doneCount}</Typography><Typography variant="caption">{t('teamBoard.done')}</Typography></CardContent></Card></Grid>
-                    <Grid item xs={4}><Card sx={{ bgcolor: kpiStats.overdueCount > 0 ? 'rgba(211, 47, 47, 0.04)' : 'transparent' }}><CardContent><Typography variant="h4" color="error">{kpiStats.overdueCount}</Typography><Typography variant="caption">{t('teamBoard.overdue')}</Typography></CardContent></Card></Grid>
-                    <Grid item xs={12}><Typography variant="subtitle1" gutterBottom>{t('teamBoard.workload')}</Typography>
+                    <Grid item xs={4}><Card sx={{ bgcolor: 'rgba(25, 118, 210, 0.04)' }}><CardContent><Typography variant="h4" color="primary">{kpiStats.activeCount}</Typography><Typography variant="caption">Aktive Aufgaben</Typography></CardContent></Card></Grid>
+                    <Grid item xs={4}><Card sx={{ bgcolor: 'rgba(46, 125, 50, 0.04)' }}><CardContent><Typography variant="h4" color="success.main">{kpiStats.doneCount}</Typography><Typography variant="caption">Erledigt</Typography></CardContent></Card></Grid>
+                    <Grid item xs={4}><Card sx={{ bgcolor: kpiStats.overdueCount > 0 ? 'rgba(211, 47, 47, 0.04)' : 'transparent' }}><CardContent><Typography variant="h4" color="error">{kpiStats.overdueCount}</Typography><Typography variant="caption">Überfällig</Typography></CardContent></Card></Grid>
+                    <Grid item xs={12}><Typography variant="subtitle1" gutterBottom>Arbeitslast</Typography>
                         {kpiStats.memberLoad.slice(0, 5).map((m, i) => (<Box key={i} sx={{ mb: 1 }}><Box sx={{ display: 'flex', justifyContent: 'space-between' }}><Typography variant="body2">{m.name}</Typography><Typography variant="body2">{m.count}</Typography></Box><LinearProgress variant="determinate" value={Math.min(100, (m.count / 5) * 100)} /></Box>))}
                     </Grid>
                 </Grid>
             </DialogContent>
-            <DialogActions><Button onClick={onClose}>{t('teamBoard.close')}</Button></DialogActions>
+            <DialogActions><Button onClick={onClose}>Schließen</Button></DialogActions>
         </Dialog>
     );
 
@@ -944,25 +972,25 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         return (
             <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
                 <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Star color="warning" /> {t('teamBoard.topTopics')}
+                    <Star color="warning" /> Top-Themen
                 </DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={3}>
                         {/* Compose Area */}
                         <Box sx={{ p: 2, bgcolor: 'background.default', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                            <Typography variant="subtitle2" sx={{ mb: 2 }}>{t('teamBoard.createTopic')}</Typography>
+                            <Typography variant="subtitle2" sx={{ mb: 2 }}>Neues Thema erstellen</Typography>
                             <Stack spacing={2}>
                                 <TextField
                                     fullWidth
                                     multiline
                                     minRows={3}
-                                    placeholder={t('teamBoard.topicPlaceholder')}
+                                    placeholder="Thema / Notiz..."
                                     value={newTitle}
                                     onChange={(e) => setNewTitle(e.target.value)}
                                 />
                                 <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
                                     <StandardDatePicker
-                                        label={t('teamBoard.dueDate')}
+                                        label="Fällig am"
                                         value={newDate ? dayjs(newDate) : null}
                                         onChange={(newValue) => setNewDate(newValue ? newValue.format('YYYY-MM-DD') : null)}
                                         sx={{ width: 200 }}
@@ -972,7 +1000,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                         onClick={handleAdd}
                                         disabled={!newTitle.trim()}
                                     >
-                                        {t('teamBoard.save')}
+                                        Speichern
                                     </Button>
                                 </Stack>
                             </Stack>
@@ -980,9 +1008,9 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
                         {/* List Area */}
                         <Box>
-                            <Typography variant="subtitle2" sx={{ mb: 1 }}>{t('teamBoard.currentTopics')}</Typography>
+                            <Typography variant="subtitle2" sx={{ mb: 1 }}>Aktuelle Themen</Typography>
                             {localTopics.length === 0 ? (
-                                <Typography variant="body2" color="text.secondary">{t('teamBoard.noTopics')}</Typography>
+                                <Typography variant="body2" color="text.secondary">Keine aktuellen Themen</Typography>
                             ) : (
                                 <Stack spacing={1}>
                                     {localTopics.map((topic) => (
@@ -993,7 +1021,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                         <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>{topic.title}</Typography>
                                                         {topic.due_date && (
                                                             <Chip
-                                                                label={`${t('teamBoard.due')}: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
+                                                                label={`Fällig: ${dayjs(topic.due_date).format('DD.MM.YYYY')} (KW ${dayjs(topic.due_date).isoWeek()})`}
                                                                 size="small"
                                                                 sx={{ mt: 1 }}
                                                             />
@@ -1012,7 +1040,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={onClose}>{t('teamBoard.close')}</Button>
+                    <Button onClick={onClose}>Schließen</Button>
                 </DialogActions>
             </Dialog>
         );
@@ -1230,18 +1258,18 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 </Box>
 
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Tooltip title={t('teamBoard.topTopics')}><IconButton onClick={() => { setTopTopicsOpen(true); }} color="default"><Star /></IconButton></Tooltip>
-                    <Tooltip title={t('teamBoard.kpis')}><IconButton onClick={() => setKpiOpen(true)} color="default"><Assessment /></IconButton></Tooltip>
-                    {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title={t('teamBoard.boardSettings')} color="default"><Settings /></IconButton>}
+                    <Tooltip title="Top-Themen"><IconButton onClick={() => { setTopTopicsOpen(true); }} color="default"><Star /></IconButton></Tooltip>
+                    <Tooltip title="Kennzahlen"><IconButton onClick={() => setKpiOpen(true)} color="default"><Assessment /></IconButton></Tooltip>
+                    {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title="Board-Einstellungen" color="default"><Settings /></IconButton>}
                 </Box>
             </Box>
 
             {/* Filter Row */}
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                <Chip icon={<FilterList />} label={t('teamBoard.mine')} clickable onClick={() => setFilters(p => ({ ...p, mine: !p.mine }))} color={filters.mine ? "primary" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
-                <Chip icon={<Warning />} label={t('teamBoard.overdue')} clickable onClick={() => setFilters(p => ({ ...p, overdue: !p.overdue }))} color={filters.overdue ? "error" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
-                <Chip icon={<PriorityHigh />} label={t('teamBoard.important')} clickable onClick={() => setFilters(p => ({ ...p, important: !p.important }))} color={filters.important ? "warning" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
-                <Chip icon={<AccessTime />} label={t('teamBoard.watch')} clickable onClick={() => setFilters(p => ({ ...p, watch: !p.watch }))} color={filters.watch ? "info" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
+                <Chip icon={<FilterList />} label="Meine" clickable onClick={() => setFilters(p => ({ ...p, mine: !p.mine }))} color={filters.mine ? "primary" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
+                <Chip icon={<Warning />} label="Überfällig" clickable onClick={() => setFilters(p => ({ ...p, overdue: !p.overdue }))} color={filters.overdue ? "error" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
+                <Chip icon={<PriorityHigh />} label="Wichtig" clickable onClick={() => setFilters(p => ({ ...p, important: !p.important }))} color={filters.important ? "warning" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
+                <Chip icon={<AccessTime />} label="Wiedervorlage" clickable onClick={() => setFilters(p => ({ ...p, watch: !p.watch }))} color={filters.watch ? "info" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
 
                 <Box sx={{ flexGrow: 1 }} />
 
@@ -1259,13 +1287,13 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 )}
             </Box>
 
-            {isHomeBoard && <Alert severity="info" sx={{ py: 0 }}>{t('teamBoard.homeBoardInfo')}</Alert>}
+            {isHomeBoard && <Alert severity="info" sx={{ py: 0 }}>Dies ist ein Sammelboard (Heimatboard). Es zeigt Aufgaben aus allen Team-Boards an.</Alert>}
 
             <Box sx={{ flex: 1, display: 'flex', gap: 2, overflow: 'hidden' }}>
                 <DragDropContext onDragEnd={handleDragEnd}>
                     {/* BACKLOG */}
                     <Box sx={{ width: BACKLOG_WIDTH, display: 'flex', flexDirection: 'column', bgcolor: 'var(--panel)', borderRadius: 1, border: '1px solid var(--line)' }}>
-                        <Box sx={{ p: 2, borderBottom: '1px solid var(--line)' }}><Typography variant="subtitle2">{t('teamBoard.backlog')} ({backlogCards.length})</Typography></Box>
+                        <Box sx={{ p: 2, borderBottom: '1px solid var(--line)' }}><Typography variant="subtitle2">Backlog ({backlogCards.length})</Typography></Box>
                         <Droppable droppableId={droppableKey(null, 'backlog')}>
                             {(prov) => (
                                 <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ flex: 1, overflowY: 'auto', p: 1 }}>
@@ -1292,12 +1320,12 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                     zIndex: 10,
                                     backdropFilter: 'blur(5px)'
                                 }}>
-                                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', bgcolor: 'var(--panel)' }}>{t('teamBoard.employees')}</Box>
-                                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', bgcolor: 'var(--panel)' }}>{t('teamBoard.flow1')}</Box>
-                                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', bgcolor: 'var(--panel)' }}>{t('teamBoard.flow')}</Box>
+                                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', bgcolor: 'var(--panel)' }}>Team</Box>
+                                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', bgcolor: 'var(--panel)' }}>Flow 1</Box>
+                                    <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', bgcolor: 'var(--panel)' }}>Flow</Box>
                                     <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'var(--panel)' }}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                            {t('teamBoard.finished')}
+                                            Erledigt
                                             <Chip
                                                 label={completedCount + cards.filter(c => c.status === 'done').length}
                                                 size="small"
@@ -1305,7 +1333,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                 sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: 'transparent', color: 'success.main', borderColor: 'success.main' }}
                                             />
                                         </Box>
-                                        <Tooltip title={t('teamBoard.archive') || 'Archiv'}>
+                                        <Tooltip title="Archiv">
                                             <IconButton
                                                 onClick={handleFinishDone}
                                                 sx={{
@@ -1341,7 +1369,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                     </Avatar>
                                                     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                                                         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                                                            {member.profile?.alias || member.profile?.full_name || t('kanban.unknown')}
+                                                            {member.profile?.alias || member.profile?.full_name || 'Unbekannt'}
                                                         </Typography>
                                                         {member.profile?.alias && member.profile?.full_name && (
                                                             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', mt: -0.5 }}>
@@ -1361,7 +1389,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                                 <Box ref={prov.innerRef} {...prov.droppableProps} sx={{ height: '100%', bgcolor: snap.isDraggingOver ? 'action.hover' : 'transparent', borderRadius: 1 }}>
                                                                     {flow1.map((c, i) => renderCard(c, i))}
                                                                     {prov.placeholder}
-                                                                    {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline />} onClick={() => openQuickAdd(member.profile_id, 'flow1')} sx={{ mt: 1, opacity: 0.5 }}>{t('teamBoard.new')}</Button>}
+                                                                    {canModify && <Button fullWidth size="small" startIcon={<AddCircleOutline />} onClick={() => openQuickAdd(member.profile_id, 'flow1')} sx={{ mt: 1, opacity: 0.5 }}>Neu</Button>}
                                                                 </Box>
                                                             )}
                                                         </Droppable>
@@ -1389,7 +1417,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                                     </Box>
                                                 </>
                                             )}
-                                            {isCollapsed && <Box sx={{ gridColumn: '2 / span 3', display: 'flex', alignItems: 'center', px: 2, color: 'text.disabled', fontStyle: 'italic' }}>{t('teamBoard.collapsed')} ({flow1.length + flow.length + done.length} {t('teamBoard.tasks')})</Box>}
+                                            {isCollapsed && <Box sx={{ gridColumn: '2 / span 3', display: 'flex', alignItems: 'center', px: 2, color: 'text.disabled', fontStyle: 'italic' }}>Eingeklappt ({flow1.length + flow.length + done.length} Aufgaben)</Box>}
                                         </Box>
                                     );
                                 })}
@@ -1400,77 +1428,136 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             </Box>
 
             <Dialog open={dialogOpen} onClose={closeDialog} maxWidth="sm" fullWidth>
-                <DialogTitle>{editingCard ? t('teamBoard.editTask') : t('teamBoard.newTask')}</DialogTitle>
+                <DialogTitle>{editingCard ? 'Aufgabe bearbeiten' : 'Neue Aufgabe'}</DialogTitle>
                 <DialogContent dividers>
                     <Stack spacing={2} sx={{ mt: 1 }}>
-                        <TextField fullWidth label={t('teamBoard.description')} value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} multiline minRows={2} />
+                        <TextField fullWidth label="Beschreibung" value={draft.description} onChange={e => setDraft({ ...draft, description: e.target.value })} multiline minRows={2} />
                         <StandardDatePicker
-                            label={t('teamBoard.due')}
+                            label="Fällig"
                             value={draft.dueDate ? dayjs(draft.dueDate) : null}
                             onChange={(newValue) => setDraft({ ...draft, dueDate: newValue ? newValue.format('YYYY-MM-DD') : '' })}
                         />
-                        <FormControlLabel control={<Checkbox checked={draft.important} onChange={e => setDraft({ ...draft, important: e.target.checked })} />} label={t('teamBoard.markImportant')} />
-                        <FormControlLabel control={<Checkbox checked={draft.watch} onChange={e => setDraft({ ...draft, watch: e.target.checked })} />} label={t('teamBoard.setResubmission')} />
+                        <FormControlLabel control={<Checkbox checked={draft.important} onChange={e => setDraft({ ...draft, important: e.target.checked })} />} label="Als wichtig markieren" />
+                        <FormControlLabel control={<Checkbox checked={draft.watch} onChange={e => setDraft({ ...draft, watch: e.target.checked })} />} label="Wiedervorlage setzen" />
                     </Stack>
                 </DialogContent>
                 <DialogActions sx={{ justifyContent: 'space-between' }}>
                     <Box>
-                        {editingCard && <Button color="error" onClick={deleteTask}>{t('teamBoard.delete')}</Button>}
-                        <Button onClick={closeDialog} sx={{ ml: editingCard ? 1 : 0 }}>{t('teamBoard.cancel')}</Button>
+                        {editingCard && <Button color="error" onClick={deleteTask}>Löschen</Button>}
+                        <Button onClick={closeDialog} sx={{ ml: editingCard ? 1 : 0 }}>Abbrechen</Button>
                     </Box>
-                    <Button onClick={saveTask} variant="contained">{t('teamBoard.save')}</Button>
+                    <Button onClick={saveTask} variant="contained">Speichern</Button>
                 </DialogActions>
             </Dialog>
 
             <Dialog open={settingsOpen} onClose={() => setSettingsOpen(false)}>
-                <DialogTitle>{t('teamBoard.boardSettings')}</DialogTitle>
-                <DialogContent>
-                    <FormControlLabel
-                        control={<Switch checked={tempIsHomeBoard} onChange={(e) => setTempIsHomeBoard(e.target.checked)} />}
-                        label={<Box><Typography variant="body1" fontWeight="bold">{t('teamBoard.useAsHomeBoard')}</Typography><Typography variant="caption" color="text.secondary">{t('teamBoard.homeBoardDesc')}</Typography></Box>}
-                        sx={{ mt: 2 }}
-                    />
-                    <Divider sx={{ my: 2 }} />
-                    <TextField
-                        fullWidth
-                        label={t('teamBoard.boardName') || 'Board Name'}
-                        value={boardName}
-                        onChange={(e) => setBoardName(e.target.value)}
-                        sx={{ mb: 2 }}
-                    />
-                    <TextField
-                        fullWidth
-                        label={t('teamBoard.boardDescription') || 'Beschreibung'}
-                        value={boardDescription}
-                        onChange={(e) => setBoardDescription(e.target.value)}
-                        multiline
-                        minRows={3}
-                    />
-
-                    <ProjectPicker
-                        selectedId={boardSettings.linked_card_id || ''}
-                        onSelect={(id) => setBoardSettings(prev => ({ ...prev, linked_card_id: id }))}
-                    />
-
-                    <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-start' }}>
-                        <Tooltip title={t('teamBoard.openArchive') || 'Archiv öffnen'}>
-                            <IconButton onClick={() => { setSettingsOpen(false); setArchiveOpen(true); loadArchive(); }}>
-                                <Inventory2 />
-                            </IconButton>
-                        </Tooltip>
+                <DialogTitle>Board-Einstellungen</DialogTitle>
+                <DialogContent dividers>
+                    <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+                        <Tabs value={settingsTab} onChange={(_, v) => setSettingsTab(v)}>
+                            <Tab label="Meta-Daten" />
+                            <Tab label="Team" />
+                        </Tabs>
                     </Box>
+
+                    {settingsTab === 0 && (
+                        <Stack spacing={2} sx={{ mt: 1 }}>
+                            <FormControlLabel
+                                control={<Switch checked={tempIsHomeBoard} onChange={(e) => setTempIsHomeBoard(e.target.checked)} />}
+                                label={<Box><Typography variant="body1" fontWeight="bold">Als Heimatboard nutzen</Typography><Typography variant="caption" color="text.secondary">Aggregiert Karten von allen anderen Team-Boards</Typography></Box>}
+                            />
+                            <Divider />
+                            <TextField
+                                fullWidth
+                                label="Name des Boards"
+                                value={boardName}
+                                onChange={(e) => setBoardName(e.target.value)}
+                            />
+                            <TextField
+                                fullWidth
+                                label="Beschreibung"
+                                value={boardDescription}
+                                onChange={(e) => setBoardDescription(e.target.value)}
+                                multiline
+                                minRows={3}
+                            />
+                            <Divider />
+                            <ProjectPicker
+                                selectedId={boardSettings.linked_card_id || ''}
+                                onSelect={(id) => setBoardSettings(prev => ({ ...prev, linked_card_id: id }))}
+                            />
+                            <Tooltip title="Archiv öffnen">
+                                <IconButton onClick={() => { setSettingsOpen(false); setArchiveOpen(true); loadArchive(); }}>
+                                    <Inventory2 />
+                                </IconButton>
+                            </Tooltip>
+                        </Stack>
+                    )}
+
+                    {settingsTab === 1 && (
+                        <Box sx={{ mt: 1 }}>
+                            <Typography variant="subtitle2" sx={{ mb: 1 }}>Reihenfolge der Teammitglieder</Typography>
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                                Ziehen Sie die Mitglieder, um die Reihenfolge der Lanes im Board zu ändern.
+                            </Typography>
+
+                            <DragDropContext onDragEnd={handleMemberReorder}>
+                                <Droppable droppableId="members-list">
+                                    {(provided) => (
+                                        <Box {...provided.droppableProps} ref={provided.innerRef}>
+                                            <Stack spacing={1}>
+                                                {tempMembers.map((m, index) => (
+                                                    <Draggable key={m.profile_id} draggableId={m.profile_id} index={index}>
+                                                        {(provided, snapshot) => (
+                                                            <Paper
+                                                                ref={provided.innerRef}
+                                                                {...provided.draggableProps}
+                                                                {...provided.dragHandleProps}
+                                                                variant="outlined"
+                                                                sx={{
+                                                                    p: 1,
+                                                                    display: 'flex',
+                                                                    alignItems: 'center',
+                                                                    gap: 1.5,
+                                                                    bgcolor: snapshot.isDragging ? 'action.selected' : 'background.paper',
+                                                                    boxShadow: snapshot.isDragging ? theme.shadows[3] : 'none',
+                                                                    cursor: 'grab'
+                                                                }}
+                                                            >
+                                                                <Avatar
+                                                                    src={m.profile?.avatar_url || undefined}
+                                                                    sx={{ width: 24, height: 24, fontSize: '0.75rem' }}
+                                                                >
+                                                                    {getInitials(m.profile?.alias || m.profile?.full_name || '?')}
+                                                                </Avatar>
+                                                                <Typography variant="body2" sx={{ flexGrow: 1 }}>
+                                                                    {m.profile?.alias || m.profile?.full_name || 'Unbekannt'}
+                                                                </Typography>
+                                                                <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: '0.8rem' }}>☰</Typography>
+                                                            </Paper>
+                                                        )}
+                                                    </Draggable>
+                                                ))}
+                                                {provided.placeholder}
+                                            </Stack>
+                                        </Box>
+                                    )}
+                                </Droppable>
+                            </DragDropContext>
+                        </Box>
+                    )}
                 </DialogContent>
                 <DialogActions sx={{ justifyContent: 'space-between' }}>
-                    <Button onClick={() => setSettingsOpen(false)}>{t('teamBoard.cancel')}</Button>
-                    <Button variant="contained" onClick={saveBoardSettings}>{t('teamBoard.save')}</Button>
+                    <Button onClick={() => setSettingsOpen(false)}>Abbrechen</Button>
+                    <Button variant="contained" onClick={saveBoardSettings}>Speichern</Button>
                 </DialogActions>
             </Dialog>
 
             <Dialog open={archiveOpen} onClose={() => setArchiveOpen(false)} maxWidth="md" fullWidth>
-                <DialogTitle>{t('teamBoard.archive') || 'Archiv'}</DialogTitle>
+                <DialogTitle>Archiv</DialogTitle>
                 <DialogContent>
                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
-                        {archivedCards.length === 0 && <Typography color="text.secondary" align="center">{t('teamBoard.archiveEmpty') || 'Keine archivierten Karten'}</Typography>}
+                        {archivedCards.length === 0 && <Typography color="text.secondary" align="center">Keine archivierten Karten</Typography>}
                         {archivedCards.map(card => (
                             <Paper key={card.rowId} sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <Box>
@@ -1478,7 +1565,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                     <Typography variant="body2" color="text.secondary">{card.boardName} - {new Date(card.createdAt || Date.now()).toLocaleDateString()}</Typography>
                                 </Box>
                                 <Box>
-                                    <Button size="small" onClick={() => restoreCard(card)}>{t('teamBoard.restore') || 'Wiederherstellen'}</Button>
+                                    <Button size="small" onClick={() => restoreCard(card)}>Wiederherstellen</Button>
                                     <IconButton size="small" color="error" onClick={() => deleteCardPermanently(card.rowId)}><Delete /></IconButton>
                                 </Box>
                             </Paper>
