@@ -157,6 +157,7 @@ export function useKanbanData(
                     baseCard.TR_Neu = undefined;
                     baseCard.SOP_Neu = undefined;
                     baseCard.PhaseTransition = undefined; // Decouple Phase Transition
+                    baseCard.ChecklistDone = {}; // Reset Checklist for Con-Board (will be filled by localStatus)
 
                     // Move Parent Responsible to Team
                     const parentResp = baseCard.Verantwortlich;
@@ -478,7 +479,8 @@ export function useKanbanData(
                 'Board Stage', 'position', 'Archived', 'ArchivedDate',
                 'Eskalation', 'TR_Datum', 'SOP_Datum', 'Due Date', 'Status Kurz', 'StatusHistory',
                 'TR_Neu', 'SOP_Neu', 'Ampel', 'PhaseTransition', // ADDED PhaseTransition
-                'Verantwortlich', 'VerantwortlichId', 'VerantwortlichEmail'
+                'Verantwortlich', 'VerantwortlichId', 'VerantwortlichEmail',
+                'ChecklistDone' // ADDED ChecklistDone for Con-Board Persistence
             ];
 
             const localChanges: any = {};
@@ -555,7 +557,8 @@ export function useKanbanData(
                         "Status Kurz": card["Status Kurz"],
                         Ampel: (card as any).Ampel,
                         Verantwortlich: card.Verantwortlich,
-                        VerantwortlichId: (card as any).VerantwortlichId
+                        VerantwortlichId: (card as any).VerantwortlichId,
+                        ChecklistDone: card.ChecklistDone // Include Checklist in Local Data
                     };
 
                     const newLocalData = { ...currentLocalDataFromCard, ...localDataUpdates };

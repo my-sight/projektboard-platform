@@ -41,6 +41,7 @@ import {
   parseWeekInputValue
 } from '@/utils/dateUtils';
 import { ProjectTimelineView } from './management/ProjectTimelineView';
+import { ProjectStatusReportDialog } from './management/ProjectStatusReportDialog';
 
 
 
@@ -206,6 +207,10 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
   const [escalationDraft, setEscalationDraft] = useState<EscalationDraft | null>(null);
   const [stageChartData, setStageChartData] = useState<{ stage: string; count: number }[]>([]);
   const [allCards, setAllCards] = useState<KanbanCardRow[]>([]);
+
+  // Status Report State
+  const [statusReportOpen, setStatusReportOpen] = useState(false);
+  const [selectedProjectForReport, setSelectedProjectForReport] = useState<KanbanCardRow | null>(null);
 
   const selectedWeekDate = useMemo(() => {
     if (!selectedWeek) {
@@ -980,7 +985,27 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
 
       <EvaluationsView stageChartData={stageChartData} />
 
-      <ProjectTimelineView cards={allCards} members={members} completionLabel={completionLabel} milestoneLabel={milestoneLabel} />
+      {/* Project Timeline (Gantt) */}
+      <Box sx={{ mt: 4 }}>
+        <ProjectTimelineView
+          cards={allCards}
+          members={members}
+          completionLabel={completionLabel}
+          milestoneLabel={milestoneLabel}
+          onCardClick={(card) => {
+            setSelectedProjectForReport(card);
+            setStatusReportOpen(true);
+          }}
+        />
+      </Box>
+
+      {/* Project Status Report Dialog */}
+      <ProjectStatusReportDialog
+        open={statusReportOpen}
+        onClose={() => setStatusReportOpen(false)}
+        card={selectedProjectForReport}
+        boardId={boardId}
+      />
 
       <EscalationsView
         filteredEscalations={filteredEscalations}

@@ -32,7 +32,8 @@ import {
   InputAdornment,
   Tooltip,
   CircularProgress,
-  ListSubheader
+  ListSubheader,
+  Avatar
 } from '@mui/material';
 import { ProjectBoardCard } from '@/types';
 import { Delete, Add, DeleteOutline, CloudUpload } from '@mui/icons-material';
@@ -140,7 +141,7 @@ function ConBoardStatusView({ selectedCard, boardId }: { selectedCard: ProjectBo
           const templates = b.settings?.checklistTemplates;
           if (templates && templates[currentStage]) {
             const tasks = templates[currentStage] as string[];
-            const doneMap = selectedCard.ChecklistDone?.[currentStage] || {};
+            const doneMap = localData.ChecklistDone?.[currentStage] || {}; // Use localData from Con-Board
             const doneCount = tasks.filter(task => doneMap[task]).length;
             checklistText = `${doneCount} / ${tasks.length}`;
           }
@@ -274,8 +275,8 @@ export interface EditCardDialogProps {
   selectedCard: ProjectBoardCard | null;
   editModalOpen: boolean;
   setEditModalOpen: (open: boolean) => void;
-  editTabValue: number;
-  setEditTabValue: (value: number) => void;
+  editTabValue: string; // Changed to string
+  setEditTabValue: (value: string) => void; // Changed to string
   rows: ProjectBoardCard[];
   setRows: (rows: ProjectBoardCard[]) => void;
   users: any[];
@@ -295,6 +296,7 @@ export interface EditCardDialogProps {
   trLabel?: string;
   sopLabel?: string;
   boardId: string;
+  isConBoard?: boolean; // New prop
 }
 
 export function EditCardDialog({
@@ -321,7 +323,8 @@ export function EditCardDialog({
   onDelete,
   trLabel = 'TR',
   sopLabel = 'SOP',
-  boardId
+  boardId,
+  isConBoard = false // Default false
 }: EditCardDialogProps) {
   const { t } = useLanguage();
   const [uploading, setUploading] = useState(false);
@@ -391,7 +394,6 @@ export function EditCardDialog({
   };
 
   const handleClose = () => {
-    // saveCards(); // REMOVED: Rely on patchCard (onBlur/onChange) to avoid bulk overwrite race conditions
     setEditModalOpen(false);
   };
 
@@ -409,7 +411,7 @@ export function EditCardDialog({
         className: 'glass',
         sx: {
           backgroundImage: 'none',
-          bgcolor: 'background.paper', // Fallback
+          bgcolor: 'background.paper',
         },
       }}
     >
@@ -430,14 +432,14 @@ export function EditCardDialog({
 
       <DialogContent sx={{ p: 0 }}>
         <Tabs value={editTabValue} onChange={(e, v) => setEditTabValue(v)}>
-          <Tab label={t('kanban.tabStatus')} />
-          <Tab label={t('kanban.tabTeam')} />
-          <Tab label={t('kanban.tabDetails')} />
-          <Tab label="Con-Boards" />
+          <Tab label={t('kanban.tabStatus')} value="status" />
+          {!isConBoard && <Tab label={t('kanban.tabTeam')} value="team" />}
+          <Tab label={t('kanban.tabDetails')} value="details" />
+          {!isConBoard && <Tab label="Con-Boards" value="conboards" />}
         </Tabs>
 
-        {/* TAB 0: STATUS & CHECKLISTE */}
-        {editTabValue === 0 && (
+        {/* TAB: STATUS & CHECKLISTE */}
+        {editTabValue === 'status' && (
           <Box sx={{ p: 3 }}>
             <Box sx={{ mb: 4 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -633,24 +635,23 @@ export function EditCardDialog({
           </Box>
         )}
 
-        {/* TAB 1: TEAM */}
-        {editTabValue === 1 && (
+        {/* TAB 1: TEAM (Only if not Con-Board) */}
+        {!isConBoard && editTabValue === 'team' && (
           <Box sx={{ p: 3 }}>
-            <Typography variant="h6" sx={{ mb: 2 }}>{t('kanban.projectTeam')}</Typography>
-
-            <Stack spacing={2} sx={{ mt: 1 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>{t('kanban.team')}</Typography>
+            <Stack spacing={2}>
               {(selectedCard.Team || []).map((member: any, idx: number) => (
-                <Box key={idx} sx={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 2, alignItems: 'center', p: 2, border: '1px solid rgba(0,0,0,0.1)', borderRadius: 1 }}>
-
-                  <FormControl size="small" fullWidth>
-                    <InputLabel>{t('kanban.member')}</InputLabel>
+                <Box key={idx} sx={{ display: 'flex', gap: 2, alignItems: 'center', p: 1, border: 1, borderColor: 'divider', borderRadius: 1 }}>
+                  <Avatar sx={{ width: 32, height: 32, fontSize: '0.8rem' }}>{(member.name || '?').charAt(0)}</Avatar>
+                  <FormControl size="small" sx={{ minWidth: 200 }}>
+                    <InputLabel>{t('kanban.name')}</InputLabel>
                     <Select
-                      value={member.userId || ''}
-                      label={t('kanban.member')}
+                      value={member.userId || member.id || ''} // Fallback to id if userId missing
+                      label={t('kanban.name')}
                       disabled={!canEdit}
                       onChange={(e) => {
                         const selectedId = e.target.value;
-                        const user = users.find((u: any) => u.id === selectedId);
+                        const user = users.find(u => u.id === selectedId);
                         const newTeam = [...(selectedCard.Team || [])];
                         if (user) {
                           newTeam[idx] = {
@@ -736,8 +737,8 @@ export function EditCardDialog({
           </Box>
         )}
 
-        {/* TAB 2: DETAILS */}
-        {editTabValue === 2 && (
+        {/* TAB: DETAILS */}
+        {editTabValue === 'details' && (
           <Box sx={{ p: 3 }}>
             <Box
               sx={{
@@ -751,7 +752,7 @@ export function EditCardDialog({
               <Typography>{t('kanban.number')}</Typography>
               <TextField
                 size="small"
-                disabled={!canEdit}
+                disabled={!canEdit || isConBoard} // Read-only if Con-Board
                 value={selectedCard.Nummer || ''}
                 onChange={(e) => handlePatch('Nummer', e.target.value)}
               />
@@ -759,7 +760,7 @@ export function EditCardDialog({
               <Typography>{t('kanban.title')}</Typography>
               <TextField
                 size="small"
-                disabled={!canEdit}
+                disabled={!canEdit || isConBoard} // Read-only if Con-Board
                 value={selectedCard.Teil || ''}
                 onChange={(e) => handlePatch('Teil', e.target.value)}
               />
@@ -852,28 +853,30 @@ export function EditCardDialog({
               </Box>
 
               <Typography>{t('kanban.image')}</Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Button
-                  variant="outlined"
-                  component="label"
-                  startIcon={uploading ? <CircularProgress size={20} /> : <CloudUpload />}
-                  disabled={!canEdit || uploading}
-                  size="small"
-                >
-                  {uploading ? t('kanban.compressing') : t('kanban.upload')}
-                  <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
-                </Button>
-                {selectedCard.Bild && (
+              {!isConBoard && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={uploading ? <CircularProgress size={20} /> : <CloudUpload />}
+                    disabled={!canEdit || uploading}
                     size="small"
-                    color="error"
-                    onClick={() => handlePatch('Bild', '')}
-                    disabled={!canEdit}
                   >
-                    {t('kanban.delete')}
+                    {uploading ? t('kanban.compressing') : t('kanban.upload')}
+                    <input type="file" hidden accept="image/*" onChange={handleImageUpload} />
                   </Button>
-                )}
-              </Box>
+                  {selectedCard.Bild && (
+                    <Button
+                      size="small"
+                      color="error"
+                      onClick={() => handlePatch('Bild', '')}
+                      disabled={!canEdit}
+                    >
+                      {t('kanban.delete')}
+                    </Button>
+                  )}
+                </Box>
+              )}
             </Box>
 
             {selectedCard.Bild && (
@@ -889,8 +892,8 @@ export function EditCardDialog({
           </Box>
         )}
 
-        {/* TAB 3: CON-BOARDS */}
-        {editTabValue === 3 && (
+        {/* TAB: CON-BOARDS (Only if not Con-Board) */}
+        {!isConBoard && editTabValue === 'conboards' && (
           <Box sx={{ p: 3 }}>
             <ConBoardStatusView selectedCard={selectedCard} boardId={boardId} />
           </Box>

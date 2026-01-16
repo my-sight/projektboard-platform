@@ -10,9 +10,11 @@ interface ProjectTimelineViewProps {
     members: (Member & { profile?: ClientProfile })[];
     completionLabel?: string;
     milestoneLabel?: string;
+    onCardClick?: (card: KanbanCardRow) => void;
 }
 
-export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', milestoneLabel = 'Milestone' }: ProjectTimelineViewProps) {
+export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', milestoneLabel = 'Milestone', onCardClick }: ProjectTimelineViewProps) {
+    // ... existing hook logic ...
     const { t } = useLanguage();
     const theme = useTheme();
     const today = useMemo(() => dayjs(), []);
@@ -73,6 +75,7 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', m
     };
 
     // 1. Data Processing
+    // ... same data processing ...
     const { groups, maxDate, totalDays } = useMemo(() => {
         let globalMax = today.add(6, 'months');
 
@@ -122,6 +125,7 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', m
 
             grouped[responsible].push({
                 id: c.id,
+                cardIdx: c, // Keep reference to full card object for handler
                 name: c.project_name || c.id,
                 number: c.project_number,
                 sop,
@@ -246,16 +250,20 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', m
                                             const mainWidth = sopPos;
 
                                             return (
-                                                <Box key={proj.id} sx={{ display: 'flex', alignItems: 'center', height: 28 }}>
-                                                    <Box sx={{ width: 200, flexShrink: 0, pr: 2 }}>
-                                                        <Tooltip title={`${proj.name} (${completionLabel}: ${proj.sop.format('DD.MM.YYYY')})`}>
-                                                            <Typography variant="body2" noWrap sx={{ fontSize: '0.8rem' }}>
+                                                <Box
+                                                    key={proj.id}
+                                                    sx={{ display: 'flex', alignItems: 'center', height: 28 }}
+                                                    onClick={() => onCardClick?.(proj.cardIdx)} // Handle Click
+                                                >
+                                                    <Box sx={{ width: 200, flexShrink: 0, pr: 2, cursor: 'pointer' }}>
+                                                        <Tooltip title={`${proj.name} (${completionLabel}: ${proj.sop.format('DD.MM.YYYY')}) - Click for Status Report`}>
+                                                            <Typography variant="body2" noWrap sx={{ fontSize: '0.8rem', '&:hover': { color: 'primary.main', textDecoration: 'underline' } }}>
                                                                 {proj.number ? `${proj.number} ` : ''}{proj.name}
                                                             </Typography>
                                                         </Tooltip>
                                                     </Box>
 
-                                                    <Box sx={{ flexGrow: 1, position: 'relative', height: '100%' }}>
+                                                    <Box sx={{ flexGrow: 1, position: 'relative', height: '100%', cursor: 'pointer' }}>
                                                         <Box sx={{
                                                             position: 'relative',
                                                             height: 16,
@@ -264,7 +272,11 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', m
                                                             border: `1px dashed ${theme.palette.divider}`,
                                                             borderRadius: 4,
                                                             width: '100%',
-                                                            overflow: 'hidden'
+                                                            overflow: 'hidden',
+                                                            '&:hover': {
+                                                                border: `1px solid ${theme.palette.primary.main}`,
+                                                                transform: 'scaleY(1.1)'
+                                                            }
                                                         }}>
                                                             {!proj.isPastSop && (
                                                                 <Tooltip title={`Laufzeit bis ${completionLabel} (${proj.sop.format('DD.MM.YYYY')})`}>
@@ -293,7 +305,7 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', m
                                                                 }} />
                                                             </Tooltip>
 
-                                                            {/* MS Marker */}
+                                                            {/* MS Marker in bar or separate? Existing logic put it absolutely positioned in this box so it's fine */}
                                                             {proj.ms && (
                                                                 <Tooltip title={`${milestoneLabel}: ${proj.ms.format('DD.MM.YYYY')}`}>
                                                                     <Box sx={{
@@ -301,12 +313,12 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', m
                                                                         left: `${msPos}%`,
                                                                         top: '50%',
                                                                         transform: 'translate(-50%, -50%) rotate(45deg)',
-                                                                        width: 12,
-                                                                        height: 12,
+                                                                        width: 8, // slightly smaller to fit inside if inside
+                                                                        height: 8,
                                                                         bgcolor: 'secondary.main',
-                                                                        border: '2px solid #fff',
+                                                                        border: '1px solid #fff',
                                                                         zIndex: 3,
-                                                                        boxShadow: 2,
+                                                                        boxShadow: 1,
                                                                         cursor: 'help'
                                                                     }} />
                                                                 </Tooltip>

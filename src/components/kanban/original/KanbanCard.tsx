@@ -28,7 +28,7 @@ export interface KanbanCardProps {
   patchCard: (card: ProjectBoardCard, changes: Partial<ProjectBoardCard>) => Promise<void | boolean>;
   setSelectedCard: (card: ProjectBoardCard) => void;
   setEditModalOpen: (open: boolean) => void;
-  setEditTabValue: (value: number) => void;
+  setEditTabValue: (value: any) => void;
   inferStage: (card: ProjectBoardCard) => string;
   idFor: (card: ProjectBoardCard) => string;
   users: Array<{ id: string; name?: string; full_name?: string; alias?: string | null; avatar_url?: string | null; email?: string; department?: string | null; company?: string | null; }>;
@@ -200,7 +200,7 @@ export function KanbanCard({
               if (!canModify) return;
               if (!(e.target as HTMLElement).closest('.controls')) {
                 if (onClick) onClick();
-                else { setSelectedCard(card); setEditModalOpen(true); setEditTabValue(0); }
+                else { setSelectedCard(card); setEditModalOpen(true); setEditTabValue('status'); }
               }
             }}
           >

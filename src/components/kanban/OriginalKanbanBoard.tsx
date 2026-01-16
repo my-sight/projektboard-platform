@@ -65,6 +65,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
     });
 
     // Dialog State
+    // Dialog State
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [kpiPopupOpen, setKpiPopupOpen] = useState(false);
     const [archiveOpen, setArchiveOpen] = useState(false);
@@ -72,7 +73,9 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
     const [newCardOpen, setNewCardOpen] = useState(false);
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [selectedCard, setSelectedCard] = useState<ProjectBoardCard | null>(null);
-    const [editTabValue, setEditTabValue] = useState(0);
+    const [editTabValue, setEditTabValue] = useState('status'); // Refactor to string
+
+
 
     // Data - Members
     const [users, setUsers] = useState<any[]>([]);
@@ -513,6 +516,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           trLabel={customLabels.tr}
           sopLabel={customLabels.sop}
           boardId={boardId}
+          isConBoard={!!(boardMeta as any)?.parent_id} // Pass Con-Board status
         />
       </Box>
     );
