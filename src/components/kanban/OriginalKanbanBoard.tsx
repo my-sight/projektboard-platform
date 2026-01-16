@@ -28,6 +28,7 @@ import { KanbanSettingsDialog } from './original/KanbanSettingsDialog';
 import { KanbanHeader, KanbanFilters } from './original/components/KanbanHeader';
 import { KanbanKPIDialog } from './original/components/KanbanKPIDialog';
 import { TopTopicsDialog } from './original/components/TopTopicsDialog';
+import { ProjectStatusReportDialog } from '../board/management/ProjectStatusReportDialog';
 
 // Define Props Interface inline if not reusing the old file's exports immediately (safest implementation)
 export interface OriginalKanbanBoardHandleInterface {
@@ -73,7 +74,10 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
     const [newCardOpen, setNewCardOpen] = useState(false);
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [selectedCard, setSelectedCard] = useState<ProjectBoardCard | null>(null);
-    const [editTabValue, setEditTabValue] = useState('status'); // Refactor to string
+    const [editTabValue, setEditTabValue] = useState('status');
+
+    const [reportDialogOpen, setReportDialogOpen] = useState(false);
+    const [reportingCard, setReportingCard] = useState<ProjectBoardCard | null>(null);
 
 
 
@@ -207,6 +211,11 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         console.error('Error loading archive:', e);
         enqueueSnackbar('Fehler beim Laden des Archivs', { variant: 'error' });
       }
+    };
+
+    const handleOpenStatusReport = (card: ProjectBoardCard) => {
+      setReportingCard(card);
+      setReportDialogOpen(true);
     };
 
     // --- Actions ---
@@ -374,6 +383,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
 
           trLabel={customLabels.tr}
           sopLabel={customLabels.sop}
+          onOpenStatusReport={handleOpenStatusReport}
         />
       ),
       allowDrag: canModifyBoard,
@@ -393,12 +403,12 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           onViewModeChange={setViewMode}
           density={density}
           onDensityChange={setDensity}
+          onOpenArchive={handleOpenArchive}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenKpis={() => setKpiPopupOpen(true)}
           onOpenTopTopics={() => setTopTopicsOpen(true)}
-          onOpenArchive={handleOpenArchive}
           onNewCard={() => setNewCardOpen(true)}
-          canModify={(canModifyBoard || isSuperForce) && !(boardMeta as any)?.parent_id}
+          canModify={permissions.canEditContent}
           canManageSettings={permissions.canManageSettings}
           kpiBadgeCount={kpiBadgeCount}
         />
@@ -517,6 +527,13 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           sopLabel={customLabels.sop}
           boardId={boardId}
           isConBoard={!!(boardMeta as any)?.parent_id} // Pass Con-Board status
+        />
+
+        <ProjectStatusReportDialog
+          open={reportDialogOpen}
+          onClose={() => setReportDialogOpen(false)}
+          card={reportingCard as any}
+          boardId={boardId}
         />
       </Box>
     );

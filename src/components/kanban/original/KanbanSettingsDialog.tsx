@@ -205,6 +205,7 @@ export function KanbanSettingsDialog({
                             <TextField label="MS Label" value={localCustomLabels.tr} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, tr: e.target.value }))} fullWidth size="small" disabled={!canManageSettings} />
                             <TextField label={t('kanban.completionLabel')} value={localCustomLabels.sop} onChange={(e) => setLocalCustomLabels(prev => ({ ...prev, sop: e.target.value }))} fullWidth size="small" disabled={!canManageSettings} />
                         </Box>
+
                         <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-start' }}>
                             <Tooltip title={t('kanban.openArchive') || 'Archiv öffnen'}>
                                 <IconButton onClick={() => { onClose(); onOpenArchive(); }}>

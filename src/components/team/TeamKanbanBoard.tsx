@@ -45,7 +45,8 @@ import {
     Star,
     DoneAll, // Haken-Icon
     CheckCircleOutline,
-    Inventory2
+    Inventory2,
+    Description // Icon for Status Report
 } from '@mui/icons-material';
 import { DragDropContext, Draggable, DropResult, Droppable } from '@hello-pangea/dnd';
 import { useSnackbar } from 'notistack';
@@ -62,6 +63,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/de';
 import isoWeek from 'dayjs/plugin/isoWeek';
 dayjs.extend(isoWeek);
+import { ProjectStatusReportDialog } from '../board/management/ProjectStatusReportDialog';
 
 import { useLanguage } from '@/contexts/LanguageContext';
 import { generateUUID } from '@/lib/uuid';
@@ -179,6 +181,101 @@ const convertDbToCard = (item: any, boardMap: Map<string, string>, currentBoardI
     };
 };
 
+// --- Helper Component: ProjectPicker ---
+function ProjectPicker({ selectedId, onSelect }: { selectedId: string | null, onSelect: (id: string | null) => void }) {
+    const [rootBoards, setRootBoards] = useState<any[]>([]);
+    const [selectedBoardId, setSelectedBoardId] = useState<string>('');
+    const [boardCards, setBoardCards] = useState<any[]>([]);
+    const [selectedCardId, setSelectedCardId] = useState<string>(selectedId || '');
+    const [loading, setLoading] = useState(false);
+
+    // Fetch root boards on mount
+    useEffect(() => {
+        const fetchRoots = async () => {
+            // User requested to filter out TeamBoards.
+            // We fetch settings to check 'boardType' or 'teamBoard' property.
+            // User requested to filter out TeamBoards AND only show Root Boards.
+            // We fetch settings to check 'boardType' or 'teamBoard' property.
+            const { data } = await supabase.from('kanban_boards')
+                .select('id, name, settings')
+                .is('parent_id', null)
+                .order('name');
+
+            if (data) {
+                // Filter out boards that are identified as Team Boards
+                // Heuristic: settings.boardType === 'team' or settings.teamBoard exists, or name is 'Team Board'
+                const filtered = data.filter((b: any) => {
+                    const s = b.settings || {};
+                    const isTeam = s.boardType === 'team' || !!s.teamBoard || b.name === 'Team Board';
+                    return !isTeam;
+                });
+                setRootBoards(filtered);
+            }
+        };
+        fetchRoots();
+    }, []);
+
+    // When a board is selected, fetch its cards
+    useEffect(() => {
+        if (selectedBoardId) {
+            setLoading(true);
+            supabase.from('kanban_cards').select('id, card_data').eq('board_id', selectedBoardId)
+                .then(({ data }) => {
+                    const cards = (data || []).map((c: any) => ({
+                        id: c.id,
+                        title: c.card_data?.Teil || c.card_data?.title || c.card_data?.description || 'Unbenanntes Projekt'
+                    })).sort((a: any, b: any) => a.title.localeCompare(b.title));
+                    setBoardCards(cards);
+                    setLoading(false);
+                });
+        } else {
+            setBoardCards([]);
+        }
+    }, [selectedBoardId]);
+
+    return (
+        <Box sx={{ mt: 3, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1 }}>Verknüpftes Projekt</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                Wählen Sie ein Projekt aus, um den "Projekt Status" Button zu aktivieren.
+            </Typography>
+
+            <Box sx={{ display: 'flex', gap: 2, flexDirection: 'column' }}>
+                <TextField
+                    select
+                    label="Board auswählen (Root)"
+                    value={selectedBoardId}
+                    onChange={(e) => setSelectedBoardId(e.target.value)}
+                    fullWidth
+                    size="small"
+                    SelectProps={{ native: true }}
+                >
+                    <option value="">Bitte wählen...</option>
+                    {rootBoards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </TextField>
+
+                <TextField
+                    select
+                    label="Projektkarte auswählen"
+                    value={selectedCardId}
+                    onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedCardId(val);
+                        onSelect(val);
+                    }}
+                    fullWidth
+                    size="small"
+                    disabled={!selectedBoardId && !selectedCardId} // Allow changing if already set, but logic prefers selecting board first
+                    SelectProps={{ native: true }}
+                >
+                    <option value="">{loading ? 'Lade...' : (selectedCardId && !selectedBoardId ? 'Aktuell Verknüpft (Board wählen zum Ändern)' : 'Bitte wählen...')}</option>
+                    {boardCards.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                </TextField>
+            </Box>
+        </Box>
+    );
+}
+
 export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: TeamKanbanBoardProps) {
     // const supabase = useMemo(() => getSupabaseBrowserClient(), []); // Removed
     const { enqueueSnackbar } = useSnackbar();
@@ -218,6 +315,55 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
     const [kpiOpen, setKpiOpen] = useState(false);
     const [filters, setFilters] = useState({ mine: false, overdue: false, important: false, watch: false });
+
+    // Linked Project State
+    const [linkedReportOpen, setLinkedReportOpen] = useState(false);
+    const [linkedCard, setLinkedCard] = useState<any | null>(null);
+
+    // Card-Specific Status Report State
+    const [reportingCard, setReportingCard] = useState<any | null>(null);
+    const [reportingDialogOpen, setReportingDialogOpen] = useState(false);
+
+    const handleOpenReportingDialog = async (projectNumber: string) => {
+        if (!projectNumber) return;
+        try {
+            // Find the project card with this number in ANY board
+            const { data } = await supabase
+                .from('kanban_cards')
+                .select('*')
+                .filter('card_data->>Nummer', 'eq', projectNumber)
+                .limit(1)
+                .single();
+
+            if (data) {
+                setReportingCard(data);
+                setReportingDialogOpen(true);
+            } else {
+                enqueueSnackbar(`${t('error') || 'Fehler'}: Projekt ${projectNumber} nicht gefunden`, { variant: 'error' });
+            }
+        } catch (e) {
+            console.error(e);
+            enqueueSnackbar(t('error') || 'Fehler beim Laden des Projekts', { variant: 'error' });
+        }
+    };
+
+    // Fetch Linked Card Effect
+    useEffect(() => {
+        const fetchLinkedCard = async () => {
+            const linkedId = boardSettings?.linked_card_id;
+            if (linkedId) {
+                const { data } = await supabase.from('kanban_cards').select('*').eq('id', linkedId).single();
+                if (data) {
+                    setLinkedCard(data);
+                } else {
+                    setLinkedCard(null);
+                }
+            } else {
+                setLinkedCard(null);
+            }
+        };
+        fetchLinkedCard();
+    }, [boardSettings?.linked_card_id]);
 
     // --- Loading ---
     const loadBoardSettings = useCallback(async () => {
@@ -946,21 +1092,82 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                         </Box>
 
                         <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1 } }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1, flexWrap: 'wrap' }}>
                                 <Chip
                                     label={card.boardName}
                                     size="small"
+                                    variant="outlined"
                                     icon={isExternal ? <LinkIcon style={{ fontSize: 12 }} /> : undefined}
                                     sx={{
                                         fontSize: '10px',
                                         height: 16,
                                         px: 0,
-                                        bgcolor: isExternal
-                                            ? (theme.palette.mode === 'dark' ? alpha(theme.palette.primary.main, 0.2) : '#e3f2fd')
-                                            : alpha(theme.palette.text.primary, 0.05),
-                                        color: theme.palette.text.secondary
+                                        bgcolor: 'transparent',
+                                        color: theme.palette.text.secondary,
+                                        borderColor: isExternal ? alpha(theme.palette.primary.main, 0.3) : 'divider'
                                     }}
                                 />
+                                {card.originalData?.Nummer && (
+                                    <Chip
+                                        label={card.originalData.Nummer}
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenReportingDialog(card.originalData.Nummer);
+                                        }}
+                                        sx={{
+                                            fontSize: '10px',
+                                            height: 16,
+                                            fontWeight: 700,
+                                            bgcolor: 'transparent',
+                                            color: theme.palette.primary.main,
+                                            borderColor: theme.palette.primary.main,
+                                            cursor: 'pointer',
+                                            '&:hover': {
+                                                bgcolor: alpha(theme.palette.primary.main, 0.05),
+                                            }
+                                        }}
+                                    />
+                                )}
+                                {/* Display SOP and MS dates from originalData if available */}
+                                {(() => {
+                                    const d = card.originalData || {};
+                                    const sop = d.SOP_Neu || d.SOP_Datum;
+                                    const ms = d.MS_Neu || d.MS_Datum || d.TR_Neu || d.TR_Datum;
+                                    return (
+                                        <>
+                                            {sop && (
+                                                <Chip
+                                                    label={`SOP: ${sop}`}
+                                                    size="small"
+                                                    variant="outlined"
+                                                    sx={{
+                                                        fontSize: '9px',
+                                                        height: 16,
+                                                        color: '#ed6c02',
+                                                        borderColor: alpha('#ed6c02', 0.5),
+                                                        bgcolor: 'transparent'
+                                                    }}
+                                                />
+                                            )}
+                                            {ms && (
+                                                <Chip
+                                                    label={`MS: ${ms}`}
+                                                    size="small"
+                                                    variant="outlined"
+                                                    sx={{
+                                                        fontSize: '9px',
+                                                        height: 16,
+                                                        color: '#0288d1',
+                                                        borderColor: alpha('#0288d1', 0.5),
+                                                        bgcolor: 'transparent'
+                                                    }}
+                                                />
+                                            )}
+                                        </>
+                                    );
+                                })()}
                             </Box>
 
                             <Tooltip title={card.description} placement="top-start" enterDelay={700}>
@@ -981,15 +1188,12 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                             {dateStr && (
                                 <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
                                     <Chip
+                                        icon={<AccessTime sx={{ fontSize: '14px !important' }} />}
                                         label={dateStr}
                                         size="small"
                                         variant="outlined"
-                                        sx={{
-                                            height: 18,
-                                            fontSize: '0.65rem',
-                                            color: isOverdue ? 'error.main' : 'text.secondary',
-                                            borderColor: isOverdue ? 'error.light' : 'divider'
-                                        }}
+                                        color={isOverdue ? 'error' : 'default'}
+                                        sx={{ height: 20, fontSize: '10px', fontWeight: 600 }}
                                     />
                                 </Box>
                             )}
@@ -1026,18 +1230,33 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 </Box>
 
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                    <Tooltip title={t('teamBoard.topTopics')}><IconButton onClick={() => { setTopTopicsOpen(true); }}><Star color="warning" /></IconButton></Tooltip>
-                    <Tooltip title={t('teamBoard.kpis')}><IconButton onClick={() => setKpiOpen(true)}><Assessment color="primary" /></IconButton></Tooltip>
+                    <Tooltip title={t('teamBoard.topTopics')}><IconButton onClick={() => { setTopTopicsOpen(true); }} color="default"><Star /></IconButton></Tooltip>
+                    <Tooltip title={t('teamBoard.kpis')}><IconButton onClick={() => setKpiOpen(true)} color="default"><Assessment /></IconButton></Tooltip>
                     {canConfigure && <IconButton onClick={() => setSettingsOpen(true)} title={t('teamBoard.boardSettings')} color="default"><Settings /></IconButton>}
                 </Box>
             </Box>
 
             {/* Filter Row */}
-            <Box sx={{ display: 'flex', gap: 1 }}>
-                <Chip icon={<FilterList />} label={t('teamBoard.mine')} clickable onClick={() => setFilters(p => ({ ...p, mine: !p.mine }))} color={filters.mine ? "primary" : "default"} />
-                <Chip icon={<Warning />} label={t('teamBoard.overdue')} clickable onClick={() => setFilters(p => ({ ...p, overdue: !p.overdue }))} color={filters.overdue ? "error" : "default"} />
-                <Chip icon={<PriorityHigh />} label={t('teamBoard.important')} clickable onClick={() => setFilters(p => ({ ...p, important: !p.important }))} color={filters.important ? "warning" : "default"} />
-                <Chip icon={<AccessTime />} label={t('teamBoard.watch')} clickable onClick={() => setFilters(p => ({ ...p, watch: !p.watch }))} color={filters.watch ? "info" : "default"} />
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <Chip icon={<FilterList />} label={t('teamBoard.mine')} clickable onClick={() => setFilters(p => ({ ...p, mine: !p.mine }))} color={filters.mine ? "primary" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
+                <Chip icon={<Warning />} label={t('teamBoard.overdue')} clickable onClick={() => setFilters(p => ({ ...p, overdue: !p.overdue }))} color={filters.overdue ? "error" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
+                <Chip icon={<PriorityHigh />} label={t('teamBoard.important')} clickable onClick={() => setFilters(p => ({ ...p, important: !p.important }))} color={filters.important ? "warning" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
+                <Chip icon={<AccessTime />} label={t('teamBoard.watch')} clickable onClick={() => setFilters(p => ({ ...p, watch: !p.watch }))} color={filters.watch ? "info" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
+
+                <Box sx={{ flexGrow: 1 }} />
+
+                {linkedCard && (
+                    <Chip
+                        icon={<Description style={{ fontSize: '1rem' }} />}
+                        label={linkedCard.card_data?.Teil || linkedCard.card_data?.title || linkedCard.card_data?.description || 'Projekt'}
+                        onClick={() => setLinkedReportOpen(true)}
+                        color="primary"
+                        variant="outlined"
+                        clickable
+                        size="medium"
+                        sx={{ maxWidth: 300 }}
+                    />
+                )}
             </Box>
 
             {isHomeBoard && <Alert severity="info" sx={{ py: 0 }}>{t('teamBoard.homeBoardInfo')}</Alert>}
@@ -1079,7 +1298,12 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                     <Box sx={{ p: 1.5, fontWeight: 600, fontSize: '0.8rem', color: 'text.secondary', borderLeft: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'var(--panel)' }}>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                             {t('teamBoard.finished')}
-                                            <Chip label={completedCount + cards.filter(c => c.status === 'done').length} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: 'rgba(76, 175, 80, 0.1)', color: 'success.main' }} />
+                                            <Chip
+                                                label={completedCount + cards.filter(c => c.status === 'done').length}
+                                                size="small"
+                                                variant="outlined"
+                                                sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: 'transparent', color: 'success.main', borderColor: 'success.main' }}
+                                            />
                                         </Box>
                                         <Tooltip title={t('teamBoard.archive') || 'Archiv'}>
                                             <IconButton
@@ -1222,6 +1446,12 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                         multiline
                         minRows={3}
                     />
+
+                    <ProjectPicker
+                        selectedId={boardSettings.linked_card_id || ''}
+                        onSelect={(id) => setBoardSettings(prev => ({ ...prev, linked_card_id: id }))}
+                    />
+
                     <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-start' }}>
                         <Tooltip title={t('teamBoard.openArchive') || 'Archiv öffnen'}>
                             <IconButton onClick={() => { setSettingsOpen(false); setArchiveOpen(true); loadArchive(); }}>
@@ -1262,6 +1492,24 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
             <TopTopicsDialog open={topTopicsOpen} onClose={() => setTopTopicsOpen(false)} />
             <TeamKPIDialog open={kpiOpen} onClose={() => setKpiOpen(false)} />
+
+            {linkedCard && (
+                <ProjectStatusReportDialog
+                    open={linkedReportOpen}
+                    onClose={() => setLinkedReportOpen(false)}
+                    card={linkedCard}
+                    boardId={linkedCard.board_id}
+                />
+            )}
+
+            {reportingCard && (
+                <ProjectStatusReportDialog
+                    open={reportingDialogOpen}
+                    onClose={() => setReportingDialogOpen(false)}
+                    card={reportingCard}
+                    boardId={reportingCard.board_id}
+                />
+            )}
         </Box>
     );
 }

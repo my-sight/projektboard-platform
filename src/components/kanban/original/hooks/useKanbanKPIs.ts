@@ -150,14 +150,14 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
         // Calculate Next Key Dates (Kerntermine)
         const allKeyDates: any[] = [];
         activeCards.forEach(card => {
-            if (card.Kerntermine && Array.isArray(card.Kerntermine)) {
+            if (card && card.Kerntermine && Array.isArray(card.Kerntermine)) {
                 card.Kerntermine.forEach(kt => {
-                    if (kt.date) {
+                    if (kt && kt.date) {
                         const d = nullableDate(kt.date);
                         if (d && d >= now) {
                             allKeyDates.push({
                                 card,
-                                title: kt.title,
+                                title: kt.title || 'Termin', // Fallback title
                                 date: d,
                                 dateStr: kt.date
                             });

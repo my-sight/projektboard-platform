@@ -34,6 +34,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
     const theme = useTheme();
     const [loading, setLoading] = useState(true);
     const [reportData, setReportData] = useState<any>(null);
+    const [latestCardRecord, setLatestCardRecord] = useState<any>(null);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -41,21 +42,48 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
 
             setLoading(true);
             try {
+                // 0. Fetch latest card data to ensure we have current fields and board_id
+                const cardIdToFetch = card.id || (card as any).card_id;
+                const { data: latestCard } = await supabase
+                    .from('kanban_cards')
+                    .select('*')
+                    .eq('id', cardIdToFetch)
+                    .single();
+
+                const currentCard = latestCard || card;
+                const targetBoardId = currentCard.board_id || boardId;
+
                 // 1. Fetch Con-Boards AND Main Board (to get settings)
+                // We fetch the board itself and any children (if it's a parent)
+                // OR we fetch the board itself and its parent and siblings (if it's a child)
+
+                // First, get the board details to see if it's a parent or child
+                const { data: boardInfo } = await supabase
+                    .from('kanban_boards')
+                    .select('id, parent_id')
+                    .eq('id', targetBoardId)
+                    .single();
+
+                const rootBoardId = boardInfo?.parent_id || targetBoardId;
+
                 const { data: boards } = await supabase
                     .from('kanban_boards')
                     .select('id, name, settings, parent_id')
-                    .or(`parent_id.eq.${boardId},id.eq.${boardId}`);
+                    .or(`parent_id.eq.${rootBoardId},id.eq.${rootBoardId}`);
 
                 // 2. Fetch Statuses for this card across all boards
                 const { data: statuses } = await supabase
                     .from('board_card_statuses')
                     .select('*')
-                    .eq('card_id', card.card_id);
+                    .eq('card_id', cardIdToFetch);
 
                 // 3. Separate Main Board and Con-Boards
-                const mainBoard = boards?.find(b => b.id === boardId);
-                const conBoards = boards?.filter(b => b.parent_id === boardId) || [];
+                const mainBoard = boards?.find(b => b.id === rootBoardId);
+                const conBoards = boards?.filter(b => b.parent_id === rootBoardId) || [];
+
+                // Helper: Update reportData with latest card info for rendering
+                // Note: We'll use latestCard.card_data for display later
+                setLatestCardRecord(currentCard);
 
                 // Helper: Calculate Checklist Info
                 const getChecklistInfo = (templates: any, fullDoneMap: any, currentStageId: string) => {
@@ -112,6 +140,11 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                         else if (latest?.text) statusText = latest.text;
                     }
 
+                    // Dates
+                    const cardData = status?.local_data || {};
+                    const sop = cardData.SOP_Neu || cardData.SOP_Datum;
+                    const ms = cardData.MS_Neu || cardData.MS_Datum || cardData.TR_Neu || cardData.TR_Datum;
+
                     return {
                         id: board.id,
                         name: board.name,
@@ -121,15 +154,18 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                         escalation: status?.local_data?.Eskalation,
                         ampel: status?.local_data?.Ampel,
                         checklist,
+                        sop,
+                        ms,
                         updated: status?.updated_at
                     };
                 });
 
                 // 5. Process Main Board Data
-                const mainStatus = statuses?.find(s => s.board_id === boardId);
+                const mainStatus = statuses?.find(s => s.board_id === rootBoardId);
                 // Note: card.card_data has 'Board Stage' but we prefer 'board_card_statuses' if available for consistency,
                 // otherwise fallback to card_data.
-                const mainStageId = mainStatus?.column_id || card.card_data['Board Stage'] || 'Unbekannt';
+                const mainCardData = card.card_data || (card as any);
+                const mainStageId = mainStatus?.column_id || mainCardData['Board Stage'] || 'Unbekannt';
 
                 // Get human readable Main Stage Label if possible
                 let mainStageLabel = mainStageId;
@@ -142,7 +178,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                 }
 
                 const mainTemplates = mainBoard?.settings?.checklistTemplates || {};
-                const mainDoneMap = mainStatus?.local_data?.ChecklistDone || card.card_data?.ChecklistDone || {};
+                const mainDoneMap = mainStatus?.local_data?.ChecklistDone || mainCardData?.ChecklistDone || {};
 
                 const mainChecklist = getChecklistInfo(mainTemplates, mainDoneMap, mainStageId);
 
@@ -154,7 +190,6 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                 };
 
                 // Extract Main Status Text
-                const mainCardData = card.card_data || {};
                 let mainStatusText = mainCardData['Status Kurz'] || '';
                 if (!mainStatusText && Array.isArray(mainCardData.StatusHistory) && mainCardData.StatusHistory.length > 0) {
                     const latest = mainCardData.StatusHistory[0];
@@ -205,12 +240,41 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
         return d.isValid() ? d : null;
     };
 
-    const cardData = card.card_data || {};
+    // Safety: Extract labels to strings to avoid 'unknown' type errors in JSX
+    const customSopLabel: string = reportData?.customLabels?.sop ? String(reportData.customLabels.sop) : 'SOP';
+    const customTrLabel: string = reportData?.customLabels?.tr ? String(reportData.customLabels.tr) : 'Milestone';
+
+    if (!open) return null;
+
+    const effectiveCard = latestCardRecord || card;
+    const cardData = effectiveCard ? (effectiveCard.card_data || {}) : {};
     const rawSop = (cardData.SOP_Neu || cardData.SOP_Datum) as string | undefined;
     const rawMs = (cardData.MS_Neu || cardData.MS_Datum || cardData.TR_Neu || cardData.TR_Datum) as string | undefined;
 
+    // Safety: Extract Kerntermine to local array to avoid 'unknown' type issues in JSX
+    const kerntermineList = (cardData.Kerntermine && Array.isArray(cardData.Kerntermine))
+        ? (cardData.Kerntermine as any[])
+        : [];
+
     const sopDate = parseDate(rawSop);
     const msDate = parseDate(rawMs);
+
+    // MS Deviation Logic
+    const rawMsDatum = cardData.MS_Datum as string | undefined;
+    const msDatumDate = parseDate(rawMsDatum);
+    let msDeviationLabel = '';
+    let msDeviationColor = 'text.secondary';
+
+    if (msDate && msDatumDate) {
+        const diffDays = msDate.diff(msDatumDate, 'day');
+        if (diffDays > 0) {
+            msDeviationLabel = `+${diffDays}d`;
+            msDeviationColor = 'error.main';
+        } else if (diffDays < 0) {
+            msDeviationLabel = `${diffDays}d`;
+            msDeviationColor = 'success.main';
+        }
+    }
 
     return (
         <Dialog
@@ -234,10 +298,11 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
             <DialogTitle sx={{ borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box>
                     <Typography variant="overline" sx={{ color: 'primary.main', letterSpacing: 1.2 }}>
-                        Status Report
+                        {t('kanban.statusReport') || 'Status Report'}
                     </Typography>
                     <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                        {card.project_number ? `${card.project_number} ` : ''}{card.project_name}
+                        {effectiveCard.project_number || cardData?.Nummer ? `${effectiveCard.project_number || cardData?.Nummer} ` : ''}
+                        {effectiveCard.project_name || cardData?.Teil || cardData?.title || 'Projekt'}
                     </Typography>
                 </Box>
                 <IconButton onClick={onClose} sx={{ color: 'text.secondary' }}>
@@ -245,13 +310,13 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                 </IconButton>
             </DialogTitle>
 
-            <DialogContent sx={{ mt: 1 }}> {/* Reduced mt */}
+            <DialogContent sx={{ mt: 0.5, p: 1.5 }}> {/* Minimale Abstände */}
                 {loading ? (
                     <Box sx={{ display: 'flex', justifyContent: 'center', p: 5 }}>
                         <CircularProgress />
                     </Box>
                 ) : (
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}> {/* Reduced gap: 3->1.5 */}
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}> {/* Reduced gap: 1.5->1 */}
 
                         {/* TOP SECTION: Main Status & Dates */}
                         <Grid container spacing={1}> {/* Reduced spacing: 2->1 */}
@@ -275,14 +340,12 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
 
                                         {/* Main Status Text Display */}
                                         {reportData?.mainStatusText && (
-                                            <Box sx={{ p: 0.75, bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', borderRadius: 1, mb: 1.5 }}>
+                                            <Box sx={{ p: 0.75, bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', borderRadius: 1, mb: 1 }}>
                                                 <Typography variant="caption" color="text.secondary" sx={{
-                                                    display: '-webkit-box',
-                                                    WebkitLineClamp: 3,
-                                                    WebkitBoxOrient: 'vertical',
-                                                    overflow: 'hidden',
+                                                    display: 'block', // No more clamp
                                                     fontStyle: 'italic',
-                                                    lineHeight: 1.25
+                                                    lineHeight: 1.25,
+                                                    whiteSpace: 'pre-wrap' // Keep formatting
                                                 }}>
                                                     "{reportData.mainStatusText}"
                                                 </Typography>
@@ -324,7 +387,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                                 // DONE Style
                                                                 height: 18,
                                                                 fontSize: '0.65rem',
-                                                                bgcolor: alpha(theme.palette.success.main, 0.05),
+                                                                bgcolor: 'transparent', // Removed background color
                                                                 borderColor: theme.palette.success.main,
                                                                 color: theme.palette.success.main,
                                                                 maxWidth: '100%'
@@ -332,8 +395,8 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                                 // OPEN Style
                                                                 height: 18,
                                                                 fontSize: '0.65rem',
-                                                                bgcolor: alpha(theme.palette.error.main, 0.05),
-                                                                borderColor: alpha(theme.palette.error.main, 0.2),
+                                                                bgcolor: 'transparent', // Removed background color
+                                                                borderColor: alpha(theme.palette.error.main, 0.4),
                                                                 color: theme.palette.error.main,
                                                                 maxWidth: '100%'
                                                             }}
@@ -359,31 +422,40 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                         <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 0.5 }}>
                                             Meilensteine
                                         </Typography>
-                                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}> {/* Reduced gap 1.5->1 */}
-                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <Typography variant="body2" sx={{ color: '#ed6c02', fontWeight: 'bold' }}>{reportData?.customLabels?.sop || 'SOP'}</Typography>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <Typography variant="body2" sx={{ color: '#ed6c02', fontWeight: 'bold' }}>{customSopLabel + ''}</Typography>
                                                 <Chip
                                                     label={sopDate ? sopDate.format('DD.MM.YYYY') : 'Kein Datum'}
                                                     size="small"
-                                                    sx={{ height: 20, fontSize: '0.75rem', bgcolor: alpha('#ed6c02', 0.2), color: '#ed6c02', border: '1px solid #ed6c02' }}
+                                                    variant="outlined"
+                                                    sx={{ height: 20, fontSize: '0.75rem', bgcolor: 'transparent', color: '#ed6c02', borderColor: '#ed6c02' }}
                                                 />
-                                            </Box>
-                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <Typography variant="body2" sx={{ color: '#0288d1', fontWeight: 'bold' }}>{reportData?.customLabels?.tr || 'Milestone'}</Typography>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                    <Typography variant="body2" sx={{ color: '#0288d1', fontWeight: 'bold' }}>{customTrLabel + ''}</Typography>
+                                                    {msDeviationLabel && (
+                                                        <Typography variant="caption" sx={{ color: msDeviationColor, fontWeight: 700 }}>
+                                                            ({msDeviationLabel})
+                                                        </Typography>
+                                                    )}
+                                                </Box>
                                                 <Chip
                                                     label={msDate ? msDate.format('DD.MM.YYYY') : 'Kein Datum'}
                                                     size="small"
-                                                    sx={{ height: 20, fontSize: '0.75rem', bgcolor: alpha('#0288d1', 0.2), color: '#0288d1', border: '1px solid #0288d1' }}
+                                                    variant="outlined"
+                                                    sx={{ height: 20, fontSize: '0.75rem', bgcolor: 'transparent', color: '#0288d1', borderColor: '#0288d1' }}
                                                 />
-                                            </Box>
+                                            </div>
 
                                             {/* Kerntermine / Key Dates */}
-                                            {cardData.Kerntermine && Array.isArray(cardData.Kerntermine) && cardData.Kerntermine.length > 0 && (
+                                            {kerntermineList.length > 0 && (
                                                 <>
                                                     <Divider sx={{ my: 0.5, borderColor: 'rgba(0,0,0,0.05)' }} />
                                                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>Termine</Typography>
-                                                    {cardData.Kerntermine
-                                                        .filter((kt: any) => kt.date) // Only with date
+                                                    {kerntermineList
+                                                        .filter((kt: any) => kt && kt.date) // Only with date (safe check)
                                                         .sort((a: any, b: any) => {
                                                             const dA = parseDate(a.date);
                                                             const dB = parseDate(b.date);
@@ -392,32 +464,34 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                             return dA.diff(dB);
                                                         })
                                                         .map((kt: any, kidx: number) => {
+                                                            if (!kt) return null;
                                                             const d = parseDate(kt.date);
                                                             if (!d) return null;
                                                             const isPast = d.isBefore(dayjs(), 'day');
+                                                            const kTitle = kt.title ? String(kt.title) : 'Termin';
                                                             return (
-                                                                <Box key={`kt-${kidx}`} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                <div key={`kt-${kidx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                                     <Typography variant="body2" sx={{ color: 'text.primary', fontSize: '0.85rem' }}>
-                                                                        {String(kt.title || 'Termin')}
+                                                                        {kTitle}
                                                                     </Typography>
                                                                     <Chip
                                                                         label={d.format('DD.MM.YYYY')}
                                                                         size="small"
+                                                                        variant="outlined"
                                                                         sx={{
                                                                             height: 20,
                                                                             fontSize: '0.75rem',
-                                                                            bgcolor: isPast ? alpha(theme.palette.text.disabled, 0.1) : alpha(theme.palette.primary.main, 0.1),
+                                                                            bgcolor: 'transparent',
                                                                             color: isPast ? 'text.disabled' : 'primary.main',
-                                                                            border: '1px solid',
                                                                             borderColor: isPast ? alpha(theme.palette.text.disabled, 0.3) : alpha(theme.palette.primary.main, 0.3)
                                                                         }}
                                                                     />
-                                                                </Box>
+                                                                </div>
                                                             );
                                                         })}
                                                 </>
                                             )}
-                                        </Box>
+                                        </div>
                                     </CardContent>
                                 </Card>
                             </Grid>
@@ -506,17 +580,37 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
 
                                                     {/* Status Text (Kurz) */}
                                                     {board.statusText && (
-                                                        <Box sx={{ mb: 1.5, p: 0.75, bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', borderRadius: 1 }}>
+                                                        <Box sx={{ mb: 1, p: 0.75, bgcolor: theme.palette.mode === 'dark' ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', borderRadius: 1 }}>
                                                             <Typography variant="caption" color="text.secondary" sx={{
-                                                                display: '-webkit-box',
-                                                                WebkitLineClamp: 3,
-                                                                WebkitBoxOrient: 'vertical',
-                                                                overflow: 'hidden',
+                                                                display: 'block', // No more clamp
                                                                 fontStyle: 'italic',
-                                                                lineHeight: 1.2
+                                                                lineHeight: 1.2,
+                                                                whiteSpace: 'pre-wrap'
                                                             }}>
                                                                 "{board.statusText}"
                                                             </Typography>
+                                                        </Box>
+                                                    )}
+
+                                                    {/* Con-Board Dates */}
+                                                    {(board.sop || board.ms) && (
+                                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1.5 }}>
+                                                            {board.sop && (
+                                                                <Chip
+                                                                    label={`SOP: ${board.sop}`}
+                                                                    size="small"
+                                                                    variant="outlined"
+                                                                    sx={{ height: 16, fontSize: '0.65rem', color: '#ed6c02', borderColor: '#ed6c02', bgcolor: 'transparent' }}
+                                                                />
+                                                            )}
+                                                            {board.ms && (
+                                                                <Chip
+                                                                    label={`MS: ${board.ms}`}
+                                                                    size="small"
+                                                                    variant="outlined"
+                                                                    sx={{ height: 16, fontSize: '0.65rem', color: '#0288d1', borderColor: '#0288d1', bgcolor: 'transparent' }}
+                                                                />
+                                                            )}
                                                         </Box>
                                                     )}
 
@@ -526,7 +620,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                                                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Checkliste</Typography>
                                                             </Box>
-                                                            <Typography variant="caption" fontWeight="bold" color={board.checklist.done === board.checklist.total && board.checklist.total > 0 ? 'success.main' : 'text.primary'}>
+                                                            <Typography variant="caption" fontWeight="bold" color={board.checklist.done === board.checklist.total && board.checklist.total > 0 ? 'success.main' : 'text.primary'} sx={{ fontSize: '0.7rem' }}>
                                                                 {board.checklist.done} / {board.checklist.total}
                                                             </Typography>
                                                         </Box>
@@ -534,19 +628,18 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                             variant="determinate"
                                                             value={board.checklist.progress}
                                                             sx={{
-                                                                height: 3, // Thinner
-                                                                borderRadius: 1.5,
-                                                                mb: 0.5,
-                                                                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+                                                                height: 3,
+                                                                borderRadius: 2,
+                                                                bgcolor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
                                                                 '& .MuiLinearProgress-bar': {
-                                                                    borderRadius: 1.5,
+                                                                    borderRadius: 2,
                                                                     bgcolor: board.checklist.progress === 100 ? 'success.main' : 'primary.main'
                                                                 }
                                                             }}
                                                         />
                                                         {/* List ALL Items for Con-Boards */}
                                                         {board.checklist.allItems?.length > 0 && (
-                                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.25 }}>
+                                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.25, mt: 0.5 }}>
                                                                 {board.checklist.allItems.map((item: { name: string, isDone: boolean }, idx: number) => (
                                                                     <Chip
                                                                         key={idx}

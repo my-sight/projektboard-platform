@@ -993,8 +993,14 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
           completionLabel={completionLabel}
           milestoneLabel={milestoneLabel}
           onCardClick={(card) => {
-            setSelectedProjectForReport(card);
-            setStatusReportOpen(true);
+            try {
+              console.log('Opening Status Report for:', card.id);
+              setSelectedProjectForReport(card);
+              setStatusReportOpen(true);
+            } catch (e) {
+              console.error('Failed to open Status Report:', e);
+              alert('Fehler beim Öffnen des Reports: ' + e);
+            }
           }}
         />
       </Box>

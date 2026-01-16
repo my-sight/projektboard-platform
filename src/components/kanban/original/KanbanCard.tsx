@@ -38,6 +38,7 @@ export interface KanbanCardProps {
   onClick?: () => void;
   trLabel?: string;
   sopLabel?: string;
+  onOpenStatusReport?: (card: ProjectBoardCard) => void;
 }
 
 const statusKeys = ['message', 'qualitaet', 'kosten', 'termine'] as const;
@@ -62,6 +63,7 @@ export function KanbanCard({
   onClick,
   trLabel = 'TR',
   sopLabel = 'SOP',
+  onOpenStatusReport,
 }: KanbanCardProps) {
   const { t } = useLanguage();
   const theme = useTheme();
@@ -157,7 +159,7 @@ export function KanbanCard({
             size="small"
             color={color}
             variant="outlined"
-            sx={{ fontSize: '0.65rem', height: 20 }}
+            sx={{ fontSize: '0.65rem', height: 20, bgcolor: 'transparent' }}
           />
         );
       }
@@ -207,7 +209,23 @@ export function KanbanCard({
             {currentSize === 'xcompact' ? (
               <Box sx={{ p: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: isRed ? 'error.main' : (isYellow ? 'warning.main' : 'success.main') }} />
-                <Typography variant="caption" fontWeight={600} noWrap>{card.Nummer}</Typography>
+                <Typography
+                  variant="caption"
+                  fontWeight={600}
+                  noWrap
+                  sx={{
+                    cursor: onOpenStatusReport ? 'pointer' : 'default',
+                    '&:hover': onOpenStatusReport ? { color: 'primary.main' } : {}
+                  }}
+                  onClick={(e) => {
+                    if (onOpenStatusReport) {
+                      e.stopPropagation();
+                      onOpenStatusReport(card);
+                    }
+                  }}
+                >
+                  {card.Nummer}
+                </Typography>
               </Box>
             ) : (
               <CardContent sx={{ p: '12px !important', '&:last-child': { pb: '12px !important' } }}>
@@ -217,20 +235,33 @@ export function KanbanCard({
                     <Chip
                       label={card.Nummer}
                       size="small"
+                      variant="outlined"
+                      clickable={!!onOpenStatusReport}
+                      onClick={(e) => {
+                        if (onOpenStatusReport) {
+                          e.stopPropagation();
+                          onOpenStatusReport(card);
+                        }
+                      }}
                       sx={{
                         height: 18,
                         fontSize: '0.65rem',
                         fontWeight: 700,
-                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                        bgcolor: 'transparent',
                         color: theme.palette.primary.main,
+                        borderColor: theme.palette.primary.main,
                         maxWidth: '100%',
+                        cursor: onOpenStatusReport ? 'pointer' : 'default',
                         '& .MuiChip-label': {
                           display: 'block',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
                           px: 1
-                        }
+                        },
+                        '&:hover': onOpenStatusReport ? {
+                          bgcolor: alpha(theme.palette.primary.main, 0.05),
+                        } : {}
                       }}
                     />
 
@@ -317,11 +348,13 @@ export function KanbanCard({
                         <Chip
                           label={`${sopLabel}: ${sopDate.toLocaleDateString('de-DE')}`}
                           size="small"
+                          variant="outlined"
                           sx={{
                             height: 18,
                             fontSize: '0.6rem',
-                            bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                            bgcolor: 'transparent',
                             color: theme.palette.secondary.main,
+                            borderColor: theme.palette.secondary.main,
                             flexShrink: 0
                           }}
                         />
@@ -333,11 +366,13 @@ export function KanbanCard({
                           <Chip
                             label={`* ${sopNeuDate.toLocaleDateString('de-DE')}`}
                             size="small"
+                            variant="outlined"
                             sx={{
                               height: 18,
                               fontSize: '0.6rem',
-                              bgcolor: alpha(theme.palette.success.main, 0.1),
+                              bgcolor: 'transparent',
                               color: theme.palette.success.main,
+                              borderColor: theme.palette.success.main,
                               flexShrink: 0
                             }}
                           />
@@ -419,14 +454,15 @@ export function KanbanCard({
                       <Chip
                         label={`${trDiff > 0 ? '+' : ''}${trDiff} T`}
                         size="small"
+                        variant="outlined"
                         sx={{
                           height: 20,
                           fontSize: '0.65rem',
                           fontWeight: 700,
-                          bgcolor: trDiff > 0 ? alpha(theme.palette.error.main, 0.1) : alpha(theme.palette.success.main, 0.1),
+                          bgcolor: 'transparent',
                           color: trDiff > 0 ? theme.palette.error.main : theme.palette.success.main,
                           border: '1px solid',
-                          borderColor: trDiff > 0 ? alpha(theme.palette.error.main, 0.2) : alpha(theme.palette.success.main, 0.2)
+                          borderColor: trDiff > 0 ? theme.palette.error.main : theme.palette.success.main
                         }}
                       />
                     )}

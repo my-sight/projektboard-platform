@@ -87,6 +87,7 @@ export function KanbanHeader({
                         onClick={() => onToggleFilter('mine')}
                         color={filters.mine ? 'primary' : 'default'}
                         variant={filters.mine ? 'filled' : 'outlined'}
+                        sx={{ bgcolor: filters.mine ? undefined : 'transparent' }}
                     />
                 </Tooltip>
 
@@ -96,6 +97,7 @@ export function KanbanHeader({
                         onClick={() => onToggleFilter('overdue')}
                         color={filters.overdue ? 'error' : 'default'}
                         variant={filters.overdue ? 'filled' : 'outlined'}
+                        sx={{ bgcolor: filters.overdue ? undefined : 'transparent' }}
                     />
                 </Tooltip>
 
@@ -105,6 +107,7 @@ export function KanbanHeader({
                         onClick={() => onToggleFilter('critical')}
                         color={filters.critical ? 'error' : 'default'}
                         variant={filters.critical ? 'filled' : 'outlined'}
+                        sx={{ bgcolor: filters.critical ? undefined : 'transparent' }}
                     />
                 </Tooltip>
 
@@ -114,6 +117,7 @@ export function KanbanHeader({
                         onClick={() => onToggleFilter('phaseTransition')}
                         color={filters.phaseTransition ? 'warning' : 'default'}
                         variant={filters.phaseTransition ? 'filled' : 'outlined'}
+                        sx={{ bgcolor: filters.phaseTransition ? undefined : 'transparent' }}
                     />
                 </Tooltip>
             </Box>
@@ -183,13 +187,13 @@ export function KanbanHeader({
 
                 {/* Actions */}
                 <Tooltip title={t('kanban.topTopicsTitle')}>
-                    <IconButton onClick={onOpenTopTopics} sx={{ color: '#ed6c02' }}>
+                    <IconButton onClick={onOpenTopTopics} color="default">
                         <Star />
                     </IconButton>
                 </Tooltip>
 
                 <Tooltip title={t('kanban.kpis')}>
-                    <IconButton onClick={onOpenKpis} sx={{ color: '#009688' }}>
+                    <IconButton onClick={onOpenKpis} color="default">
                         {kpiBadgeCount > 0 ? (
                             <Box sx={{ position: 'relative', display: 'flex' }}>
                                 <Assessment />
