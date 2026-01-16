@@ -480,7 +480,8 @@ export function useKanbanData(
                 'Eskalation', 'TR_Datum', 'SOP_Datum', 'Due Date', 'Status Kurz', 'StatusHistory',
                 'TR_Neu', 'SOP_Neu', 'Ampel', 'PhaseTransition', // ADDED PhaseTransition
                 'Verantwortlich', 'VerantwortlichId', 'VerantwortlichEmail',
-                'ChecklistDone' // ADDED ChecklistDone for Con-Board Persistence
+                'ChecklistDone', // ADDED ChecklistDone for Con-Board Persistence
+                'Kerntermine' // ADDED Kerntermine
             ];
 
             const localChanges: any = {};

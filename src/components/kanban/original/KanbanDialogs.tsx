@@ -832,7 +832,76 @@ export function EditCardDialog({
 
             </Box>
 
-            <Box sx={{ mt: 2 }}>
+
+            {/* START: Kerntermine (Key Dates) */}
+            <Box sx={{ mt: 3, p: 2, border: 1, borderColor: 'divider', borderRadius: 1, backgroundColor: 'rgba(0,0,0,0.02)' }}>
+              <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold' }}>🗓️ Kerntermine</Typography>
+
+              {(!selectedCard.Kerntermine || selectedCard.Kerntermine.length === 0) && (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontStyle: 'italic' }}>Keine Kerntermine definiert.</Typography>
+              )}
+
+              <Stack spacing={2} sx={{ mb: 2 }}>
+                {(selectedCard.Kerntermine || []).map((kt, idx) => (
+                  <Box key={idx} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <TextField
+                      label="Titel"
+                      size="small"
+                      sx={{ flex: 1 }}
+                      value={kt.title}
+                      disabled={!canEdit}
+                      onChange={(e) => {
+                        const newKt = [...(selectedCard.Kerntermine || [])];
+                        newKt[idx] = { ...newKt[idx], title: e.target.value };
+                        handlePatch('Kerntermine', newKt);
+                      }}
+                    />
+                    <StandardDatePicker
+                      label="Datum"
+                      value={kt.date ? dayjs(kt.date) : null}
+                      onChange={() => { }} // Controlled by onAccept to avoid jitter
+                      onAccept={(val: any) => {
+                        const newKt = [...(selectedCard.Kerntermine || [])];
+                        newKt[idx] = { ...newKt[idx], date: val ? val.format('YYYY-MM-DD') : '' };
+                        handlePatch('Kerntermine', newKt);
+                      }}
+                      disabled={!canEdit}
+                      slotProps={{ textField: { size: 'small', sx: { width: 150 } } }}
+                    />
+                    {canEdit && (
+                      <IconButton
+                        color="error"
+                        size="small"
+                        onClick={() => {
+                          const newKt = [...(selectedCard.Kerntermine || [])];
+                          newKt.splice(idx, 1);
+                          handlePatch('Kerntermine', newKt);
+                        }}
+                      >
+                        <DeleteOutline />
+                      </IconButton>
+                    )}
+                  </Box>
+                ))}
+              </Stack>
+
+              {canEdit && (
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<Add />}
+                  onClick={() => {
+                    const newKt = [...(selectedCard.Kerntermine || []), { title: '', date: '' }];
+                    handlePatch('Kerntermine', newKt);
+                  }}
+                >
+                  Termin hinzufügen
+                </Button>
+              )}
+            </Box>
+            {/* END: Kerntermine */}
+
+            <Box sx={{ mt: 3 }}>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>{sopLabel}-Datum</Typography>
               <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
                 <StandardDatePicker

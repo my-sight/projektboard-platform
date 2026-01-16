@@ -117,6 +117,13 @@ export interface ProjectBoardCard {
   // Phase Transition
   PhaseTransition?: boolean | string;
 
+  // Kerntermine (Custom Key Dates)
+  Kerntermine?: Array<{
+    title: string;
+    date: string;
+    completed?: boolean;
+  }>;
+
   // Medien & Anhänge
   Bild?: string;
 

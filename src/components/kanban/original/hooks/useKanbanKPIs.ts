@@ -20,6 +20,7 @@ export interface KanbanKPIs {
     totalTrDeviation: number;
     nextTrs: ProjectBoardCard[];
     nextSops: ProjectBoardCard[];
+    nextKeyDates: { card: ProjectBoardCard; title: string; date: Date; dateStr: string }[];
 }
 
 export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: ProjectBoardCard) => string, profiles: any[] = []) {
@@ -41,7 +42,8 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
             laneDistribution: {},
             totalTrDeviation: 0,
             nextTrs: [],
-            nextSops: []
+            nextSops: [],
+            nextKeyDates: []
         };
 
         const now = new Date();
@@ -144,6 +146,31 @@ export function useKanbanKPIs(rows: ProjectBoardCard[], inferStage: (card: Proje
                 _currentDate: item.current,
                 _effectiveDate: item.effectiveDate
             }));
+
+        // Calculate Next Key Dates (Kerntermine)
+        const allKeyDates: any[] = [];
+        activeCards.forEach(card => {
+            if (card.Kerntermine && Array.isArray(card.Kerntermine)) {
+                card.Kerntermine.forEach(kt => {
+                    if (kt.date) {
+                        const d = nullableDate(kt.date);
+                        if (d && d >= now) {
+                            allKeyDates.push({
+                                card,
+                                title: kt.title,
+                                date: d,
+                                dateStr: kt.date
+                            });
+                        }
+                    }
+                });
+            }
+        });
+
+        // Sort by date ASC and take top 5
+        kpis.nextKeyDates = allKeyDates
+            .sort((a, b) => a.date.getTime() - b.date.getTime())
+            .slice(0, 5);
 
         return kpis;
     }, [rows, inferStage, profiles]);

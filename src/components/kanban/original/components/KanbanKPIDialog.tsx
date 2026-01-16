@@ -157,6 +157,7 @@ export function KanbanKPIDialog({ open, onClose, kpis, distribution, memberDistr
                             )}
                         </Grid>
 
+
                         <Grid container spacing={4} sx={{ mt: 2 }}>
                             {/* Projekte je Phase */}
                             <Grid item xs={12}>

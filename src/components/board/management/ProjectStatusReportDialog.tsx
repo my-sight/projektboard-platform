@@ -376,6 +376,47 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                     sx={{ height: 20, fontSize: '0.75rem', bgcolor: alpha('#0288d1', 0.2), color: '#0288d1', border: '1px solid #0288d1' }}
                                                 />
                                             </Box>
+
+                                            {/* Kerntermine / Key Dates */}
+                                            {cardData.Kerntermine && Array.isArray(cardData.Kerntermine) && cardData.Kerntermine.length > 0 && (
+                                                <>
+                                                    <Divider sx={{ my: 0.5, borderColor: 'rgba(0,0,0,0.05)' }} />
+                                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>Termine</Typography>
+                                                    {cardData.Kerntermine
+                                                        .filter((kt: any) => kt.date) // Only with date
+                                                        .sort((a: any, b: any) => {
+                                                            const dA = parseDate(a.date);
+                                                            const dB = parseDate(b.date);
+                                                            if (!dA) return 1;
+                                                            if (!dB) return -1;
+                                                            return dA.diff(dB);
+                                                        })
+                                                        .map((kt: any, kidx: number) => {
+                                                            const d = parseDate(kt.date);
+                                                            if (!d) return null;
+                                                            const isPast = d.isBefore(dayjs(), 'day');
+                                                            return (
+                                                                <Box key={`kt-${kidx}`} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                    <Typography variant="body2" sx={{ color: 'text.primary', fontSize: '0.85rem' }}>
+                                                                        {String(kt.title || 'Termin')}
+                                                                    </Typography>
+                                                                    <Chip
+                                                                        label={d.format('DD.MM.YYYY')}
+                                                                        size="small"
+                                                                        sx={{
+                                                                            height: 20,
+                                                                            fontSize: '0.75rem',
+                                                                            bgcolor: isPast ? alpha(theme.palette.text.disabled, 0.1) : alpha(theme.palette.primary.main, 0.1),
+                                                                            color: isPast ? 'text.disabled' : 'primary.main',
+                                                                            border: '1px solid',
+                                                                            borderColor: isPast ? alpha(theme.palette.text.disabled, 0.3) : alpha(theme.palette.primary.main, 0.3)
+                                                                        }}
+                                                                    />
+                                                                </Box>
+                                                            );
+                                                        })}
+                                                </>
+                                            )}
                                         </Box>
                                     </CardContent>
                                 </Card>
