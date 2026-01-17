@@ -129,36 +129,45 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
           let isMine = false;
 
-          // A) Strikter ID Check (Sicherste Methode)
-          const cardUserIds = [d.userId, d.assigneeId, d.user_id, d.assignee_id].filter(Boolean);
-          if (cardUserIds.includes(user.id)) {
+          // A) Relational: Check dedicated assignee_id column
+          if (row.assignee_id === user.id) {
             isMine = true;
           }
-          // B) Fallback: Namens-Match (Nur wenn keine ID da ist)
-          else if (cardUserIds.length === 0) {
-            const candidates = [d.Verantwortlich, d.responsible, d.assigneeName].filter(s => typeof s === 'string');
-            for (const cand of candidates) {
-              const raw = cand.toLowerCase().trim();
-              if (myIds.has(raw)) { isMine = true; break; }
-              if (metaName && raw.includes(metaName.toLowerCase().trim())) { isMine = true; break; }
+          // B) Fallback: JSONB ID check (for historical data)
+          else {
+            const cardUserIds = [d.userId, d.assigneeId, d.user_id, d.assignee_id].filter(Boolean);
+            if (cardUserIds.includes(user.id)) {
+              isMine = true;
+            }
+            // C) Extreme Fallback: Name Match
+            else if (cardUserIds.length === 0) {
+              const candidates = [d.Verantwortlich, d.responsible, d.assigneeName].filter(s => typeof s === 'string');
+              for (const cand of candidates) {
+                const raw = cand.toLowerCase().trim();
+                if (myIds.has(raw)) { isMine = true; break; }
+                if (metaName && raw.includes(metaName.toLowerCase().trim())) { isMine = true; break; }
+              }
             }
           }
 
           if (isMine) {
             const isTeamBoard = d.type === 'teamTask' || boardInfo.type === 'team';
-            if (isTeamBoard && d.status === 'done') return;
+            if (isTeamBoard && (row.is_completed || d.status === 'done')) return;
 
-            const rawDate = d['Due Date'] || d.dueDate || d.target_date;
+            const rawDate = row.due_date || d['Due Date'] || d.dueDate || d.target_date;
             const dueDate = rawDate ? String(rawDate).split('T')[0] : null;
 
-            const isCritical = (d.Ampel && String(d.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(d.Eskalation || '').toUpperCase());
-            const isPriority = (toBoolean(d.Priorität)) || (d.important === true);
+            const isCritical = row.escalation_status ? ['Y', 'R', 'LK', 'SK'].includes(row.escalation_status.toUpperCase()) : (d.Ampel && String(d.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(d.Eskalation || '').toUpperCase());
+            const isPriority = row.is_important !== undefined ? row.is_important : (toBoolean(d.Priorität)) || (d.important === true);
             const isWatch = (d.watch === true);
+
+            const projectNumber = row.project_number || d.Nummer;
+            const projectName = row.project_name || d.Teil || d.title;
 
             foundTasks.push({
               id: row.card_id || row.id,
               rowId: row.id,
-              title: d.Nummer ? `${d.Nummer} ${d.Teil}` : (d.description || t('dashboard.task')),
+              title: projectNumber ? `${projectNumber} ${projectName}` : (projectName || row.task_description || d.description || t('dashboard.task')),
               boardName: boardInfo.name,
               boardId: row.board_id,
               dueDate,
@@ -166,7 +175,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
               isCritical,
               isPriority,
               isWatch,
-              stage: d['Board Stage'],
+              stage: row.stage || d['Board Stage'],
               originalData: d,
               isConBoard: !!boardInfo.parentId,
               parentBoardName
@@ -191,7 +200,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
               let isMyConTask = false;
 
               // ID Check
-              const cIds = [ld.VerantwortlichId, ld.userId, ld.assigneeId].filter(Boolean);
+              const cIds = [st.assignee_id, ld.VerantwortlichId, ld.userId, ld.assigneeId].filter(Boolean);
               if (cIds.includes(user.id)) isMyConTask = true;
 
               // Name Check
@@ -203,7 +212,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                   if (metaName && raw.includes(metaName.toLowerCase().trim())) { isMyConTask = true; break; }
                 }
                 // Check Email
-                if (ld.VerantwortlichEmail === user.email) isMyConTask = true;
+                if (ld.VerantwortlichEmail === user.email || ld.assigneeEmail === user.email) isMyConTask = true;
               }
 
               if (isMyConTask) {
@@ -220,32 +229,22 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                   const boardInfo = bMap[st.board_id];
                   const parentBoardName = boardInfo?.parentId ? bMap[boardInfo.parentId]?.name : null;
 
-                  const rawDate = mergedData['Due Date'] || mergedData.dueDate;
+                  const rawDate = st.due_date || mergedData['Due Date'] || mergedData.dueDate;
                   const dueDate = rawDate ? String(rawDate).split('T')[0] : null;
 
-                  const isCritical = (mergedData.Ampel && String(mergedData.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(mergedData.Eskalation || '').toUpperCase());
-                  const isPriority = (toBoolean(mergedData.Priorität));
+                  const isCritical = st.escalation_status ? ['Y', 'R', 'LK', 'SK'].includes(st.escalation_status.toUpperCase()) : (mergedData.Ampel && String(mergedData.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(mergedData.Eskalation || '').toUpperCase());
+                  const isPriority = parentRow.is_important !== undefined ? parentRow.is_important : (toBoolean(mergedData.Priorität));
                   const isWatch = (mergedData.watch === true);
 
-                  // Push as new task
-                  // Note: ID might duplicate if responsible on Parent & Con-Board?
-                  // Ideally we use a unique composite ID for dashboard keys, e.g. `${st.board_id}-${st.card_id}`
-                  // But `foundTasks` expects `id` to open the card. `onOpenBoard` uses `boardId` and `taskId`.
-                  // If we use same `taskId` but different `boardId`, it opens correct board.
-                  // The `key` in React list needs to be unique though. 
-                  // The Dashboard rendering uses `task.id`. If duplicates exist, React warns.
-                  // I should ensure uniqueness in `allTasks` state later or add a suffix.
-                  // But `id` field is used for `onOpenBoard(task.boardId, task.id)`. This must be the card ID.
-                  // React key usually comes from `task.id` in `map`. 
-                  // I will modify the loop in rendering to use index or composite key if possible.
-                  // Or I can make the `id` property composite? No, `onOpenBoard` needs real ID.
-                  // I'll add `uniqueKey` property? Typescript needs update? `any` type used here.
+                  const projectNumber = parentRow.project_number || mergedData.Nummer;
+                  const projectName = parentRow.project_name || mergedData.Teil || mergedData.title;
 
+                  // Push as new task
                   foundTasks.push({
                     id: st.card_id,
                     rowId: parentRow.id, // For updates? Con-Board updates via patchCard anyway.
                     uniqueKey: `${st.board_id}-${st.card_id}`, // Helper for React Key
-                    title: mergedData.Nummer ? `${mergedData.Nummer} ${mergedData.Teil}` : (mergedData.description || t('dashboard.task')),
+                    title: projectNumber ? `${projectNumber} ${projectName}` : (projectName || st.task_description || mergedData.description || t('dashboard.task')),
                     boardName: boardInfo?.name || 'Con-Board',
                     boardId: st.board_id,
                     dueDate,

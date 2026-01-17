@@ -80,6 +80,8 @@ export interface ProjectBoardCard {
   // Kern-Daten (Deutsch, wie im Original-Code)
   Nummer: string;
   Teil: string;
+  title?: string;
+  description?: string;
   "Board Stage": string;
   "Status Kurz"?: string;
   Beschreibung?: string;
@@ -99,20 +101,32 @@ export interface ProjectBoardCard {
 
   // Technical Review (TR)
   TR_Datum?: string;
+  "TR-Datum"?: string;
   TR_Neu?: string;
   TR_Completed?: boolean | string;
   TR_Completed_At?: string;
   TR_Completed_Date?: string;
+  MS_Neu?: string;
+  MS_Completed?: boolean | string;
   TR_History?: Array<{
     date: string;
     changedBy: string;
     timestamp: string;
     superseded: boolean;
   }>;
+  VerantwortlichId?: string;
 
   // Start of Production
   SOP_Datum?: string;
+  "SOP-Datum"?: string;
   SOP_Neu?: string;
+
+  // Additional fields for Dual-Writing & Team Boards
+  assigneeId?: string;
+  userId?: string;
+  dueDate?: string;
+  important?: boolean;
+  status?: string;
 
   // Phase Transition
   PhaseTransition?: boolean | string;

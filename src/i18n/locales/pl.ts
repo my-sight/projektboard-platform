@@ -8,7 +8,8 @@ export const pl = {
         back: "Wstecz",
         error: "Błąd",
         success: "Sukces",
-        today: "Dziś"
+        today: "Dzisiaj",
+        select: "Proszę wybrać..."
     },
     dashboard: {
         welcome: "Witaj z powrotem",
@@ -165,6 +166,7 @@ export const pl = {
         cards: "Karty",
         escalationToggle: "Eskalacja (Kliknij, aby przełączyć)",
         noTitle: "Brak tytułu",
+        projectNotFound: "Projekt {number} nie został znaleziony",
         generalLane: "Ogólne",
         preview: "Podgląd",
         kpiTitle: "KPI projektu i metryki",
@@ -206,7 +208,15 @@ export const pl = {
         projectsPerPhase: "Projekty na fazę",
         projectsPerLane: "Projekty na tor",
         projectsPerMember: "Projekty na członka zarządu",
-        completionLabel: "Etykieta zakończenia"
+        completionLabel: "Etykieta zakończenia",
+        statusReport: "Raport statusu",
+        mainStatus: "Status główny (Tablica główna)",
+        noChecklistItems: "Brak elementów listy kontrolnej",
+        milestones: "Kamienie milowe",
+        dates: "Terminy",
+        connectedBoards: "Połączone tablice",
+        noConBoards: "Nie znaleziono połączonych tablic.",
+        archived: "Zarchiwizowane"
     },
     teamBoard: {
         settingsSaved: 'Ustawienia zapisane',
@@ -251,6 +261,9 @@ export const pl = {
         homeBoardDesc: 'Automatycznie pokazuje wszystkie zadania członków z innych projektów.',
         delete: 'Usuń',
         new: 'Nowe',
+        collapsedTasks: 'Zwinięte ({count} zadania)',
+        memberOrder: 'Kolejność członków zespołu',
+        memberOrderDesc: 'Przeciągnij członków, aby zmienić kolejność torów na tablicy.',
     },
     boardManagement: {
         loadError: 'Błąd podczas ładowania danych zarządzania.',

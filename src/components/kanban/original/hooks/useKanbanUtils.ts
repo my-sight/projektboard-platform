@@ -20,7 +20,29 @@ export function useKanbanUtils(cols: any[], viewMode: ViewMode) {
     }, []);
 
     const convertDbToCard = useCallback((item: any): ProjectBoardCard => {
-        const card = { ...(item.card_data || {}) } as ProjectBoardCard;
+        let rawData = item.card_data || {};
+        if (typeof rawData === 'string') {
+            try { rawData = JSON.parse(rawData); } catch (e) { rawData = {}; }
+        }
+        const card = { ...rawData } as ProjectBoardCard;
+
+        // Relational-First Mapping: Overwrite JSON values with dedicated DB columns if they exist
+        if (item.project_number) card.Nummer = item.project_number;
+        if (item.project_name) {
+            card.Teil = item.project_name;
+            card.title = item.project_name;
+        }
+        if (item.sop_date_current) card.SOP_Neu = item.sop_date_current;
+        if (item.ms_date_current) card.TR_Neu = item.ms_date_current;
+        if (item.assignee_id) card.assigneeId = item.assignee_id;
+        if (item.due_date) card.dueDate = item.due_date;
+        if (item.is_important !== undefined) card.important = !!item.is_important;
+        if (item.task_description) card.description = item.task_description;
+        if (item.is_completed !== undefined) {
+            if (item.is_completed) card.status = 'done';
+            card.TR_Completed = !!item.is_completed;
+        }
+
         card.UID = card.UID || item.card_id || item.id;
         card.id = item.id;
         card.card_id = item.card_id;

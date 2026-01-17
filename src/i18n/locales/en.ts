@@ -8,7 +8,8 @@ export const en = {
         back: "Back",
         error: "Error",
         success: "Success",
-        today: "Today"
+        today: "Today",
+        select: "Please select..."
     },
     dashboard: {
         welcome: "Welcome back",
@@ -165,6 +166,7 @@ export const en = {
         cards: "Cards",
         escalationToggle: "Escalation (Click to toggle)",
         noTitle: "No Title",
+        projectNotFound: "Project {number} not found",
         generalLane: "General",
         lane: "Lane",
         preview: "Preview",
@@ -206,8 +208,16 @@ export const en = {
         checklistUnfinished: '⚠️ There are {count} open items in phase "{stage}":\n{items}\n\nDo you still want to move the card?',
         projectsPerPhase: "Projects per Phase",
         projectsPerLane: "Projects per Lane",
-        projectsPerMember: "Projects per Board Member",
-        completionLabel: "Completion Label"
+        projectsPerMember: "Projects per Phase",
+        completionLabel: "Completion Label",
+        statusReport: "Status Report",
+        mainStatus: "Main Status (Main Board)",
+        noChecklistItems: "No checklist items",
+        milestones: "Milestones",
+        dates: "Dates",
+        connectedBoards: "Connected Boards",
+        noConBoards: "No Con-Boards found.",
+        archived: "Archived"
     },
     teamBoard: {
         settingsSaved: 'Settings saved',
@@ -252,6 +262,9 @@ export const en = {
         homeBoardDesc: 'Automatically shows all tasks of members from other projects.',
         delete: 'Delete',
         new: 'New',
+        collapsedTasks: 'Collapsed ({count} tasks)',
+        memberOrder: 'Team Member Order',
+        memberOrderDesc: 'Drag members to change the order of lanes on the board.',
     },
     boardManagement: {
         loadError: 'Error loading management data.',

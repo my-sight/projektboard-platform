@@ -9,6 +9,32 @@ import { useKanbanUtils } from './useKanbanUtils';
 import { useKanbanRealtime } from './useKanbanRealtime';
 import { DEFAULT_COLS, DEFAULT_TEMPLATES } from '../constants';
 import { generateUUID } from '@/lib/uuid';
+import dayjs from 'dayjs';
+
+const redundantFields = [
+    'Nummer', 'Teil', 'title', 'SOP_Neu', 'TR_Neu', 'MS_Neu',
+    'SOP-Datum', 'TR-Datum', 'assigneeId', 'userId', 'VerantwortlichId',
+    'dueDate', 'Due Date', 'important', 'description',
+    'Board Stage', 'position', 'order'
+];
+
+const purgeRedundantFields = (data: any) => {
+    if (!data) return data;
+    const purged = { ...data };
+    redundantFields.forEach(f => delete purged[f]);
+    return purged;
+};
+
+const redundantSettings = [
+    'lanes', 'trLabel', 'sopLabel', 'viewMode', 'lastUpdated'
+];
+
+const purgeRedundantSettings = (settings: any) => {
+    if (!settings) return settings;
+    const purged = { ...settings };
+    redundantSettings.forEach(f => delete purged[f]);
+    return purged;
+};
 
 export function useKanbanData(
     boardId: string,
@@ -20,17 +46,42 @@ export function useKanbanData(
     const { t } = useLanguage();
     const { enqueueSnackbar } = useSnackbar();
 
+    // Helpers for safe DB writing (Dual-Writing)
+    // IMPORTANT: PostgreSQL DATE columns fail on empty strings. Use NULL instead.
+    const toIsoDate = (val: any) => {
+        if (!val || (typeof val !== 'string' && typeof val !== 'number' && !(val instanceof Date))) return null;
+        const d = dayjs(val);
+        if (!d.isValid()) {
+            if (typeof val === 'string' && val.includes('.')) {
+                const parts = val.trim().split('.');
+                if (parts.length === 3) {
+                    const germanD = dayjs(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                    if (germanD.isValid()) return germanD.format('YYYY-MM-DD');
+                }
+            }
+            return null;
+        }
+        return d.format('YYYY-MM-DD');
+    };
+
+    const toSafeUuid = (val: any) => {
+        if (!val || typeof val !== 'string') return null;
+        const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        return uuidPattern.test(val.trim()) ? val.trim() : null;
+    };
+
     const [rows, setRows] = useState<ProjectBoardCard[]>([]);
     const [cols, setCols] = useState(DEFAULT_COLS);
     const [lanes, setLanes] = useState<string[]>(['Projekt A', 'Projekt B', 'Projekt C']);
     const [checklistTemplates, setChecklistTemplates] = useState<Record<string, string[]>>(DEFAULT_TEMPLATES);
     const [customLabels, setCustomLabels] = useState({ tr: 'TR', sop: 'SOP' });
     const [completedCount, setCompletedCount] = useState(0);
-    const [boardMeta, setBoardMeta] = useState<{ name: string; description?: string | null; updated_at?: string | null } | null>(null);
+    const [boardMeta, setBoardMeta] = useState<{ name: string; description?: string | null; updated_at?: string | null; parent_id?: string | null } | null>(null);
     const [boardName, setBoardName] = useState('');
     const [boardDescription, setBoardDescription] = useState('');
     const [topTopics, setTopTopics] = useState<any[]>([]);
 
+    const [isRealtimeDisabled, setIsRealtimeDisabled] = useState(false);
     const { inferStage, idFor, convertDbToCard, reindexByStage } = useKanbanUtils(cols, viewMode);
 
     const formatPocketBaseActionError = (action: string, error: any): string => {
@@ -40,7 +91,6 @@ export function useKanbanData(
     };
 
     const loadSettings = useCallback(async () => {
-        console.log('loadSettings CALLED for', boardId);
         try {
             const { data: record, error } = await supabase
                 .from('kanban_boards')
@@ -54,20 +104,26 @@ export function useKanbanData(
                 setBoardMeta(record);
                 setBoardName(record.name);
                 setBoardDescription(record.description || '');
+
+                // Phase 6: Prioritize relational columns for board config
+                if (record.tr_label) setCustomLabels(prev => ({ ...prev, tr: record.tr_label }));
+                if (record.sop_label) setCustomLabels(prev => ({ ...prev, sop: record.sop_label }));
+                if (record.view_mode) setViewMode(record.view_mode as ViewMode);
+                if (record.lanes && Array.isArray(record.lanes)) setLanes(record.lanes);
             }
 
             if (record?.settings) {
                 const s = record.settings;
                 if (s.cols) setCols(s.cols);
-                if (s.lanes) setLanes(s.lanes);
                 if (s.checklistTemplates) setChecklistTemplates(s.checklistTemplates);
                 /* View mode and density are enforced to columns/compact in OriginalKanbanBoard.tsx */
-                if (s.trLabel || s.sopLabel) {
-                    setCustomLabels({
-                        tr: s.trLabel || 'TR',
-                        sop: s.sopLabel || 'SOP'
-                    });
-                }
+
+                // Fallbacks only if dedicated columns are missing
+                if (!record.tr_label && s.trLabel) setCustomLabels(prev => ({ ...prev, tr: s.trLabel }));
+                if (!record.sop_label && s.sopLabel) setCustomLabels(prev => ({ ...prev, sop: s.sopLabel }));
+                if (!record.view_mode && s.viewMode) setViewMode(s.viewMode as ViewMode);
+                if (!record.lanes && s.lanes) setLanes(s.lanes);
+
                 if (s.completedCount) setCompletedCount(s.completedCount);
                 // Return the settings so they can be used immediately
                 return { cols: s.cols };
@@ -76,21 +132,19 @@ export function useKanbanData(
         } catch (error) {
             return null;
         }
-    }, [boardId, setViewMode, setDensity]);
+    }, [boardId]);
 
     const loadCards = useCallback(async (explicitCols?: any[]) => {
+        if (!boardId || isRealtimeDisabled) return false;
         try {
-            // Use explicitCols if provided, otherwise fallback to state cols
             const columnsToUse = explicitCols || cols;
 
-            // 1. Check if this is a Con-Board (has parent_id)
             let isConBoard = false;
             let parentId: string | null = null;
-            if (boardMeta && (boardMeta as any).parent_id) {
+            if (boardMeta && boardMeta.parent_id) {
                 isConBoard = true;
-                parentId = (boardMeta as any).parent_id;
+                parentId = boardMeta.parent_id;
             } else {
-                // Fetch to be sure if meta not yet fully populated or if we need to double check
                 const { data: bData } = await supabase.from('kanban_boards').select('parent_id').eq('id', boardId).single();
                 if (bData?.parent_id) {
                     isConBoard = true;
@@ -101,15 +155,12 @@ export function useKanbanData(
             let loadedCards: ProjectBoardCard[] = [];
 
             if (isConBoard && parentId) {
-                console.log('📦 Con-Board detected. Loading parent cards from:', parentId);
-                // A) Load ALL cards from PARENT board
                 const { data: parentCards, error: pErr } = await supabase
                     .from('kanban_cards')
                     .select('*')
                     .eq('board_id', parentId);
                 if (pErr) throw pErr;
 
-                // B) Load local statuses for this board
                 const { data: localStatuses, error: sErr } = await supabase
                     .from('board_card_statuses')
                     .select('*')
@@ -121,11 +172,6 @@ export function useKanbanData(
                     statusMap.set(s.card_id, s);
                 });
 
-                // C) Merge
-                // Filter out archived cards unless they are active in THIS board? 
-                // Specs: "wenn eine karte aus dem elternboard archiviert ist oder wird, dann verschwindet sie aus den con boards"
-                // So we check parent archive status.
-
                 const validParentCards = (parentCards || []).filter((r: any) => {
                     const d = r.card_data || {};
                     const isArchived = d.Archived === '1' || d.archived === true || d.archived === 'true';
@@ -136,18 +182,8 @@ export function useKanbanData(
                     const baseCard = convertDbToCard(r);
                     const localStatus = statusMap.get(r.id);
 
-                    // If locally archived in Con-Board, hide it?
-                    // "die können nur im letzten prozess archiviert werden, und dann ist die rückmeldung ans elternboard, dass sie abgeschlossen sind."
-                    // If "Archived" flag is set in board_card_statuses, does it disappear?
-                    // User said: "wenn eine karte aus dem elternboard archiviert ist oder wird, dann verschwindet sie aus den con boards"
-                    // But also: "aus den con-boards können keine karten gelöscht werden. die können nur im letzten prozess archiviert werden, und dann ist die rückmeldung ans elternboard, dass sie abgeschlossen sind."
-                    // This implies the standard "Archive" logic in Con-Board should SET a local archive flag or update the parent?
-                    // "Rückmeldung ans Elternboard" implies Parent sees it. 
-                    // If con-board archives it, does it disappear from Con-Board view? Usually yes.
-
                     if (localStatus?.archived) return null;
 
-                    // RESET local-specific fields so they don't inherit from Parent
                     baseCard.Eskalation = undefined;
                     baseCard.TR_Datum = undefined;
                     baseCard.SOP_Datum = undefined;
@@ -156,27 +192,22 @@ export function useKanbanData(
                     baseCard.StatusHistory = [];
                     baseCard.TR_Neu = undefined;
                     baseCard.SOP_Neu = undefined;
-                    baseCard.PhaseTransition = undefined; // Decouple Phase Transition
-                    baseCard.ChecklistDone = {}; // Reset Checklist for Con-Board (will be filled by localStatus)
+                    baseCard.PhaseTransition = undefined;
+                    baseCard.ChecklistDone = {};
 
-                    // Move Parent Responsible to Team
                     const parentResp = baseCard.Verantwortlich;
-                    const parentRespId = (baseCard as any).VerantwortlichId; // Assuming this exists or we use name
+                    const parentRespId = (baseCard as any).VerantwortlichId;
 
                     if (parentResp) {
                         const currentTeam = Array.isArray(baseCard.Team) ? [...baseCard.Team] : [];
-                        // Check if already in team (by name or ID if available)
-                        const alreadyInTeam = currentTeam.some((m: any) => m.name === parentResp || m.id === parentResp); // Loose check
-
+                        const alreadyInTeam = currentTeam.some((m: any) => m.name === parentResp || m.id === parentResp);
                         if (!alreadyInTeam) {
-                            // Add to Team
                             currentTeam.unshift({
                                 name: parentResp,
-                                id: parentRespId, // propagate if available
+                                id: parentRespId,
                                 isParentResp: true
                             } as any);
                         } else {
-                            // Mark existing
                             const idx = currentTeam.findIndex((m: any) => m.name === parentResp || m.id === parentResp);
                             if (idx >= 0) {
                                 currentTeam[idx] = { ...currentTeam[idx], isParentResp: true } as any;
@@ -185,34 +216,24 @@ export function useKanbanData(
                         baseCard.Team = currentTeam;
                     }
 
-                    // Reset Responsible on Con-Board so it can be assigned locally
                     baseCard.Verantwortlich = undefined;
                     (baseCard as any).VerantwortlichId = undefined;
                     (baseCard as any).VerantwortlichEmail = undefined;
 
-                    // Overwrite Stage/Position with local status
                     if (localStatus) {
                         baseCard['Board Stage'] = localStatus.column_id || 'Speicher';
                         baseCard.position = localStatus.position ?? 0;
-                        // Merge local_data overrides (Eskalation, Dates, etc.)
                         if (localStatus.local_data) {
                             Object.assign(baseCard, localStatus.local_data);
                         }
                     } else {
-                        // Default to first column "Speicher"
                         baseCard['Board Stage'] = 'Speicher';
                         baseCard.position = 0;
                     }
-
-                    // Store original card ID and board ID for reference if needed, 
-                    // but we might need to handle updates carefully. 
-                    // Patches should update Parent Card Data (via API) but Local Status (via board_card_statuses)
-                    // We'll handle patch logic separately.
                     return baseCard;
                 }).filter((c: any) => c !== null) as ProjectBoardCard[];
 
             } else {
-                // Standard Board Loading
                 const { data: records, error } = await supabase
                     .from('kanban_cards')
                     .select('*')
@@ -222,15 +243,13 @@ export function useKanbanData(
 
                 if (records && records.length > 0) {
                     loadedCards = records.map(convertDbToCard);
-                    // Filter out archived cards
                     loadedCards = loadedCards.filter(c => c.Archived !== '1');
                 }
             }
 
-            // Initial client-side sort
             loadedCards.sort((a, b) => {
                 const pos = (name: string) => columnsToUse.findIndex((c: any) => c.name === name);
-                const stageA = inferStage(a, columnsToUse); // Pass explicit columns to inferStage
+                const stageA = inferStage(a, columnsToUse);
                 const stageB = inferStage(b, columnsToUse);
                 if (stageA !== stageB) return pos(stageA) - pos(stageB);
                 return (a.position || 0) - (b.position || 0);
@@ -259,10 +278,8 @@ export function useKanbanData(
         }
     }, [boardId]);
 
-    const saveSettings = useCallback(async (options?: { skipMeta?: boolean; settingsOverrides?: any; boardName?: string; boardDescription?: string }) => {
-        console.log('saveSettings INVOKED', { boardId, options, canManage: permissions.canManageSettings });
+    const saveSettings = useCallback(async (options?: { skipMeta?: boolean; settingsOverrides?: any; boardName?: string; boardDescription?: string; createConBoard?: string }) => {
         if (!permissions.canManageSettings) {
-            console.error('saveSettings blocked: No permission');
             enqueueSnackbar(t('kanban.noPermission') || 'Keine Berechtigung', { variant: 'error' });
             return false;
         }
@@ -273,58 +290,57 @@ export function useKanbanData(
                 lanes,
                 checklistTemplates,
                 viewMode,
-                // density prop comes from parent
                 trLabel: customLabels.tr,
                 sopLabel: customLabels.sop,
                 lastUpdated: new Date().toISOString(),
                 ...(options?.settingsOverrides || {})
             };
 
-            // Handle Con-Board Creation
-            if ((options as any)?.createConBoard) {
-                const conBoardName = (options as any).createConBoard;
-                console.log('🚀 Creating Con-Board initiated:', conBoardName);
-                console.log('Parent Board ID:', boardId);
+            const boardNameUpdate = options?.boardName ?? boardName;
+            const boardDescUpdate = options?.boardDescription ?? boardDescription;
 
-                // 1. Create the new board with parent_id = boardId
+            const dbPayload = {
+                name: boardNameUpdate,
+                description: boardDescUpdate,
+                settings,
+                tr_label: customLabels.tr,
+                sop_label: customLabels.sop,
+                view_mode: viewMode,
+                lanes: lanes
+            };
+
+            if (options?.createConBoard) {
+                const conBoardName = options.createConBoard;
                 const { data: userData, error: userError } = await supabase.auth.getUser();
-                if (userError) {
-                    console.error('❌ Error getting user:', userError);
-                }
+                if (userError) throw userError;
                 const ownerId = userData.user?.id;
-                console.log('Owner ID for new board:', ownerId);
 
                 if (!ownerId) {
                     enqueueSnackbar('Benutzer konnte nicht authentifiziert werden.', { variant: 'error' });
                     return false;
                 }
 
-                const { data: newBoard, error: createError } = await supabase.from('kanban_boards').insert({
+                const { error: createError } = await supabase.from('kanban_boards').insert({
                     name: conBoardName,
                     description: `Con-Board von ${boardName}`,
                     owner_id: ownerId,
-                    visibility: 'public', // Default to public for now
+                    visibility: 'public',
                     parent_id: boardId,
+                    tr_label: 'TR',
+                    sop_label: 'SOP',
+                    view_mode: 'kanban',
                     settings: {
-                        // Force "Speicher" as first column
                         cols: [{ id: 'c_speicher', name: 'Speicher', done: false }, { id: 'c_todo', name: 'Zu erledigen', done: false }, { id: 'c_done', name: 'Fertig', done: true }],
                         boardType: 'con'
                     }
-                }).select().single();
+                });
 
-                if (createError) {
-                    console.error('❌ Create Con-Board Error:', createError);
-                    throw createError;
-                }
-
-                console.log('✅ Con-Board created successfully:', newBoard);
+                if (createError) throw createError;
                 enqueueSnackbar('Con-Board erfolgreich erstellt', { variant: 'success' });
                 return true;
             }
 
             const overrides = options?.settingsOverrides;
-
-            // Detect column renaming logic
             if (overrides?.cols) {
                 const oldColsMap = new Map(cols.map(c => [c.id, c.name]));
                 const newCols = overrides.cols as any[];
@@ -338,116 +354,61 @@ export function useKanbanData(
                 });
 
                 if (renames.length > 0) {
-                    console.log('Detected column renames:', renames);
+                    setRows(prevRows => prevRows.map(row => {
+                        const currentStage = (row["Board Stage"] || "").trim();
+                        const rename = renames.find(r => r.oldName === currentStage);
+                        if (rename) return { ...row, "Board Stage": rename.newName };
+                        return row;
+                    }));
 
-                    try {
-                        // 1. Update local rows optimistically
-                        setRows(prevRows => prevRows.map(row => {
-                            const currentStage = (row["Board Stage"] || "").trim();
-                            const rename = renames.find(r => r.oldName === currentStage);
-                            if (rename) {
-                                return { ...row, "Board Stage": rename.newName };
+                    const isConBoard = !!boardMeta?.parent_id;
+                    const updatePromises = renames.map(async ({ oldName, newName }) => {
+                        if (isConBoard) {
+                            await supabase.from('board_card_statuses').update({ column_id: newName }).eq('board_id', boardId).eq('column_id', oldName);
+                        } else {
+                            const { data: cardsToUpdate } = await supabase.from('kanban_cards').select('id, card_data').eq('stage', oldName).eq('board_id', boardId);
+                            if (cardsToUpdate) {
+                                await Promise.all(cardsToUpdate.map(c => {
+                                    const newCardData = { ...c.card_data, "Board Stage": newName };
+                                    return supabase.from('kanban_cards').update({ stage: newName, card_data: newCardData }).eq('id', c.id);
+                                }));
                             }
-                            return row;
-                        }));
-
-                        // 2. Update DB
-                        const isConBoard = !!(boardMeta as any)?.parent_id;
-                        const updatePromises = renames.map(async ({ oldName, newName }) => {
-                            try {
-                                if (isConBoard) {
-                                    const { error: cbErr } = await supabase
-                                        .from('board_card_statuses')
-                                        .update({ column_id: newName })
-                                        .eq('board_id', boardId)
-                                        .eq('column_id', oldName);
-                                    if (cbErr) console.error('Con-Board Rename Error:', cbErr);
-                                } else {
-                                    // Standard Board
-                                    const { data: cardsToUpdate, error: fetchError } = await supabase
-                                        .from('kanban_cards')
-                                        .select('id, card_data')
-                                        .eq('stage', oldName)
-                                        .eq('board_id', boardId);
-
-                                    if (fetchError || !cardsToUpdate) return;
-
-                                    const batchUpdates = cardsToUpdate.map(c => {
-                                        const newCardData = { ...c.card_data, "Board Stage": newName };
-                                        return supabase
-                                            .from('kanban_cards')
-                                            .update({
-                                                stage: newName,
-                                                card_data: newCardData
-                                            })
-                                            .eq('id', c.id);
-                                    });
-                                    await Promise.all(batchUpdates);
-                                }
-                            } catch (innerErr) {
-                                console.error('Inner Rename Loop Error:', innerErr);
-                            }
-                        });
-
-                        await Promise.all(updatePromises);
-                    } catch (renameErr) {
-                        console.error('CRITICAL: Rename Logic Failed, but proceeding to save settings.', renameErr);
-                    }
+                        }
+                    });
+                    await Promise.all(updatePromises);
                 }
             }
 
-            const updateData: any = { settings };
-
+            const updateData: any = {
+                settings: purgeRedundantSettings(settings),
+                tr_label: customLabels.tr,
+                sop_label: customLabels.sop,
+                view_mode: viewMode,
+                lanes: lanes
+            };
             if (!options?.skipMeta) {
-                // Use options passed from dialog if available (to avoid stale closure), else fallback to state
                 const nameToUse = options?.boardName !== undefined ? options.boardName : boardName;
                 const descToUse = options?.boardDescription !== undefined ? options.boardDescription : boardDescription;
-
-                const trimmedName = nameToUse.trim();
-                updateData.name = trimmedName || boardMeta?.name;
+                updateData.name = nameToUse.trim() || boardMeta?.name;
                 updateData.description = descToUse.trim() || null;
             }
 
-            console.log('Attempting to save board settings:', { boardId, updateData });
-
-            const { data: record, error } = await supabase
-                .from('kanban_boards')
-                .update(updateData)
-                .eq('id', boardId)
-                .select()
-                .maybeSingle();
-
-            if (error) {
-                console.error('Supabase update error:', error);
-                throw error;
-            }
-
-            if (!record) {
-                console.error('Supabase update returned no data (RLS check failed?)');
-                throw new Error("Update successful but no data returned. Check RLS policies.");
-            }
-
+            const { data: record, error } = await supabase.from('kanban_boards').update(updateData).eq('id', boardId).select().maybeSingle();
+            if (error) throw error;
             if (record) {
                 setBoardMeta(record);
-
-                // Update local state with overrides to reflect changes immediately
                 if (options?.settingsOverrides) {
                     const o = options.settingsOverrides;
                     if (o.cols) setCols(o.cols);
                     if (o.lanes) setLanes(o.lanes);
                     if (o.checklistTemplates) setChecklistTemplates(o.checklistTemplates);
                     if (o.trLabel !== undefined || o.sopLabel !== undefined) {
-                        setCustomLabels(prev => ({
-                            tr: o.trLabel ?? prev.tr,
-                            sop: o.sopLabel ?? prev.sop
-                        }));
+                        setCustomLabels(prev => ({ tr: o.trLabel ?? prev.tr, sop: o.sopLabel ?? prev.sop }));
                     }
                 }
             }
 
-            if (!options?.skipMeta) {
-                enqueueSnackbar(t('kanban.settingsSaved'), { variant: 'success' });
-            }
+            if (!options?.skipMeta) enqueueSnackbar(t('kanban.settingsSaved'), { variant: 'success' });
             return true;
         } catch (error: any) {
             console.error('saveSettings execution error:', error);
@@ -462,212 +423,207 @@ export function useKanbanData(
             return;
         }
 
-        // Optimistic Update
+        setIsRealtimeDisabled(true);
         setRows(prev => prev.map(r => idFor(r) === idFor(card) ? { ...r, ...changes } as ProjectBoardCard : r));
 
         try {
             const cardId = card.id;
             if (!cardId) throw new Error("Card ID missing");
+            const isConBoard = !!boardMeta?.parent_id;
 
-            // Check Con-Board
-            const isConBoard = !!(boardMeta as any)?.parent_id;
-
-            // Separate changes
-            // Updated Local Keys to include Escalation, Dates, Status, etc. for Con-Board requirement
-            // These keys must NEVER be sent to the parent board.
             const localKeys = [
                 'Board Stage', 'position', 'Archived', 'ArchivedDate',
                 'Eskalation', 'TR_Datum', 'SOP_Datum', 'Due Date', 'Status Kurz', 'StatusHistory',
                 'TR_Neu', 'SOP_Neu', 'Ampel', 'PhaseTransition',
                 'Verantwortlich', 'VerantwortlichId', 'VerantwortlichEmail',
                 'TR_Completed', 'TR_Completed_At', 'TR_Completed_Date',
-                'ChecklistDone',
-                'Kerntermine'
+                'ChecklistDone', 'Kerntermine'
             ];
 
             const localChanges: any = {};
             const sharedChanges: any = {};
-
-            // Special handling for local_data keys that are JSON overrides
             const localDataUpdates: any = {};
 
             Object.keys(changes).forEach(k => {
                 const val = (changes as any)[k];
                 if (localKeys.includes(k) && isConBoard) {
-                    localChanges[k] = val; // These go to column_id/position OR local_data
-
-                    // Maps to DB Columns for board_card_statuses
+                    localChanges[k] = val;
                     if (k !== 'Board Stage' && k !== 'position' && k !== 'Archived' && k !== 'ArchivedDate') {
                         localDataUpdates[k] = val;
                     }
-                }
-                else {
-                    // For Con-Boards, we must be extremely careful.
-                    // If the field is one of the "protected" ones but was somehow not in localKeys (e.g. typos?), check again.
-                    // But more importantly, if it IS a local key, it must NOT go to sharedChanges.
-                    // The check above handles it: `if (localKeys.includes(k) && isConBoard)` -> localChanges.
-                    // ELSE -> sharedChanges.
-                    // So if isConBoard is true, and k is Eskalation, it goes to localChanges.
-                    // If isConBoard is FALSE (Parent Board), it goes to sharedChanges (because `localKeys.includes(k) && false` is false).
-                    // Wait, if !isConBoard, we WANT Eskalation to go to sharedChanges (update DB).
-
+                } else {
                     if (isConBoard) {
-                        // Double check: if it's a local key, skip shared.
-                        if (!localKeys.includes(k)) {
-                            sharedChanges[k] = val;
-                        }
+                        if (!localKeys.includes(k)) sharedChanges[k] = val;
                     } else {
-                        // Parent Board: Everything goes to sharedChanges (standard update)
-                        // But wait, 'Board Stage' and 'position' are usually local logic even on Parent Board?
-                        // No, on Parent Board they are columns in `kanban_cards`.
-                        // But my logic usually handles 'Board Stage' -> 'stage' column map.
-                        // Let's keep specific logic for Stage/Position if needed, but for now Standard behavior:
-                        // If I change 'Eskalation' on Parent, it updates 'kanban_cards'.
-                        // My current loop puts it in sharedChanges.
-                        // But 'Board Stage' is in localKeys.
-                        // If !isConBoard, `localKeys.includes('Board Stage') && false` -> false.
-                        // So 'Board Stage' goes to sharedChanges.
-                        // Then `supabase.update(sharedChanges)` sends `Board Stage` to DB.
-                        // Does DB have `Board Stage` column? No, `stage`.
-                        // Mapping needed?
-
-                        if (k === 'Board Stage') sharedChanges['stage'] = val; // Map to DB column
+                        if (k === 'Board Stage') sharedChanges['stage'] = val;
                         else sharedChanges[k] = val;
                     }
                 }
             });
 
             if (isConBoard) {
-                // 1. Handle Local Status Update (Stage/Position/Archive/Overrides)
                 if (Object.keys(localChanges).length > 0) {
                     const stage = localChanges['Board Stage'] || (card as any)['Board Stage'];
                     const pos = localChanges.position ?? card.position ?? 0;
                     const isArchived = !!(localChanges.Archived === '1' || localChanges.Archived === true);
 
-                    // Fetch existing local_data to merge? Ideally yes, but upsert overwrite if we don't.
-                    // Ideally we should merge. For now let's try to pass the full object if we can, or just the updates. 
-                    // Supabase doesn't support deep merge on upsert easily without stored proc.
-                    // We'll trust that we only update what changed. BUT we need to preserve other local_data keys.
-                    // Solution: Fetch current status first? Or assume client has latest 'card' which merges both?
-                    // The 'card' object HAS the merged data. So we can grab the current 'local' state from 'card' + changes.
-
-                    const currentLocalDataFromCard = {
-                        Eskalation: card.Eskalation,
-                        TR_Datum: card.TR_Datum,
-                        SOP_Datum: card.SOP_Datum,
-                        "Due Date": card["Due Date"],
-                        "Status Kurz": card["Status Kurz"],
-                        Ampel: (card as any).Ampel,
-                        Verantwortlich: card.Verantwortlich,
-                        VerantwortlichId: (card as any).VerantwortlichId,
-                        ChecklistDone: card.ChecklistDone, // Include Checklist in Local Data
-                        TR_Completed: card.TR_Completed,
-                        TR_Completed_At: card.TR_Completed_At,
-                        TR_Completed_Date: card.TR_Completed_Date
-                    };
+                    // Build local_data by extracting ALL relevant keys from the current card
+                    // This ensures we don't lose fields like StatusHistory or Kerntermine
+                    const currentLocalDataFromCard: any = {};
+                    localKeys.forEach(k => {
+                        if (k !== 'Board Stage' && k !== 'position' && k !== 'Archived' && k !== 'ArchivedDate') {
+                            if ((card as any)[k] !== undefined) {
+                                currentLocalDataFromCard[k] = (card as any)[k];
+                            }
+                        }
+                    });
 
                     const newLocalData = { ...currentLocalDataFromCard, ...localDataUpdates };
-
-                    // Clean undefined
                     Object.keys(newLocalData).forEach(key => newLocalData[key] === undefined && delete newLocalData[key]);
 
                     const { error } = await supabase.from('board_card_statuses').upsert({
                         board_id: boardId,
                         card_id: cardId,
-                        column_id: stage, // storing Name as ID for simplicity in this system
+                        column_id: stage,
                         position: pos,
                         archived: isArchived,
                         local_data: newLocalData,
+                        ampel_status: String(newLocalData.Ampel || ''),
+                        escalation_status: String(newLocalData.Eskalation || ''),
+                        is_confirmed: !!(newLocalData.TR_Completed || newLocalData.MS_Completed),
+                        sop_date_local: toIsoDate(newLocalData.SOP_Neu || newLocalData.SOP_Datum),
+                        ms_date_local: toIsoDate(newLocalData.TR_Neu || newLocalData.MS_Neu || newLocalData.TR_Datum),
                         updated_at: new Date().toISOString()
                     }, { onConflict: 'board_id, card_id' });
 
                     if (error) throw error;
                 }
-
-                // 2. Handle Shared Content Update (SAFE MODE)
-                if (Object.keys(sharedChanges).length > 0) {
-                    console.warn('Con-Board Attempted to write to Shared Parent Card. Blocked by Safety Policy.', sharedChanges);
-                    // DO NOT WRITE TO PARENT
-                    // This effectively makes Con-Board Read-Only for Content.
-                    // The user requirement: "wenn ich am con-board was ändere darf es keine auswirklungen auf die karten im Elternboard haben"
-                    // This satisfies the requirement by preventing the overwrite.
-                    // The UI might still show the change optimistically until reload. ideally we revert optimistic update if we knew it failed.
-                    // But for now, blocking the DB write is the critical safety fix.
-                }
-
             } else {
-                // Standard Board Logic (Parent)
                 const fullUpdatedCard = { ...card, ...changes };
-                const updateData: any = { card_data: fullUpdatedCard };
+                const purgedCardData = purgeRedundantFields(fullUpdatedCard);
+                const updateData: any = {
+                    card_data: purgedCardData,
+                    project_number: String(fullUpdatedCard.Nummer || ''),
+                    project_name: String(fullUpdatedCard.Teil || fullUpdatedCard.title || ''),
+                    sop_date_original: toIsoDate(fullUpdatedCard['SOP-Datum']),
+                    sop_date_current: toIsoDate(fullUpdatedCard.SOP_Neu),
+                    ms_date_original: toIsoDate(fullUpdatedCard['TR-Datum']),
+                    ms_date_current: toIsoDate(fullUpdatedCard.TR_Neu || fullUpdatedCard.MS_Neu),
+                    is_completed: !!(fullUpdatedCard.TR_Completed || fullUpdatedCard.MS_Completed || fullUpdatedCard.status === 'done'),
+                    assignee_id: toSafeUuid(fullUpdatedCard.assigneeId || fullUpdatedCard.userId || fullUpdatedCard.VerantwortlichId),
+                    due_date: toIsoDate(fullUpdatedCard['Due Date'] || fullUpdatedCard.dueDate),
+                    is_important: !!(fullUpdatedCard.important || fullUpdatedCard.Priorität === 'Hoch'),
+                    task_description: String(fullUpdatedCard.description || fullUpdatedCard.title || '')
+                };
                 if (changes['Board Stage']) updateData.stage = changes['Board Stage'];
                 if (changes.position !== undefined) updateData.position = changes.position;
 
                 const { error } = await supabase.from('kanban_cards').update(updateData).eq('id', cardId);
-                if (error) throw error;
+                if (error) {
+                    console.error('Patch DB Error:', error);
+                    enqueueSnackbar(`Speicherfehler: ${error.message} (${error.code})`, { variant: 'error', autoHideDuration: 10000 });
+                }
             }
-
-        } catch (error) {
-            console.error('Patch error:', error);
-            enqueueSnackbar(t('kanban.networkError'), { variant: 'error' });
-            // Revert optimistic update? Complex to revert partial state locally without full reload or deep clone. 
-            // We assume reload on error or user retry.
+        } catch (error: any) {
+            console.error('Patch Exception:', error);
+            enqueueSnackbar(`Systemfehler: ${error.message || error}`, { variant: 'error' });
+        } finally {
+            setTimeout(() => {
+                setIsRealtimeDisabled(false);
+            }, 1000);
         }
     }, [permissions.canEditContent, idFor, enqueueSnackbar, t, boardMeta, boardId]);
 
-    const saveCards = useCallback(async () => {
+    const saveCards = useCallback(async (cardsToSave?: ProjectBoardCard[]) => {
         if (!permissions.canEditContent) return false;
-
-        // Safety: Con-Boards should NEVER save all cards back to Parent.
-        // Individual edits are handled by patchCard (which is now safe).
-        // Bulk save might be dangerous if it dumps local state.
-        if ((boardMeta as any)?.parent_id) {
-            console.warn("saveCards blocked on Con-Board to prevent Parent overwrite.");
-            return true; // Pretend success
-        }
+        setIsRealtimeDisabled(true);
+        const isConBoard = !!boardMeta?.parent_id;
+        const targetCards = cardsToSave || rows;
 
         try {
-            const promises = rows.map(card => {
-                if (!card.id) return Promise.resolve();
+            const promises = targetCards.map(async (card) => {
+                if (!card.id) return { error: null };
                 const stage = inferStage(card);
-                const data = {
-                    card_data: card,
-                    stage: stage,
-                    position: card.position ?? card.order ?? 0,
-                    project_number: card.Nummer || null,
-                    project_name: card.Teil,
-                };
-                return supabase.from('kanban_cards').update(data).eq('id', card.id);
+                const pos = card.position ?? card.order ?? 0;
+
+                if (isConBoard) {
+                    return supabase.from('board_card_statuses').upsert({
+                        board_id: boardId,
+                        card_id: card.id,
+                        column_id: stage,
+                        position: pos,
+                        updated_at: new Date().toISOString()
+                    }, { onConflict: 'board_id, card_id' });
+                } else {
+                    const purgedCard = purgeRedundantFields(card);
+                    const data = {
+                        card_data: purgedCard,
+                        stage: stage,
+                        position: pos,
+                        project_number: String(card.Nummer || ''),
+                        project_name: String(card.Teil || card.title || ''),
+                        sop_date_original: toIsoDate(card['SOP-Datum']),
+                        sop_date_current: toIsoDate(card.SOP_Neu),
+                        ms_date_original: toIsoDate(card['TR-Datum']),
+                        ms_date_current: toIsoDate(card.TR_Neu || card.MS_Neu),
+                        is_completed: !!(card.TR_Completed || card.MS_Completed || card.status === 'done'),
+                        assignee_id: toSafeUuid(card.assigneeId || card.userId || card.VerantwortlichId),
+                        due_date: toIsoDate(card['Due Date'] || card.dueDate),
+                        is_important: !!(card.important || card.Priorität === 'Hoch'),
+                        task_description: String(card.description || card.title || '')
+                    };
+                    return supabase.from('kanban_cards').update(data).eq('id', card.id);
+                }
             });
-            await Promise.all(promises);
+            const results = await Promise.all(promises);
+            const errors = results.map(r => r.error).filter(Boolean);
+            if (errors.length > 0) {
+                const firstErr = errors[0];
+                console.error('saveCards partial failure:', errors);
+                enqueueSnackbar(`Speicherfehler (${errors.length} Karten): ${firstErr?.message}`, { variant: 'error', autoHideDuration: 10000 });
+                return false;
+            }
             return true;
-        } catch (error) {
+        } catch (error: any) {
+            console.error('saveCards crash:', error);
+            enqueueSnackbar(`Systemfehler (Bulk): ${error.message || error}`, { variant: 'error' });
             return false;
+        } finally {
+            setTimeout(() => {
+                setIsRealtimeDisabled(false);
+            }, 1000);
         }
-    }, [permissions.canEditContent, rows, inferStage]);
+    }, [permissions.canEditContent, rows, inferStage, boardMeta, boardId, enqueueSnackbar, toIsoDate, toSafeUuid]);
 
     const handleCreateCard = useCallback(async (newCardData: any) => {
         if (!permissions.canEditContent) {
             enqueueSnackbar(t('kanban.noPermission'), { variant: 'error' });
             return false;
         }
-
-        // If on Con-Board, create card on Parent Board.
-        const targetBoardId = (boardMeta as any)?.parent_id || boardId;
-
+        const targetBoardId = boardMeta?.parent_id || boardId;
         try {
+            const cardId = generateUUID();
+            const purgedInjected = purgeRedundantFields({ ...newCardData, id: cardId, board_id: targetBoardId });
             const payload = {
                 board_id: targetBoardId,
-                card_id: generateUUID(),
-                card_data: { ...newCardData, id: generateUUID(), board_id: targetBoardId },
+                card_id: cardId,
+                card_data: purgedInjected,
                 stage: newCardData['Board Stage'],
                 position: 0,
-                project_number: newCardData.Nummer || null,
-                project_name: newCardData.Teil || null
+                project_number: String(newCardData.Nummer || ''),
+                project_name: String(newCardData.Teil || newCardData.title || ''),
+                sop_date_original: toIsoDate(newCardData['SOP-Datum']),
+                sop_date_current: toIsoDate(newCardData.SOP_Neu),
+                ms_date_original: toIsoDate(newCardData['TR-Datum']),
+                ms_date_current: toIsoDate(newCardData.TR_Neu || newCardData.MS_Neu),
+                is_completed: !!(newCardData.TR_Completed || newCardData.MS_Completed || newCardData.status === 'done'),
+                assignee_id: toSafeUuid(newCardData.assigneeId || newCardData.userId || newCardData.VerantwortlichId),
+                due_date: toIsoDate(newCardData['Due Date'] || newCardData.dueDate),
+                is_important: !!(newCardData.important || newCardData.Priorität === 'Hoch'),
+                task_description: String(newCardData.description || newCardData.title || '')
             };
-
             const { data, error } = await supabase.from('kanban_cards').insert(payload).select().single();
             if (error) throw error;
-
             const newCard = convertDbToCard(data);
             setRows(prev => [...prev, newCard]);
             enqueueSnackbar(t('kanban.cardCreated'), { variant: 'success' });
@@ -676,27 +632,13 @@ export function useKanbanData(
             enqueueSnackbar(formatPocketBaseActionError('Karte erstellen', error), { variant: 'error' });
             return false;
         }
-    }, [permissions.canEditContent, boardId, enqueueSnackbar, t, convertDbToCard]);
+    }, [permissions.canEditContent, boardId, boardMeta, enqueueSnackbar, t, convertDbToCard]);
 
-
-    // Realtime Subscription via Hook
-    useKanbanRealtime(boardId, setRows, convertDbToCard);
+    useKanbanRealtime(boardId, setRows, convertDbToCard, isRealtimeDisabled);
 
     return {
-        rows, setRows,
-        cols, setCols,
-        lanes, setLanes,
-        checklistTemplates, setChecklistTemplates,
-        customLabels, setCustomLabels,
-        completedCount, setCompletedCount,
-        boardMeta, setBoardMeta,
-        boardName, setBoardName,
-        boardDescription, setBoardDescription,
-        topTopics, setTopTopics,
-
-        // Actions
-        loadCards, loadSettings, loadTopTopics,
-        saveSettings, saveCards, patchCard, handleCreateCard,
-        inferStage, idFor
+        rows, setRows, cols, setCols, lanes, setLanes, checklistTemplates, setChecklistTemplates, customLabels, setCustomLabels,
+        completedCount, setCompletedCount, boardMeta, setBoardMeta, boardName, setBoardName, boardDescription, setBoardDescription, topTopics, setTopTopics,
+        loadCards, loadSettings, loadTopTopics, saveSettings, saveCards, patchCard, handleCreateCard, inferStage, idFor
     };
 }

@@ -112,7 +112,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                 // 4. Process Con-Boards Data
                 const connectedBoards = conBoards.map(board => {
                     const status = statuses?.find(s => s.board_id === board.id);
-                    const currentStageId = status?.column_id || 'Speicher';
+                    const currentStageId = status?.column_id || (t('teamBoard.backlog') || 'Speicher');
 
                     // Resolve Column Title
                     const columns = board.settings?.columns || [];
@@ -134,30 +134,29 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
 
                     // Status Text (Kurz)
                     const localData = status?.local_data || {};
-                    let statusText = localData['Status Kurz'] || '';
+                    let statusText = status?.status_message_local || localData['Status Kurz'] || '';
                     if (!statusText && Array.isArray(localData.StatusHistory) && localData.StatusHistory.length > 0) {
                         const latest = localData.StatusHistory[0];
                         if (latest?.message?.text) statusText = latest.message.text;
                         else if (latest?.text) statusText = latest.text;
                     }
 
-                    // Dates
-                    const cardData = status?.local_data || {};
-                    const sop = cardData.SOP_Neu || cardData.SOP_Datum;
-                    const ms = cardData.MS_Neu || cardData.MS_Datum || cardData.TR_Neu || cardData.TR_Datum;
+                    // Dates (Normalized columns first)
+                    const sop = status?.sop_date_local || localData.SOP_Neu || localData.SOP_Datum;
+                    const ms = status?.ms_date_local || localData.MS_Neu || localData.MS_Datum || localData.TR_Neu || localData.TR_Datum;
 
                     return {
                         id: board.id,
                         name: board.name,
-                        stage: status?.archived ? 'Archiviert' : currentStageId,
-                        stageLabel: status?.archived ? 'Archiviert' : stageLabel,
+                        stage: status?.archived ? (t('kanban.archived') || 'Archiviert') : currentStageId,
+                        stageLabel: status?.archived ? (t('kanban.archived') || 'Archiviert') : stageLabel,
                         statusText: statusText,
-                        escalation: status?.local_data?.Eskalation,
-                        ampel: status?.local_data?.Ampel,
+                        escalation: status?.escalation_status || localData.Eskalation,
+                        ampel: status?.ampel_status || localData.Ampel,
                         checklist,
                         sop,
                         ms,
-                        msCompleted: toBoolean(cardData.TR_Completed) || toBoolean(cardData.MS_Completed),
+                        msCompleted: status?.is_confirmed ?? (toBoolean(localData.TR_Completed) || toBoolean(localData.MS_Completed)),
                         updated: status?.updated_at
                     };
                 });
@@ -167,7 +166,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                 // Note: card.card_data has 'Board Stage' but we prefer 'board_card_statuses' if available for consistency,
                 // otherwise fallback to card_data.
                 const mainCardData = card.card_data || (card as any);
-                const mainStageId = mainStatus?.column_id || mainCardData['Board Stage'] || 'Unbekannt';
+                const mainStageId = mainStatus?.column_id || currentCard.stage || mainCardData['Board Stage'] || (t('kanban.unknown') || 'Unbekannt');
 
                 // Get human readable Main Stage Label if possible
                 let mainStageLabel = mainStageId;
@@ -188,11 +187,11 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                 // Settings store them as 'sopLabel' and 'trLabel' directly.
                 const customLabels = {
                     sop: mainBoard?.settings?.sopLabel || 'SOP',
-                    tr: mainBoard?.settings?.trLabel || 'Milestone'
+                    tr: mainBoard?.settings?.trLabel || (t('kanban.time') || 'Milestone')
                 };
 
                 // Extract Main Status Text
-                let mainStatusText = mainCardData['Status Kurz'] || '';
+                let mainStatusText = currentCard.task_description || mainCardData['Status Kurz'] || '';
                 if (!mainStatusText && Array.isArray(mainCardData.StatusHistory) && mainCardData.StatusHistory.length > 0) {
                     const latest = mainCardData.StatusHistory[0];
                     if (latest?.message?.text) mainStatusText = latest.message.text;
@@ -203,7 +202,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                     mainStage: mainStageLabel,
                     mainStatusText,
                     mainChecklist,
-                    mainMsCompleted: toBoolean(mainCardData.TR_Completed) || toBoolean(mainCardData.MS_Completed),
+                    mainMsCompleted: currentCard.is_completed ?? (toBoolean(mainCardData.TR_Completed) || toBoolean(mainCardData.MS_Completed)),
                     connectedBoards,
                     customLabels
                 });
@@ -251,8 +250,10 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
 
     const effectiveCard = latestCardRecord || card;
     const cardData = effectiveCard ? (effectiveCard.card_data || {}) : {};
-    const rawSop = (cardData.SOP_Neu || cardData.SOP_Datum) as string | undefined;
-    const rawMs = (cardData.MS_Neu || cardData.MS_Datum || cardData.TR_Neu || cardData.TR_Datum) as string | undefined;
+
+    // Normalized columns first
+    const rawSop = (effectiveCard.sop_date_current || effectiveCard.sop_date_original || cardData.SOP_Neu || cardData.SOP_Datum) as string | undefined;
+    const rawMs = (effectiveCard.ms_date_current || effectiveCard.ms_date_original || cardData.MS_Neu || cardData.MS_Datum || cardData.TR_Neu || cardData.TR_Datum) as string | undefined;
 
     // Safety: Extract Kerntermine to local array to avoid 'unknown' type issues in JSX
     const kerntermineList = (cardData.Kerntermine && Array.isArray(cardData.Kerntermine))
@@ -263,7 +264,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
     const msDate = parseDate(rawMs);
 
     // MS Deviation Logic
-    const rawMsDatum = cardData.MS_Datum as string | undefined;
+    const rawMsDatum = (effectiveCard.ms_date_original || cardData.MS_Datum) as string | undefined;
     const msDatumDate = parseDate(rawMsDatum);
     let msDeviationLabel = '';
     let msDeviationColor = 'text.secondary';
@@ -305,7 +306,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                     </Typography>
                     <Typography variant="h5" sx={{ fontWeight: 700 }}>
                         {effectiveCard.project_number || cardData?.Nummer ? `${effectiveCard.project_number || cardData?.Nummer} ` : ''}
-                        {effectiveCard.project_name || cardData?.Teil || cardData?.title || 'Projekt'}
+                        {effectiveCard.project_name || cardData?.Teil || cardData?.title || (t('dashboard.projects') || 'Projekt')}
                     </Typography>
                 </Box>
                 <IconButton onClick={onClose} sx={{ color: 'text.secondary' }}>
@@ -330,13 +331,13 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                 }}>
                                     <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}> {/* Tight padding */}
                                         <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 0.5 }}>
-                                            Haupt-Status (Main Board)
+                                            {t('kanban.mainStatus') || 'Haupt-Status (Main Board)'}
                                         </Typography>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
                                             <Box>
                                                 <Typography variant="h6" sx={{ fontSize: '1.1rem' }}>{String(reportData?.mainStage || '')}</Typography>
                                                 <Typography variant="caption" color="text.secondary">
-                                                    Verantwortlich: {String(cardData.Verantwortlich || 'N/A')}
+                                                    {t('kanban.responsible') || 'Verantwortlich'}: {String(cardData.Verantwortlich || 'N/A')}
                                                 </Typography>
                                             </Box>
                                         </Box>
@@ -358,7 +359,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                         {/* Main Board Checklist */}
                                         <Box>
                                             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
-                                                <Typography variant="caption" color="text.secondary">Checkliste ({reportData?.mainChecklist?.total || 0})</Typography>
+                                                <Typography variant="caption" color="text.secondary">{t('kanban.checklist') || 'Checkliste'} ({reportData?.mainChecklist?.total || 0})</Typography>
                                                 <Typography variant="caption" fontWeight="bold" color={reportData?.mainChecklist?.done === reportData?.mainChecklist?.total && reportData?.mainChecklist?.total > 0 ? 'success.main' : 'text.primary'}>
                                                     {reportData?.mainChecklist?.done || 0} / {reportData?.mainChecklist?.total || 0}
                                                 </Typography>
@@ -408,7 +409,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                 </Box>
                                             ) : (
                                                 <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                                    Keine Checklisten-Punkte
+                                                    {t('kanban.noChecklistItems') || 'Keine Checklisten-Punkte'}
                                                 </Typography>
                                             )}
                                         </Box>
@@ -423,13 +424,13 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                 }}>
                                     <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                                         <Typography variant="subtitle2" color="text.secondary" gutterBottom sx={{ mb: 0.5 }}>
-                                            Meilensteine
+                                            {t('kanban.milestones') || 'Meilensteine'}
                                         </Typography>
                                         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <Typography variant="body2" sx={{ color: '#ed6c02', fontWeight: 'bold' }}>{customSopLabel + ''}</Typography>
                                                 <Chip
-                                                    label={sopDate ? sopDate.format('DD.MM.YYYY') : 'Kein Datum'}
+                                                    label={sopDate ? sopDate.format('DD.MM.YYYY') : (t('kanban.noDate') || 'Kein Datum')}
                                                     size="small"
                                                     variant="outlined"
                                                     sx={{ height: 20, fontSize: '0.75rem', bgcolor: 'transparent', color: '#ed6c02', borderColor: '#ed6c02' }}
@@ -446,7 +447,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                 </Box>
                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                                                     <Chip
-                                                        label={msDate ? msDate.format('DD.MM.YYYY') : 'Kein Datum'}
+                                                        label={msDate ? msDate.format('DD.MM.YYYY') : (t('kanban.noDate') || 'Kein Datum')}
                                                         size="small"
                                                         variant="outlined"
                                                         sx={{ height: 20, fontSize: '0.75rem', bgcolor: 'transparent', color: '#0288d1', borderColor: '#0288d1' }}
@@ -461,7 +462,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                             {kerntermineList.length > 0 && (
                                                 <>
                                                     <Divider sx={{ my: 0.5, borderColor: 'rgba(0,0,0,0.05)' }} />
-                                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>Termine</Typography>
+                                                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>{t('kanban.dates') || 'Termine'}</Typography>
                                                     {kerntermineList
                                                         .filter((kt: any) => kt && kt.date) // Only with date (safe check)
                                                         .sort((a: any, b: any) => {
@@ -476,7 +477,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                             const d = parseDate(kt.date);
                                                             if (!d) return null;
                                                             const isPast = d.isBefore(dayjs(), 'day');
-                                                            const kTitle = kt.title ? String(kt.title) : 'Termin';
+                                                            const kTitle = kt.title ? String(kt.title) : (t('kanban.date') || 'Termin');
                                                             return (
                                                                 <div key={`kt-${kidx}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                                     <Typography variant="body2" sx={{ color: 'text.primary', fontSize: '0.85rem' }}>
@@ -509,9 +510,9 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
 
 
                         {/* MIDDLE SECTION: Connected Boards */}
-                        <Typography variant="subtitle1" fontWeight="bold">Verbundene Boards</Typography>
+                        <Typography variant="subtitle1" fontWeight="bold">{t('kanban.connectedBoards') || 'Verbundene Boards'}</Typography>
                         {reportData?.connectedBoards?.length === 0 ? (
-                            <Typography color="text.secondary" variant="caption">Keine Con-Boards gefunden.</Typography>
+                            <Typography color="text.secondary" variant="caption">{t('kanban.noConBoards') || 'Keine Con-Boards gefunden.'}</Typography>
                         ) : (
                             <Grid container spacing={1}> {/* Reduced spacing */}
                                 {reportData?.connectedBoards?.map((board: any) => {
@@ -631,7 +632,7 @@ export function ProjectStatusReportDialog({ open, onClose, card, boardId }: Proj
                                                     <Box>
                                                         <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.25 }}>
                                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Checkliste</Typography>
+                                                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>{t('kanban.checklist') || 'Checkliste'}</Typography>
                                                             </Box>
                                                             <Typography variant="caption" fontWeight="bold" color={board.checklist.done === board.checklist.total && board.checklist.total > 0 ? 'success.main' : 'text.primary'} sx={{ fontSize: '0.7rem' }}>
                                                                 {board.checklist.done} / {board.checklist.total}

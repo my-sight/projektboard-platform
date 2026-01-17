@@ -264,57 +264,98 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
       }
     };
 
-    const handleCardDragEnd = (result: any) => {
-      if (!result.destination) return;
+    const handleCardDragEnd = async (result: any) => {
+      if (!result.destination || !canModifyBoard) return;
       const { draggableId, source, destination } = result;
 
-      // Logic to reorder cards locally
-      const sourceId = source.droppableId; // stage or stage|swimlane
-      const destId = destination.droppableId;
+      const sourceDroppableId = source.droppableId;
+      const destDroppableId = destination.droppableId;
 
       const draggedCard = rows.find(r => idFor(r) === draggableId);
       if (!draggedCard) return;
 
+      // Extract new stage and swimlane/member from droppableId
       let newStage = '';
-
+      let newValue = ''; // used for swimlane or member
       if (viewMode === 'columns') {
-        newStage = destId;
+        newStage = destDroppableId;
       } else {
-        // split "Stage||Value"
-        const parts = destId.split('||');
+        const parts = destDroppableId.split('||');
         newStage = parts[0];
+        newValue = parts[1] || '';
       }
 
       const currentStage = inferStage(draggedCard);
 
-      // Check for unfinished checklist items if changing stage
+      // 1. Checklist check
       if (newStage && newStage !== currentStage) {
         const stageTemplates = checklistTemplates[currentStage] || [];
         if (stageTemplates.length > 0) {
           const doneItems = draggedCard.ChecklistDone?.[currentStage] || {};
           const unfinished = stageTemplates.filter(item => !doneItems[item]);
-
           if (unfinished.length > 0) {
             const message = t('kanban.checklistUnfinished')
               .replace('{stage}', currentStage)
               .replace('{count}', String(unfinished.length))
               .replace('{items}', unfinished.map(i => ` - ${i}`).join('\n'));
-
-            if (!confirm(message)) {
-              return;
-            }
+            if (!confirm(message)) return;
           }
         }
       }
 
-      const updates: Partial<ProjectBoardCard> = {};
-      if (newStage && newStage !== inferStage(draggedCard)) {
-        updates['Board Stage'] = newStage;
-      }
+      // 2. Perform Reordering
+      const newRows = [...rows];
+      // Note: we must identify which cards are in which droppable "column"
+      const getColCards = (droppableId: string) => {
+        return newRows.filter(r => {
+          if (r.Archived === '1') return false;
+          if (viewMode === 'columns') return inferStage(r) === droppableId;
+          const parts = droppableId.split('||');
+          const s = parts[0];
+          const v = parts[1] || '';
+          if (inferStage(r) !== s) return false;
+          if (viewMode === 'swim') return (String(r.Verantwortlich || '').trim() || '—') === (v || '—');
+          if (viewMode === 'lane') return (r.Swimlane || '') === v;
+          return true;
+        }).sort((a, b) => (a.position || 0) - (b.position || 0));
+      };
 
-      if (Object.keys(updates).length > 0) {
-        patchCard(draggedCard, updates);
-      }
+      const sourceCards = getColCards(sourceDroppableId);
+      const destCards = sourceDroppableId === destDroppableId ? sourceCards : getColCards(destDroppableId);
+
+      // Find original index in source column
+      const sourceIdx = sourceCards.findIndex(r => idFor(r) === draggableId);
+      if (sourceIdx === -1) return;
+
+      // Remove from source
+      sourceCards.splice(sourceIdx, 1);
+
+      // Update dragged card with new properties
+      const updatedDraggedCard = { ...draggedCard };
+      updatedDraggedCard['Board Stage'] = newStage;
+      if (viewMode === 'swim') updatedDraggedCard.Verantwortlich = (newValue === '—' ? '' : newValue);
+      if (viewMode === 'lane') updatedDraggedCard.Swimlane = newValue;
+
+      // Insert into destination
+      destCards.splice(destination.index, 0, updatedDraggedCard);
+
+      // Update positions for all cards in affected column(s)
+      sourceCards.forEach((c, i) => { c.position = i; c.order = i; });
+      destCards.forEach((c, i) => { c.position = i; c.order = i; });
+
+      // Build the final row list
+      const affectedIds = new Set([...sourceCards, ...destCards].map(idFor));
+      const finalRows = [
+        ...newRows.filter(r => !affectedIds.has(idFor(r))),
+        ...sourceCards,
+        ...(sourceDroppableId === destDroppableId ? [] : destCards)
+      ];
+
+      setRows(finalRows);
+
+      // Persist changes
+      const cardsToUpdate = Array.from(new Set([...sourceCards, ...destCards]));
+      await saveCards(cardsToUpdate);
     };
 
     // --- Filtering ---
@@ -439,7 +480,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           setBoardDescription={setBoardDescription}
           canManageSettings={permissions.canManageSettings || isSuperForce}
           onSave={saveSettings}
-          loadCards={loadCards}
+          loadCards={() => loadCards()}
           onOpenArchive={handleOpenArchive}
           lanes={lanes}
           boardMeta={boardMeta}

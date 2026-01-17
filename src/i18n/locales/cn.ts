@@ -8,7 +8,8 @@ export const cn = {
         back: "返回",
         error: "错误",
         success: "成功",
-        today: "今天"
+        today: "今天",
+        select: "请选择..."
     },
     dashboard: {
         welcome: "欢迎回来",
@@ -165,6 +166,7 @@ export const cn = {
         cards: "卡片",
         escalationToggle: "升级 (点击切换)",
         noTitle: "无标题",
+        projectNotFound: "未找到项目 {number}",
         generalLane: "常规",
         lane: "泳道",
         preview: "预览",
@@ -207,7 +209,15 @@ export const cn = {
         projectsPerPhase: "各阶段项目数",
         projectsPerLane: "各泳道项目数",
         projectsPerMember: "每位成员的项目数",
-        completionLabel: "完成标签"
+        completionLabel: "完成标签",
+        statusReport: "状态报告",
+        mainStatus: "主状态 (主看板)",
+        noChecklistItems: "无检查项",
+        milestones: "里程碑",
+        dates: "日期",
+        connectedBoards: "关联看板",
+        noConBoards: "未发现关联看板",
+        archived: "已归档"
     },
     teamBoard: {
         settingsSaved: '设置已保存',
@@ -252,6 +262,9 @@ export const cn = {
         homeBoardDesc: '自动显示成员在其他项目中的所有任务。',
         delete: '删除',
         new: '新建',
+        collapsedTasks: '已折叠 ({count} 项任务)',
+        memberOrder: '团队成员顺序',
+        memberOrderDesc: '拖动成员以更改看板上的泳道顺序。',
     },
     boardManagement: {
         loadError: '加载管理数据出错。',

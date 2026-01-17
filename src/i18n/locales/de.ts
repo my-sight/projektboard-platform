@@ -8,7 +8,8 @@ export const de = {
         back: "Zurück",
         error: "Fehler",
         success: "Erfolg",
-        today: "Heute"
+        today: "Heute",
+        select: "Bitte wählen..."
     },
     dashboard: {
         welcome: "Willkommen zurück",
@@ -165,6 +166,7 @@ export const de = {
         cards: "Karten",
         escalationToggle: "Eskalation (Klick zum Durchschalten)",
         noTitle: "Kein Titel",
+        projectNotFound: "Projekt {number} nicht gefunden",
         generalLane: "Allgemein",
         lane: "Lane",
         preview: "Vorschau",
@@ -207,7 +209,15 @@ export const de = {
         projectsPerPhase: "Projekte je Phase",
         projectsPerLane: "Projekte je Lane",
         projectsPerMember: "Projekte je Boardmember",
-        completionLabel: "Abschluss Label"
+        completionLabel: "Abschluss Label",
+        statusReport: "Status-Bericht",
+        mainStatus: "Haupt-Status (Main Board)",
+        noChecklistItems: "Keine Checklisten-Punkte",
+        milestones: "Meilensteine",
+        dates: "Termine",
+        connectedBoards: "Verbundene Boards",
+        noConBoards: "Keine Con-Boards gefunden.",
+        archived: "Archiviert"
     },
     teamBoard: {
         settingsSaved: 'Einstellungen gespeichert',
@@ -252,6 +262,9 @@ export const de = {
         homeBoardDesc: 'Zeigt automatisch alle Aufgaben der Mitglieder aus anderen Projekten an.',
         delete: 'Löschen',
         new: 'Neu',
+        collapsedTasks: 'Eingeklappt ({count} Aufgaben)',
+        memberOrder: 'Reihenfolge der Teammitglieder',
+        memberOrderDesc: 'Ziehen Sie die Mitglieder, um die Reihenfolge der Lanes im Board zu ändern.',
     },
     boardManagement: {
         loadError: 'Fehler beim Laden der Management-Daten.',

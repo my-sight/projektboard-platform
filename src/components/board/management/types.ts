@@ -38,6 +38,12 @@ export interface KanbanCardRow {
     card_data: Record<string, unknown>;
     project_number?: string | null;
     project_name?: string | null;
+    stage?: string | null;
+    assignee_id?: string | null;
+    due_date?: string | null;
+    is_important?: boolean;
+    sop_date_current?: string | null;
+    ms_date_current?: string | null;
     board_id?: string;
 }
 

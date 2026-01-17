@@ -1,11 +1,18 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
 export const useKanbanRealtime = (
     boardId: string,
     setRows: React.Dispatch<React.SetStateAction<any[]>>,
-    convertDbToCard: (item: any) => any
+    convertDbToCard: (item: any) => any,
+    isDisabled: boolean = false
 ) => {
+    // We use a ref to track the disabled state within the persistent event listener
+    const disabledRef = useRef(isDisabled);
+    useEffect(() => {
+        disabledRef.current = isDisabled;
+    }, [isDisabled]);
+
     useEffect(() => {
         if (!boardId) return;
 
@@ -22,22 +29,21 @@ export const useKanbanRealtime = (
                     filter: `board_id=eq.${boardId}`
                 },
                 (payload) => {
-                    console.log('⚡️ Realtime Event:', payload.eventType, payload);
+                    // Check the ref IMMEDIATELY to swallow events during saves
+                    if (disabledRef.current) {
+                        return;
+                    }
 
                     if (payload.eventType === 'INSERT') {
                         const newCard = payload.new;
-                        // Convert to internal format immediately
                         const formatted = convertDbToCard(newCard);
-
                         setRows((prev) => {
-                            // Prevent duplicates
                             if (prev.some(r => r.id === newCard.id)) return prev;
                             return [...prev, formatted];
                         });
                     } else if (payload.eventType === 'UPDATE') {
                         const updatedCard = payload.new;
                         const formatted = convertDbToCard(updatedCard);
-
                         setRows((prev) =>
                             prev.map((row) => (row.id === updatedCard.id ? formatted : row))
                         );

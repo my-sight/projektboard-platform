@@ -42,4 +42,8 @@ for file in $(ls $MIGRATIONS_DIR/*.sql | sort); do
     fi
 done
 
+# 3. Reload PostgREST Schema Cache
+echo "Refreshing API Schema Cache..."
+docker exec -i $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -c "NOTIFY pgrst, 'reload schema';" > /dev/null
+
 echo "Database is up to date."

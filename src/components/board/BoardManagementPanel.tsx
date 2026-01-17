@@ -141,9 +141,9 @@ function buildEscalationViews(
 
       const record = recordByCard.get(card.card_id);
 
-      const projectCode = stringOrNull(rawData['Nummer']) ?? stringOrNull(card.project_number);
-      const projectName = stringOrNull(rawData['Teil']) ?? stringOrNull(card.project_name);
-      const stage = stringOrNull(rawData['Board Stage']);
+      const projectCode = card.project_number || stringOrNull(rawData['Nummer']);
+      const projectName = card.project_name || stringOrNull(rawData['Teil']);
+      const stage = card.stage || stringOrNull(rawData['Board Stage']);
       const fallbackReason = stringOrNull(rawData['Grund']);
       const fallbackMeasure = stringOrNull(rawData['Maßnahme']) ?? stringOrNull(rawData['Massnahme']);
       const completion = Math.max(0, Math.min(4, record?.completion_steps ?? 0));
@@ -459,8 +459,14 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
           id: c.id,
           card_id: c.id,
           card_data: baseData,
-          project_number: baseData.Nummer,
-          project_name: baseData.Teil,
+          project_number: c.project_number || baseData.Nummer,
+          project_name: c.project_name || baseData.Teil,
+          stage: c.stage || baseData['Board Stage'],
+          assignee_id: c.assignee_id || baseData.assigneeId,
+          due_date: c.due_date || baseData.dueDate || baseData['Due Date'],
+          is_important: c.is_important !== undefined ? c.is_important : baseData.important,
+          sop_date_current: c.sop_date_current || baseData.SOP_Neu || baseData.SOP_Datum,
+          ms_date_current: c.ms_date_current || baseData.TR_Neu || baseData.MS_Neu || baseData.MS_Datum || baseData.TR_Datum,
           board_id: boardId // Context is Local Board
         };
       }).filter(c => c !== null) as KanbanCardRow[];
@@ -472,11 +478,8 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
       const baseStages = stageOrder.length ? stageOrder : DEFAULT_STAGE_NAMES;
 
       const stageCounts = mergedCardRows.reduce((map, row) => {
-        const raw = (row.card_data ?? {}) as Record<string, unknown>;
-        const stage =
-          stringOrNull(raw['Board Stage']) ??
-          stringOrNull(raw['stage'] as string | undefined) ??
-          'Unbekannt';
+        // Relational Priority: Use the stage column first
+        const stage = stringOrNull(row.stage) ?? 'Unbekannt';
         map.set(stage, (map.get(stage) ?? 0) + 1);
         return map;
       }, new Map<string, number>());

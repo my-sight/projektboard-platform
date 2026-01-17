@@ -82,8 +82,9 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', m
         const validCards = cards.filter(c => {
             const rawSop = c.card_data['SOP_Datum'] as string | undefined;
             const rawSopNeu = c.card_data['SOP_Neu'] as string | undefined;
+            const relSop = c.sop_date_current || undefined;
 
-            return !!parseDate(rawSopNeu) || !!parseDate(rawSop);
+            return !!parseDate(relSop) || !!parseDate(rawSopNeu) || !!parseDate(rawSop);
         });
 
         const grouped: Record<string, any[]> = {};
@@ -91,12 +92,14 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', m
         validCards.forEach(c => {
             const rawSop = c.card_data['SOP_Datum'] as string | undefined;
             const rawSopNeu = c.card_data['SOP_Neu'] as string | undefined;
+            const relSop = c.sop_date_current || undefined;
 
             const sopDate = parseDate(rawSop);
             const sopNeuDate = parseDate(rawSopNeu);
+            const relSopDate = parseDate(relSop);
 
-            // Priority: SOP neu > SOP
-            const finalSop = sopNeuDate || sopDate;
+            // Priority: Relational SOP > SOP neu > SOP
+            const finalSop = relSopDate || sopNeuDate || sopDate;
 
             if (!finalSop) return; // Should be filtered out but safe check
 
@@ -105,18 +108,20 @@ export function ProjectTimelineView({ cards, members, completionLabel = 'SOP', m
             // MS Logic (check MS keys first, then TR keys)
             const rawMs = (c.card_data['MS'] || c.card_data['MS_Datum'] || c.card_data['TR'] || c.card_data['TR_Datum']) as string | undefined;
             const rawMsNeu = (c.card_data['MS_Neu'] || c.card_data['TR_Neu']) as string | undefined;
+            const relMs = c.ms_date_current || undefined;
 
             const msDate = parseDate(rawMs);
             const msNeuDate = parseDate(rawMsNeu);
-            // Priority: MS Neu > MS
-            const finalMs = msNeuDate || msDate;
+            const relMsDate = parseDate(relMs);
+            // Priority: Relational MS > MS Neu > MS
+            const finalMs = relMsDate || msNeuDate || msDate;
             const bufferEnd = sop.add(3, 'months');
 
             if (bufferEnd.isAfter(globalMax)) {
                 globalMax = bufferEnd;
             }
 
-            const rawResp = c.card_data['Verantwortlich'] as string | undefined;
+            const rawResp = (c.assignee_id || c.card_data['Verantwortlich']) as string | undefined;
             const responsible = resolveResponsibleName(rawResp);
 
             if (!grouped[responsible]) {
