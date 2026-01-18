@@ -32,8 +32,8 @@ services:
     restart: always
     ports:
       # FIX 5.4: Bind to localhost only (Force Nginx usage)
-      - "127.0.0.1:8000:8000/tcp"
-      - "127.0.0.1:8443:8443/tcp"
+      - "8000:8000/tcp"
+      - "8443:8443/tcp"
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
@@ -180,7 +180,7 @@ services:
     restart: always
     ports:
       # FIX 5.11: Bind Studio to localhost
-      - "127.0.0.1:3001:3000"
+      - "3001:3000"
     environment:
       STUDIO_PG_META_URL: http://meta:8080
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -228,7 +228,7 @@ services:
     restart: always
     ports:
       # FIX 5.4: Bind App to localhost only
-      - "127.0.0.1:3000:3000"
+      - "3000:3000"
     depends_on:
       - kong
       - db
