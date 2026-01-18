@@ -220,16 +220,8 @@ docker exec -i supabase-db psql -U postgres -d postgres <<EOF
   GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
   
-  -- Disable RLS on critical tables for stability
-  ALTER TABLE IF EXISTS public.system_settings DISABLE ROW LEVEL SECURITY;
-  ALTER TABLE IF EXISTS public.profiles DISABLE ROW LEVEL SECURITY;
-  ALTER TABLE IF EXISTS public.departments DISABLE ROW LEVEL SECURITY;
-  ALTER TABLE IF EXISTS public.kanban_boards DISABLE ROW LEVEL SECURITY;
-  ALTER TABLE IF EXISTS public.kanban_cards DISABLE ROW LEVEL SECURITY;
-  ALTER TABLE IF EXISTS public.board_members DISABLE ROW LEVEL SECURITY;
-  ALTER TABLE IF EXISTS public.kanban_board_settings DISABLE ROW LEVEL SECURITY;
-  ALTER TABLE IF EXISTS public.board_card_statuses DISABLE ROW LEVEL SECURITY;
-
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+  
   -- Create Storage Buckets
   INSERT INTO storage.buckets (id, name, public) VALUES ('branding', 'branding', true) ON CONFLICT (name) DO NOTHING;
   INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true) ON CONFLICT (name) DO NOTHING;

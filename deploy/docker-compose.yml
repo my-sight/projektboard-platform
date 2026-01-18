@@ -19,6 +19,11 @@ services:
       - ./volumes/db/init:/docker-entrypoint-initdb.d:ro
     networks:
       - projektboard-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 2. API Gateway (Kong)
   kong:
@@ -26,6 +31,7 @@ services:
     image: kong:2.8.1
     restart: always
     ports:
+      # FIX 5.4: Bind to localhost only (Force Nginx usage)
       - "127.0.0.1:8000:8000/tcp"
       - "127.0.0.1:8443:8443/tcp"
     environment:
@@ -48,6 +54,11 @@ services:
       - meta
     networks:
       - projektboard-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 3. Auth Service (GoTrue)
   auth:
@@ -68,6 +79,11 @@ services:
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
     networks:
       - projektboard-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 4. REST API (PostgREST)
   rest:
@@ -86,6 +102,11 @@ services:
       PGRST_LOG_LEVEL: info
     networks:
       - projektboard-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 5. Realtime
   realtime:
@@ -111,6 +132,11 @@ services:
       /app/bin/server
     networks:
       - projektboard-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 6. Storage
   storage:
@@ -141,6 +167,11 @@ services:
       - /proc/mdstat:/host_mdstat:ro
     networks:
       - projektboard-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 7. Studio (Dashboard)
   studio:
@@ -148,6 +179,7 @@ services:
     image: supabase/studio:latest
     restart: always
     ports:
+      # FIX 5.11: Bind Studio to localhost
       - "127.0.0.1:3001:3000"
     environment:
       STUDIO_PG_META_URL: http://meta:8080
@@ -158,6 +190,11 @@ services:
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
     networks:
       - projektboard-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 8. Meta (PG Meta)
   meta:
@@ -173,6 +210,11 @@ services:
       PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
     networks:
       - projektboard-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # 9. YOUR APP
   app:
@@ -185,7 +227,8 @@ services:
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
     restart: always
     ports:
-      - "3000:3000"
+      # FIX 5.4: Bind App to localhost only
+      - "127.0.0.1:3000:3000"
     depends_on:
       - kong
       - db
@@ -195,8 +238,14 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       INTERNAL_SUPABASE_URL: http://kong:8000
+      NODE_ENV: production # FIX 5.7
     networks:
       - projektboard-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   projektboard-network:
