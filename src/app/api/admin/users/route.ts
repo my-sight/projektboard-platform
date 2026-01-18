@@ -117,6 +117,14 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'User created but profile failed: ' + profileError.message }, { status: 500 });
         }
 
+        // --- AUDIT LOG ---
+        await supabaseAdmin.from('audit_logs').insert({
+            actor_id: admin.id,
+            action: 'create_user',
+            target_id: authUser.user.id,
+            details: { email, role, company, name }
+        });
+
         return NextResponse.json({ user: profileData });
 
     } catch (e: any) {
@@ -140,6 +148,14 @@ export async function DELETE(req: NextRequest) {
 
         // Ensure profile is gone (if no cascade)
         await supabaseAdmin.from('profiles').delete().eq('id', id);
+
+        // --- AUDIT LOG ---
+        await supabaseAdmin.from('audit_logs').insert({
+            actor_id: admin.id,
+            action: 'delete_user',
+            target_id: id,
+            details: { deleted_at: new Date().toISOString() }
+        });
 
         return NextResponse.json({ success: true });
     } catch (e: any) {
@@ -172,6 +188,14 @@ export async function PATCH(req: NextRequest) {
 
             if (profileError) throw profileError;
         }
+
+        // --- AUDIT LOG ---
+        await supabaseAdmin.from('audit_logs').insert({
+            actor_id: admin.id,
+            action: 'update_user',
+            target_id: id,
+            details: { updates, password_changed: !!password }
+        });
 
         return NextResponse.json({ success: true });
     } catch (e: any) {

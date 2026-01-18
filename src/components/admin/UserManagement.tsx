@@ -53,13 +53,15 @@ import {
   Security as SecurityIcon,
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
-  Warning as WarningIcon
+  Warning as WarningIcon,
+  ReceiptLong as ReceiptLongIcon
 } from '@mui/icons-material';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { supabase } from '@/lib/supabaseClient';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getLicenseStatus } from '@/lib/license';
+import AuditLogViewer from './AuditLogViewer';
 
 // --- TYPEN ---
 interface UserProfile {
@@ -631,6 +633,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
           <Tab icon={<BusinessIcon />} label={t('admin.departments')} iconPosition="start" />
           <Tab icon={<DashboardIcon />} label={t('admin.boards')} iconPosition="start" />
           <Tab icon={<DnsIcon />} label={t('admin.systemStatus')} iconPosition="start" />
+          <Tab icon={<ReceiptLongIcon />} label="Audit Log" iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -1050,6 +1053,13 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
         </DialogActions>
       </Dialog>
 
-    </Container>
+
+
+      {/* --- TAB 4: AUDIT LOG --- */}
+      <CustomTabPanel value={currentTab} index={4}>
+        <AuditLogViewer />
+      </CustomTabPanel>
+
+    </Container >
   );
 }
