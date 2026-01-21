@@ -392,7 +392,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
             if (linkedId) {
                 const { data } = await supabase.from('kanban_cards').select('*').eq('id', linkedId).single();
                 if (data) {
-                    setLinkedCard(convertDbToCard(data, new Map(), boardId));
+                    setLinkedCard(data);
                 } else {
                     setLinkedCard(null);
                 }
@@ -1354,7 +1354,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                 {linkedCard && (
                     <Chip
                         icon={<Description style={{ fontSize: '1rem' }} />}
-                        label={linkedCard.originalData?.Teil || linkedCard.description || (t('dashboard.projects') || 'Projekt')}
+                        label={linkedCard.card_data?.Teil || linkedCard.card_data?.title || linkedCard.task_description || (t('dashboard.projects') || 'Projekt')}
                         onClick={() => setLinkedReportOpen(true)}
                         color="primary"
                         variant="outlined"

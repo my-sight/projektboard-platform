@@ -40,16 +40,22 @@ echo "Configuring UFW Firewall..."
 ufw default deny incoming
 ufw default allow outgoing
 
-# Allow SSH (CRITICAL)
+# Allow SSH (CRITICAL) - Do this FIRST
 ufw allow ssh
-# Allow Web (HTTP/HTTPS)
+ufw allow 22/tcp
+
+# Allow Web (HTTP/HTTPS) - Managed by Nginx
 ufw allow 80/tcp
 ufw allow 443/tcp
-# Allow Port 3000 (App Fallback) - Optional, user can disable later
-ufw allow 3000/tcp
 
-# Docker Swarm/Network required ports? We use Standalone Compose.
-# Docker handles its own iptables, but UFW protects the HOST services.
+# Allow App/Dev Ports - CRITICAL for Docker Bindings (0.0.0.0)
+# Since we bound Docker ports to 0.0.0.0 in docker-compose, we MUST allow them in UFW.
+echo "Allowing Application Ports..."
+ufw allow 3000/tcp  # Next.js App
+ufw allow 8000/tcp  # Kong API Gateway
+ufw allow 3001/tcp  # Supabase Studio
+ufw allow 8080/tcp  # Nginx Dev Proxy
+ufw allow 8443/tcp  # Kong SSL
 
 # Enable
 # NON-INTERACTIVE enablement
@@ -59,6 +65,5 @@ echo -e "${GREEN}UFW Firewall active.${NC}"
 ufw status verbose
 
 echo -e "${GREEN}System Hardening Complete.${NC}"
-echo "Note: Docker ports (8000, 3001) are managed by Docker iptables."
-echo "To secure them, we must bind them to 127.0.0.1 in docker-compose.yml."
+echo "Firewall is active and ports 22, 80, 443, 3000, 3001, 8000, 8080, 8443 are OPEN."
 

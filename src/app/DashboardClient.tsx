@@ -45,6 +45,7 @@ import {
   LightMode,
   DarkMode
 } from '@mui/icons-material';
+import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
 import { useAuth } from '@/contexts/AuthContext';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -135,6 +136,22 @@ export default function DashboardClient() {
     }
   }, [user?.id]);
 
+  // Load Favorite Order from LocalStorage
+  const [favoriteOrder, setFavoriteOrder] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (user?.id) {
+      const storedOrder = localStorage.getItem(`kanban_fav_order_${user.id}`);
+      if (storedOrder) {
+        try {
+          setFavoriteOrder(JSON.parse(storedOrder));
+        } catch (e) {
+          console.error('Failed to parse favorite order', e);
+        }
+      }
+    }
+  }, [user?.id]);
+
   // --- EFFECTS ---
 
   // Initial Load & Auth Check
@@ -174,9 +191,41 @@ export default function DashboardClient() {
   const isWaitingForData = user && loadingData && boards.length === 0;
   const showLoader = isWaitingForAuth || isWaitingForData;
 
-  const favoriteBoards = useMemo(() => boards.filter(b => favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
+  const favoriteBoards = useMemo(() => {
+    const favs = boards.filter(b => favoriteBoardIds.has(b.id));
+    if (favoriteOrder.length > 0) {
+      return favs.sort((a, b) => {
+        const indexA = favoriteOrder.indexOf(a.id);
+        const indexB = favoriteOrder.indexOf(b.id);
+        // If both are in the order list, sort by index
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        // If only A is in list, it comes first (or last? usually known items first)
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        // Fallback to name or date
+        return 0;
+      });
+    }
+    return favs;
+  }, [boards, favoriteBoardIds, favoriteOrder]);
+
   const standardBoards = useMemo(() => boards.filter(b => b.boardType === 'standard' && !favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
   const teamBoards = useMemo(() => boards.filter(b => b.boardType === 'team' && !favoriteBoardIds.has(b.id)), [boards, favoriteBoardIds]);
+
+  const onDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+
+    const items = Array.from(favoriteBoards);
+    const [reorderedItem] = items.splice(result.source.index, 1);
+    items.splice(result.destination.index, 0, reorderedItem);
+
+    const newOrder = items.map(b => b.id);
+    setFavoriteOrder(newOrder);
+
+    if (user?.id) {
+      localStorage.setItem(`kanban_fav_order_${user.id}`, JSON.stringify(newOrder));
+    }
+  };
 
   // --- ACTIONS ---
   const createBoard = async () => {
@@ -482,12 +531,190 @@ export default function DashboardClient() {
           <Typography variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
             <Star color="warning" /> {t('home.favorites')}
           </Typography>
+          <DragDropContext onDragEnd={onDragEnd}>
+            <Droppable droppableId="favorites-grid" direction="horizontal">
+              {(provided) => (
+                <Grid container spacing={3} ref={provided.innerRef} {...provided.droppableProps}>
+                  {favoriteBoards.map((board, index) => (
+                    <Draggable key={board.id} draggableId={board.id} index={index}>
+                      {(provided, snapshot) => (
+                        <Grid
+                          item
+                          xs={12}
+                          sm={6}
+                          md={4}
+                          lg={3}
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          sx={{
+                            // Styles to keep it looking good while dragging
+                            ...provided.draggableProps.style,
+                            opacity: snapshot.isDragging ? 0.8 : 1,
+                          }}
+                        >
+                          <Card
+                            variant="outlined"
+                            sx={{
+                              height: '100%',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              backgroundColor: board.boardType === 'team' ? alpha(theme.palette.secondary.main, 0.03) : 'background.paper',
+                              transition: 'transform 0.2s, box-shadow 0.2s',
+                              '&:hover': {
+                                transform: 'translateY(-2px)',
+                                boxShadow: 4,
+                                cursor: 'grab', // Indicate draggable
+                                borderColor: 'primary.main'
+                              },
+                              // Ensure dragging cursor overrides
+                              cursor: 'grab'
+                            }}
+                            onClick={() => handleOpenBoard(board.id)}
+                          >
+                            <CardContent sx={{ flexGrow: 1, p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 0.5 }}>
+                                <Typography variant="h6" fontWeight={600} noWrap title={board.name} sx={{ fontSize: '1rem' }}>
+                                  {board.name}
+                                </Typography>
+                                <IconButton
+                                  size="small"
+                                  onClick={(e) => toggleFavorite(e, board.id)}
+                                  sx={{ mt: -0.5, mr: -0.5 }}
+                                  // Prevent drag start on button click if possible, though handleProps are on parent
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                  {favoriteBoardIds.has(board.id) ? <Star color="warning" fontSize="small" /> : <StarBorder fontSize="small" />}
+                                </IconButton>
+                              </Box>
+                              <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                                <Chip
+                                  label={board.boardType === 'team' ? t('home.teamBoard') : t('home.projectBoard')}
+                                  size="small"
+                                  sx={{
+                                    height: 20,
+                                    fontSize: '0.7rem',
+                                    backgroundColor: alpha(theme.palette.secondary.main, 0.1)
+                                  }}
+                                />
+                                {board.settings?.isHomeBoard && (
+                                  <Tooltip title="Heimatboard">
+                                    <Chip
+                                      label="H"
+                                      size="small"
+                                      color="primary"
+                                      variant="outlined"
+                                      sx={{
+                                        height: 20,
+                                        fontSize: '0.7rem',
+                                        fontWeight: 'bold',
+                                        minWidth: '24px'
+                                      }}
+                                    />
+                                  </Tooltip>
+                                )}
+
+                                {/* Con-Board Badges */}
+                                {board.parent_id && (
+                                  <>
+                                    <Chip
+                                      label="C"
+                                      size="small"
+                                      variant="outlined"
+                                      sx={{
+                                        height: 20,
+                                        fontSize: '0.7rem',
+                                        fontWeight: 'bold',
+                                        borderColor: 'secondary.main',
+                                        color: 'secondary.main',
+                                        minWidth: '24px',
+                                        '& .MuiChip-label': { px: 0.5 }
+                                      }}
+                                    />
+                                    {(() => {
+                                      const pName = boards.find(pb => pb.id === board.parent_id)?.name;
+                                      if (!pName) return null;
+                                      return (
+                                        <Chip
+                                          label={pName}
+                                          size="small"
+                                          variant="outlined"
+                                          sx={{
+                                            height: 20,
+                                            fontSize: '0.7rem',
+                                            fontWeight: 700,
+                                            borderColor: 'secondary.main',
+                                            color: 'secondary.main'
+                                          }}
+                                        />
+                                      );
+                                    })()}
+                                  </>
+                                )}
+                              </Box>
+                              <Typography variant="body2" color="text.secondary" sx={{
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                fontSize: '0.8rem',
+                                lineHeight: 1.3
+                              }}>
+                                {board.description || 'Keine Beschreibung'}
+                              </Typography>
+                            </CardContent>
+                            <Divider />
+                            <CardActions sx={{ justifyContent: 'space-between', px: 1.5, py: 0.5 }}>
+                              {/* Left: Delete */}
+                              {isAdmin ? (
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={(e) => { e.stopPropagation(); setBoardToDelete(board); setDeleteDialogOpen(true); }}
+                                  title={t('common.delete')}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                  <Delete fontSize="small" />
+                                </IconButton>
+                              ) : <Box />}
+
+                              {/* Center: Settings */}
+
+                              <IconButton
+                                size="small"
+                                onClick={(e) => handleOpenSettings(e, board)}
+                                title={t('kanban.settings')}
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <DashboardCustomize fontSize="small" />
+                              </IconButton>
+
+                              {/* Right: Open */}
+                              <IconButton
+                                color="primary"
+                                onClick={() => handleOpenBoard(board.id)}
+                                title={t('home.open')}
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <RocketLaunch fontSize="small" />
+                              </IconButton>
+                            </CardActions>
+                          </Card>
+                        </Grid>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </Grid>
+              )}
+            </Droppable>
+          </DragDropContext>
           <Grid container spacing={3}>
-            {favoriteBoards.map(renderBoardCard)}
           </Grid>
           <Divider sx={{ my: 4 }} />
         </Box>
-      )}
+      )
+      }
 
 
       {/* Standard Boards Section (Kanban Boards) */}
@@ -564,6 +791,6 @@ export default function DashboardClient() {
         open={userSettingsOpen}
         onClose={() => setUserSettingsOpen(false)}
       />
-    </Container>
+    </Container >
   );
 }

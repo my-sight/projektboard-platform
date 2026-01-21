@@ -94,10 +94,12 @@ NEW_IP=${NEW_IP:-${NUC_IP:-localhost}}
 echo "Configuring for: $NEW_IP"
 
 # Force secret generation if critical keys are missing
-if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$JWT_SECRET" ] || [ -z "$ANON_KEY" ] || [ -z "$SERVICE_ROLE_KEY" ]; then
+if [ -z "$POSTGRES_PASSWORD" ] || [ -z "$JWT_SECRET" ] || [ -z "$ANON_KEY" ] || [ -z "$SERVICE_ROLE_KEY" ] || [ -z "$ENCRYPTION_KEY" ]; then
     echo "Secrets missing or incomplete. Generating new secrets..."
     [ -z "$POSTGRES_PASSWORD" ] && POSTGRES_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9')
     [ -z "$JWT_SECRET" ] && JWT_SECRET=$(openssl rand -hex 32)
+    # Generate Encryption Key for Backups (32 bytes hex)
+    [ -z "$ENCRYPTION_KEY" ] && ENCRYPTION_KEY=$(openssl rand -hex 32)
     
     JWT_GEN_SCRIPT="
     const crypto = require('crypto');
@@ -158,9 +160,10 @@ NUC_IP=$NEW_IP
 NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL_VAL
 NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY
 GOTRUE_SITE_URL=$SITE_URL_VAL
+ENCRYPTION_KEY=$ENCRYPTION_KEY
 EOF
 
-export POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY NEW_IP
+export POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY NEW_IP ENCRYPTION_KEY
 echo "Configuration updated in .env"
 
 # 3. Build Check
@@ -236,9 +239,8 @@ docker exec -i supabase-db psql -U postgres -d postgres <<EOF
   CREATE OR REPLACE FUNCTION auth.role() RETURNS text LANGUAGE sql STABLE AS \$\$ SELECT NULLIF(current_setting('request.jwt.claims', true)::json->>'role', '')::text; \$\$;
   CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql STABLE AS \$\$ SELECT NULLIF(current_setting('request.jwt.claims', true), '')::jsonb; \$\$;
 
-  -- 1. Remove existing to ensure clean state (API will recreate it)
-  DELETE FROM auth.users WHERE email = 'michael@mysight.net';
-  DELETE FROM public.profiles WHERE email = 'michael@mysight.net';
+  -- 1. DO NOT DELETE admin if exists (preserve Audit Logs integrity)
+  -- Instead, we will update the password later via SQL if the user exists.
 
 EOF
 
@@ -252,18 +254,37 @@ echo "Waiting for Auth Service to be accessible..."
 sleep 10
 
 # API-Based User Seeding (Definitive Solution for Hash Compatibility)
-# API-Based User Seeding (Definitive Solution for Hash Compatibility)
-echo "Creating Superuser via GoTrue API..."
-# Using wget since Alpine images often lack curl
-RESPONSE=$(docker exec projektboard-app wget -qO- \
+# 5b. Generate/Set Admin Password
+# If ADMIN_PASSWORD env is set (e.g. from CI), use it. Otherwise generate one.
+if [ -z "$ADMIN_PASSWORD" ]; then
+    ADMIN_PASSWORD=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9')
+fi
+
+echo "Ensuring Superuser exists or updating password..."
+
+# SQL-Based Update (Most reliable way to force password update without knowing previous state)
+# We generate the bcrypt hash via pgcrypto (must be enabled) or we rely on the API for creation only.
+# Since we cannot easily hash in bash, we use a hybrid approach:
+# 1. Try to Create (API) -> fails 422 if exists
+# 2. Force Update (SQL) -> sets password directly using Supabase internal auth schema functions or pgcrypto
+
+# Try Create (API) - Handles "New Install" case
+docker exec projektboard-app wget -qO- \
   --header="Authorization: Bearer $SERVICE_ROLE_KEY" \
   --header="Content-Type: application/json" \
-  --post-data='{"email": "michael@mysight.net", "password": "Serum4x!", "email_confirm": true, "user_metadata": {"full_name": "Michael", "role": "admin", "company": "MySight"}}' \
-  http://kong:8000/auth/v1/admin/users)
+  --post-data="{\"email\": \"michael@mysight.net\", \"password\": \"$ADMIN_PASSWORD\", \"email_confirm\": true, \"user_metadata\": {\"full_name\": \"Michael\", \"role\": \"admin\", \"company\": \"MySight\"}}" \
+  http://kong:8000/auth/v1/admin/users >/dev/null 2>&1
 
-echo "User Creation Response: $RESPONSE"
+# Force Update Password (SQL) - Handles "Existing Install" case
+# Note: GoTrue uses bcrypt. We need pgcrypto extension.
+docker exec supabase-db psql -U postgres -d postgres -c "
+  CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA extensions;
+  UPDATE auth.users 
+  SET encrypted_password = extensions.crypt('$ADMIN_PASSWORD', extensions.gen_salt('bf')) 
+  WHERE email = 'michael@mysight.net';
+"
 
-# Sync Profile Role after API creation
+# Sync Profile Role after creation/update
 docker exec supabase-db psql -U postgres -d postgres -c "
   INSERT INTO public.profiles (id, email, full_name, role, company, is_active)
   SELECT id, email, 'Michael', 'admin', 'MySight', true
@@ -277,7 +298,7 @@ docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.syst
 
 echo -e "${GREEN}=== Installation Complete ===${NC}"
 echo "Check: http://${NEW_IP}:3000"
-echo "Login: michael@mysight.net / Serum4x!"
+echo "Login: michael@mysight.net / $ADMIN_PASSWORD"
 
 # 6. Appliance Configuration (Nginx)
 echo "----------------------------------------------------------------"
@@ -346,4 +367,13 @@ if [ "$MODE" == "prod" ]; then
     }
 else
     echo "Skipping Cronjob (Dev Mode)"
+fi
+
+# 8. System Hardening (One-Time)
+echo "----------------------------------------------------------------"
+echo "Applying System Hardening (Firewall)..."
+if [ -f "./harden_system.sh" ]; then
+    sudo bash ./harden_system.sh
+else
+    echo "Warning: harden_system.sh not found."
 fi
