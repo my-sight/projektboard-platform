@@ -44,7 +44,7 @@ export function KanbanKPIDialog({ open, onClose, kpis, distribution, memberDistr
                     <Grid item xs={12} sm={4}>
                         <Card variant="outlined" sx={{ height: '100%', backgroundColor: isOverdue ? '#ffebee' : '#f0f0f0' }}>
                             <CardContent>
-                                <Typography variant="subtitle2" color="text.secondary">{t('kanban.overdue')}</Typography>
+                                <Typography variant="subtitle2" color="text.secondary">{t('kanban.overdue')} {trLabel}</Typography>
                                 <Typography variant="h4" color={isOverdue ? 'error.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
                                     {kpis.trOverdue.length}
                                 </Typography>
@@ -55,7 +55,7 @@ export function KanbanKPIDialog({ open, onClose, kpis, distribution, memberDistr
                     <Grid item xs={12} sm={4}>
                         <Card variant="outlined" sx={{ height: '100%', backgroundColor: hasEscalations ? '#fff3e0' : '#f0f0f0' }}>
                             <CardContent>
-                                <Typography variant="subtitle2" color="text.secondary">{t('kanban.escalations')}</Typography>
+                                <Typography variant="subtitle2" color="text.secondary">{t('kanban.escalations')} ({trLabel})</Typography>
                                 <Typography variant="h4" color={hasEscalations ? 'error.main' : 'text.primary'} sx={{ fontWeight: 700 }}>
                                     {kpis.rEscalations.length}
                                 </Typography>

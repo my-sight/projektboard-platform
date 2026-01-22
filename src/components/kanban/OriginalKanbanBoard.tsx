@@ -95,7 +95,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
 
     const {
       rows, setRows, cols, lanes, checklistTemplates, setChecklistTemplates,
-      customLabels, completedCount, boardName, setBoardName, boardDescription, setBoardDescription, topTopics,
+      customLabels, setCustomLabels, completedCount, boardName, setBoardName, boardDescription, setBoardDescription, topTopics,
       loadCards, loadSettings, loadTopTopics, saveSettings, saveCards, patchCard, handleCreateCard,
       inferStage, idFor, boardMeta
     } = useKanbanData(boardId, permissions, viewMode, setViewMode, setDensity);
@@ -365,12 +365,48 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
         const matches = Object.values(row).some(v => String(v || '').toLowerCase().includes(term));
         if (!matches) return false;
       }
-      if (filters.mine && user?.email) {
-        // simplified mine check
-        const resp = String(row.Verantwortlich || '').toLowerCase();
+      if (filters.mine && user) {
+        const myId = user.id;
+        const myProfileId = profile?.id;
+        const myEmail = user.email?.toLowerCase();
         const myName = (profile?.full_name || '').toLowerCase();
         const myAlias = (profile?.alias || '').toLowerCase();
-        if (!resp.includes(myName) && (myAlias && !resp.includes(myAlias)) && (row as any).VerantwortlichEmail !== user.email) return false;
+
+        // Robust check for assignment
+        const isAssigned = (r: any) => {
+          // 1. Check ID-based fields
+          if (r.VerantwortlichId && (r.VerantwortlichId === myId || r.VerantwortlichId === myProfileId)) return true;
+          if (r.assigneeId && (r.assigneeId === myId || r.assigneeId === myProfileId)) return true;
+          if (r.userId && (r.userId === myId || r.userId === myProfileId)) return true;
+
+          // 2. Check Email (if present on row/card)
+          if (r.VerantwortlichEmail && String(r.VerantwortlichEmail).toLowerCase() === myEmail) return true;
+
+          // 3. Check Team membership
+          if (Array.isArray(r.Team)) {
+            const inTeam = r.Team.some((member: any) => {
+              if (member.userId && (member.userId === myId || member.userId === myProfileId)) return true;
+              if (member.email && String(member.email).toLowerCase() === myEmail) return true;
+              return false;
+            });
+            if (inTeam) return true;
+          }
+
+          // 4. Fallback: Strict String matching on 'Verantwortlich'
+          // We split by standard separators to avoid partial matches (e.g. "Max" matching "Maximilian")
+          const resp = String(r.Verantwortlich || '').toLowerCase();
+          if (!resp) return false;
+
+          const parts = resp.split(/[,;\s]+/).map(p => p.trim()).filter(Boolean);
+
+          if (myName && parts.some(p => p === myName)) return true;
+          if (myAlias && parts.some(p => p === myAlias)) return true;
+          if (myEmail && parts.some(p => p === myEmail)) return true;
+
+          return false;
+        };
+
+        if (!isAssigned(row)) return false;
       }
       if (filters.overdue) {
         const d = row['Due Date'];
@@ -473,7 +509,7 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
           checklistTemplates={checklistTemplates}
           setChecklistTemplates={() => { }}
           customLabels={customLabels}
-          setCustomLabels={() => { }}
+          setCustomLabels={setCustomLabels}
           boardName={boardName}
           setBoardName={setBoardName}
           boardDescription={boardDescription}
