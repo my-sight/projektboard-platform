@@ -1291,8 +1291,20 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                 </Typography>
                             </Tooltip>
 
-                            {dateStr && (
-                                <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                    {card.assigneeProfile && (
+                                        <Tooltip title={card.assigneeProfile.full_name || card.assigneeProfile.name || '?'}>
+                                            <Avatar
+                                                src={card.assigneeProfile.avatar_url || undefined}
+                                                sx={{ width: 16, height: 16, fontSize: '0.6rem' }}
+                                            >
+                                                {getInitials(card.assigneeProfile.full_name || card.assigneeProfile.name || '?')}
+                                            </Avatar>
+                                        </Tooltip>
+                                    )}
+                                </Box>
+                                {dateStr && (
                                     <Chip
                                         icon={<AccessTime sx={{ fontSize: '14px !important' }} />}
                                         label={dateStr}
@@ -1301,8 +1313,8 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
                                         color={isOverdue ? 'error' : 'default'}
                                         sx={{ height: 20, fontSize: '10px', fontWeight: 600 }}
                                     />
-                                </Box>
-                            )}
+                                )}
+                            </Box>
                         </CardContent>
                     </Card>
                 )}
@@ -1344,7 +1356,37 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
 
             {/* Filter Row */}
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                <Chip icon={<FilterList />} label={t('teamBoard.mine') || 'Meine'} clickable onClick={() => setFilters(p => ({ ...p, mine: !p.mine }))} color={filters.mine ? "primary" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
+                <Chip
+                    icon={<FilterList />}
+                    label={t('teamBoard.mine') || 'Meine'}
+                    clickable
+                    onClick={() => {
+                        const newMineState = !filters.mine;
+                        setFilters(p => ({ ...p, mine: newMineState }));
+
+                        if (newMineState && currentUser?.id) {
+                            // Collapse all except mine
+                            const newCollapsed: Record<string, boolean> = {};
+                            members.forEach(m => {
+                                if (m.profile_id !== currentUser.id) {
+                                    newCollapsed[m.profile_id] = true;
+                                    // Also use member.id if that's what's used for keys, 
+                                    // checking toggleLaneCollapse usage: toggleLaneCollapse(member.id)
+                                    // member.id seems to be the board_member table id, but let's check what logic uses.
+                                    // render loop uses: key={member.id} and collapsedLanes[member.id]
+                                    newCollapsed[m.id] = true;
+                                }
+                            });
+                            setCollapsedLanes(newCollapsed);
+                        } else {
+                            // Expand all
+                            setCollapsedLanes({});
+                        }
+                    }}
+                    color={filters.mine ? "primary" : "default"}
+                    variant="outlined"
+                    sx={{ bgcolor: 'transparent' }}
+                />
                 <Chip icon={<Warning />} label={t('teamBoard.overdue') || 'Überfällig'} clickable onClick={() => setFilters(p => ({ ...p, overdue: !p.overdue }))} color={filters.overdue ? "error" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
                 <Chip icon={<PriorityHigh />} label={t('teamBoard.important') || 'Wichtig'} clickable onClick={() => setFilters(p => ({ ...p, important: !p.important }))} color={filters.important ? "warning" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />
                 <Chip icon={<AccessTime />} label={t('teamBoard.watch') || 'Wiedervorlage'} clickable onClick={() => setFilters(p => ({ ...p, watch: !p.watch }))} color={filters.watch ? "info" : "default"} variant="outlined" sx={{ bgcolor: 'transparent' }} />

@@ -65,6 +65,7 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
 
   const [allTasks, setAllTasks] = useState<any[]>([]);
   const [notes, setNotes] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<any[]>([]);
 
   // UI State
   const [mobileTab, setMobileTab] = useState(0);
@@ -96,8 +97,9 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
       if (metaName) myIds.add(String(metaName).toLowerCase().trim());
 
       try {
-        const profiles = await fetchClientProfiles();
-        const p = profiles.find(p => p.id === user.id);
+        const fetchedProfiles = await fetchClientProfiles();
+        setProfiles(fetchedProfiles);
+        const p = fetchedProfiles.find(p => p.id === user.id);
         if (p?.full_name) myIds.add(p.full_name.toLowerCase().trim());
         if (p?.alias) myIds.add(p.alias.toLowerCase().trim());
       } catch (e) { console.warn('Profile fetch warning', e); }
@@ -444,20 +446,31 @@ export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProp
                 onClick={() => onOpenBoard(task.boardId, task.id, type)}
               >
                 {/* Title at the Top */}
-                <Tooltip title={task.title} placement="top-start" enterDelay={500}>
-                  <Typography variant="body2" sx={{
-                    fontWeight: 600,
-                    lineHeight: 1.2,
-                    fontSize: '0.85rem',
-                    mb: 1, // Increased margin for separation
-                    display: '-webkit-box',
-                    overflow: 'hidden',
-                    WebkitBoxOrient: 'vertical',
-                    WebkitLineClamp: 2,
-                  }}>
-                    {task.title}
-                  </Typography>
-                </Tooltip>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 1 }}>
+                  {type === 'team' && (() => {
+                    const assigneeId = task.originalData?.assigneeId || task.originalData?.assignee_id;
+                    const profile = profiles.find(p => p.id === assigneeId);
+                    if (profile) return (
+                      <Avatar src={profile.avatar_url || undefined} sx={{ width: 20, height: 20, fontSize: '0.6rem' }}>
+                        {(profile.full_name || profile.name || '?').charAt(0)}
+                      </Avatar>
+                    );
+                    return null;
+                  })()}
+                  <Tooltip title={task.title} placement="top-start" enterDelay={500}>
+                    <Typography variant="body2" sx={{
+                      fontWeight: 600,
+                      lineHeight: 1.2,
+                      fontSize: '0.85rem',
+                      display: '-webkit-box',
+                      overflow: 'hidden',
+                      WebkitBoxOrient: 'vertical',
+                      WebkitLineClamp: 2,
+                    }}>
+                      {task.title}
+                    </Typography>
+                  </Tooltip>
+                </Box>
 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 0.5 }}>
                   <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>

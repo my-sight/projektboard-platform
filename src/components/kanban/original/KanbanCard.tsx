@@ -420,6 +420,12 @@ export function KanbanCard({
                         : card.Verantwortlich;
                       return (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'text.secondary' }}>
+                          <Avatar
+                            src={user?.avatar_url || undefined}
+                            sx={{ width: 16, height: 16, fontSize: '0.5rem' }}
+                          >
+                            {displayAssignee.charAt(0)}
+                          </Avatar>
                           <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 500 }}>
                             {displayAssignee}
                           </Typography>
