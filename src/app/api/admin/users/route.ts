@@ -46,15 +46,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ users: profiles });
 }
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 8;
+
 export async function POST(req: NextRequest) {
     const admin = await verifyAdmin(req);
+    // Return generic 401
     if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     try {
         const body = await req.json();
         const { email, password, name, role, company, department } = body;
 
-        if (!email || !password) return NextResponse.json({ error: 'Missing email or password' }, { status: 400 });
+        // 1. Strict Input Validation (CWE-20)
+        // Sanitization happens automatically via Supabase Client (SQL), but format check is needed.
+        if (!email || !EMAIL_REGEX.test(email)) {
+            return NextResponse.json({ error: 'Ungültiges E-Mail Format' }, { status: 400 });
+        }
+        if (!password || password.length < MIN_PASSWORD_LENGTH) {
+            return NextResponse.json({ error: `Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein` }, { status: 400 });
+        }
+        if (!name || name.trim().length === 0) {
+            return NextResponse.json({ error: 'Name ist erforderlich' }, { status: 400 });
+        }
 
         // --- LICENSE CHECK START ---
         // Verify user limit
@@ -74,7 +88,7 @@ export async function POST(req: NextRequest) {
                 if (currentCount >= license.maxUsers) {
                     return NextResponse.json({
                         error: `Lizenzlimit erreicht. Maximale Benutzeranzahl: ${license.maxUsers}`
-                    }, { status: 403 });
+                    }, { status: 403 }); // 403 Forbidden for license limit
                 }
             }
         }
@@ -88,13 +102,17 @@ export async function POST(req: NextRequest) {
             user_metadata: { full_name: name }
         });
 
-        if (authError) throw authError;
+        if (authError) {
+            // Pass specific auth errors (like "User already exists") but sanitize others
+            if (authError.message.includes('already registered')) {
+                return NextResponse.json({ error: 'Benutzer existiert bereits' }, { status: 409 });
+            }
+            throw authError; // Rethrow internal errors to catch block
+        }
+
         if (!authUser.user) throw new Error('User creation failed');
 
         // 2. Create/Update Profile (Trigger might have created it, but we ensure fields are set)
-        // We try to update first, if it fails (not exists yet?) we insert.
-        // Actually, trigger usually runs After Insert on auth.users.
-        // So we wait a tiny bit or just upsert.
 
         // Let's create profile object
         const profileData = {
@@ -111,10 +129,9 @@ export async function POST(req: NextRequest) {
             .upsert(profileData);
 
         if (profileError) {
-            // If profile creation fails, we might want to delete the auth user to keep consistency?
-            // For now just log and return error
             console.error('Profile creation error:', profileError);
-            return NextResponse.json({ error: 'User created but profile failed: ' + profileError.message }, { status: 500 });
+            // We do NOT return the full database error to client (CWE-209)
+            return NextResponse.json({ error: 'Benutzer erstellt, aber Profil konnte nicht gespeichert werden.' }, { status: 500 });
         }
 
         // --- AUDIT LOG ---
@@ -128,7 +145,19 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ user: profileData });
 
     } catch (e: any) {
-        return NextResponse.json({ error: e.message }, { status: 500 });
+        // 2. Secure Error Handling (CWE-209)
+        // Log sensitive details internally only
+        console.error('[CreateUser Failed]', {
+            error: e.message,
+            stack: e.stack,
+            actorId: admin.id
+        });
+
+        // Return generic message to client
+        return NextResponse.json(
+            { error: 'Interner Serverfehler. Bitte Systemadministrator kontaktieren.' },
+            { status: 500 }
+        );
     }
 }
 

@@ -131,5 +131,27 @@ WITH CHECK (
   EXISTS (SELECT 1 FROM public.kanban_boards b WHERE b.id = board_card_statuses.board_id AND b.owner_id = auth.uid())
 );
 
+-- 4. Extra Hardening: Protect Role Column via Trigger
+-- Even if RLS allows UPDATE on the row, this trigger prevents non-admins from touching 'role'.
+CREATE OR REPLACE FUNCTION public.protect_role_change()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- If role changed...
+  IF NEW.role IS DISTINCT FROM OLD.role THEN
+    -- ...and user is NOT admin
+    IF NOT public.is_admin() THEN
+       RAISE EXCEPTION 'You are not allowed to change your role.';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS tr_protect_role_change ON public.profiles;
+CREATE TRIGGER tr_protect_role_change
+BEFORE UPDATE ON public.profiles
+FOR EACH ROW
+EXECUTE FUNCTION public.protect_role_change();
+
 -- Notify schema reload
 NOTIFY pgrst, 'reload schema';
