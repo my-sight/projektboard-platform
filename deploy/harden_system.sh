@@ -48,14 +48,9 @@ ufw allow 22/tcp
 ufw allow 80/tcp
 ufw allow 443/tcp
 
-# Allow App/Dev Ports - CRITICAL for Docker Bindings (0.0.0.0)
-# Since we bound Docker ports to 0.0.0.0 in docker-compose, we MUST allow them in UFW.
-echo "Allowing Application Ports..."
-ufw allow 3000/tcp  # Next.js App
-ufw allow 8000/tcp  # Kong API Gateway
-ufw allow 3001/tcp  # Supabase Studio
-ufw allow 8080/tcp  # Nginx Dev Proxy
-ufw allow 8443/tcp  # Kong SSL
+# Ports 3000, 3001, 8000, 8443 are now bound to 127.0.0.1 in Docker.
+# We DO NOT allow them externally in UFW anymore.
+# Access only via Nginx (443).
 
 # Enable
 # NON-INTERACTIVE enablement
@@ -65,5 +60,5 @@ echo -e "${GREEN}UFW Firewall active.${NC}"
 ufw status verbose
 
 echo -e "${GREEN}System Hardening Complete.${NC}"
-echo "Firewall is active and ports 22, 80, 443, 3000, 3001, 8000, 8080, 8443 are OPEN."
+echo "Firewall is active. Only SSH (22), HTTP (80) and HTTPS (443) are OPEN."
 

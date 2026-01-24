@@ -134,10 +134,11 @@ else
     # ----------------------------------------------------
     # DEV MODE: DIRECT HTTP (Ports 8000/3000)
     # ----------------------------------------------------
-    echo -e "${YELLOW}Detecting DEV Mode: Using HTTP Ports...${NC}"
+    # DEV MODE: DIRECT HTTP (Ports 8000/3000) -> NOW PROXIED via 8080
+    echo -e "${YELLOW}Detecting DEV Mode: Using Proxy Port 8080...${NC}"
     PROTOCOL="http"
-    SUPABASE_URL_VAL="http://${NEW_IP}:8000"
-    SITE_URL_VAL="http://${NEW_IP}:3000"
+    SUPABASE_URL_VAL="http://${NEW_IP}:8080"
+    SITE_URL_VAL="http://${NEW_IP}:8080"
 fi
 
 echo "----------------------------------------------------"
@@ -297,7 +298,7 @@ LICENSE_TOKEN="${LICENSE_TOKEN:-eyJleHBpcnkiOiIyMDM1LTEyLTMxIiwiY3VzdG9tZXIiOiJN
 docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
 
 echo -e "${GREEN}=== Installation Complete ===${NC}"
-echo "Check: http://${NEW_IP}:3000"
+echo "Check: ${SITE_URL_VAL}"
 echo "Login: michael@mysight.net / $ADMIN_PASSWORD"
 
 # 6. Appliance Configuration (Nginx)

@@ -4,6 +4,11 @@ _format_version: "2.1"
 services:
 - name: auth-v1
   url: http://auth:9999
+  plugins:
+  - name: rate-limiting
+    config:
+      minute: 600
+      policy: local
   routes:
   - name: auth-v1-route
     strip_path: true
