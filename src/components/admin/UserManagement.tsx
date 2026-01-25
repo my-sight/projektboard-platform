@@ -54,7 +54,8 @@ import {
   CheckCircle as CheckCircleIcon,
   Error as ErrorIcon,
   Warning as WarningIcon,
-  ReceiptLong as ReceiptLongIcon
+  ReceiptLong as ReceiptLongIcon,
+  PhotoCamera
 } from '@mui/icons-material';
 import { isSuperuserEmail } from '@/constants/superuser';
 import { supabase } from '@/lib/supabaseClient';
@@ -162,6 +163,48 @@ const parseCSV = (text: string): string[][] => {
   return rows;
 };
 
+// --- HELPER: IMAGE COMPRESSION ---
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 400; // Smaller for avatars
+        const MAX_HEIGHT = 400;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        } else {
+          reject(new Error('Canvas Context failed'));
+        }
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (error) => reject(error);
+  });
+};
+
 // --- TAB PANEL HELPER ---
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -223,6 +266,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const [editUserRole, setEditUserRole] = useState('user');
   const [editUserDepartment, setEditUserDepartment] = useState('');
   const [editUserActive, setEditUserActive] = useState(true);
+  const [editUserAvatar, setEditUserAvatar] = useState('');
 
   // Import
   const [importData, setImportData] = useState<CsvUser[]>([]);
@@ -359,6 +403,20 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
   const updateUserName = (id: string, name: string) => !isProtectedUser(id) && name.trim() && mutateUser(id, { full_name: name.trim() }, 'Name aktualisiert');
   const handleInlineNameChange = (userId: string, value: string) => {
     setEditableNames(prev => ({ ...prev, [userId]: value }));
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // setLoading(true); // Optional: Loading state for avatar?
+      const base64 = await compressImage(file);
+      setEditUserAvatar(base64);
+    } catch (err: any) {
+      console.error('Error uploading avatar:', err);
+      setMessage('❌ Fehler beim Verarbeiten des Bildes');
+    }
   };
 
   const deleteUser = async (id: string) => {
@@ -696,6 +754,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
                         setEditUserRole(u.role);
                         setEditUserDepartment(u.company || '');
                         setEditUserActive(u.is_active);
+                        setEditUserAvatar(u.avatar_url || '');
                         setEditUserDialogOpen(true);
                       }} disabled={protectedUser}><EditIcon fontSize="small" /></IconButton>
                       <IconButton size="small" color="error" onClick={() => deleteUser(u.id)} disabled={protectedUser || isMe}><DeleteIcon fontSize="small" /></IconButton>
@@ -899,6 +958,32 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
       <Dialog open={editUserDialogOpen} onClose={() => setEditUserDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Benutzer bearbeiten</DialogTitle>
         <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2, mt: 1 }}>
+            <Box sx={{ position: 'relative' }}>
+              <Avatar
+                src={editUserAvatar}
+                sx={{ width: 80, height: 80, border: '2px solid', borderColor: 'primary.main' }}
+              >
+                {editUserName?.charAt(0) || 'U'}
+              </Avatar>
+              <IconButton
+                component="label"
+                sx={{
+                  position: 'absolute',
+                  bottom: -4,
+                  right: -4,
+                  bgcolor: 'primary.main',
+                  color: 'white',
+                  '&:hover': { bgcolor: 'primary.dark' },
+                  boxShadow: 2
+                }}
+                size="small"
+              >
+                <PhotoCamera fontSize="small" />
+                <input type="file" hidden accept="image/*" onChange={handleAvatarUpload} />
+              </IconButton>
+            </Box>
+          </Box>
           <TextField label="Name" fullWidth margin="normal" value={editUserName} onChange={e => setEditUserName(e.target.value)} />
 
           <FormControl fullWidth margin="normal">
@@ -931,6 +1016,7 @@ export default function UserManagement({ isSuperUser = false }: UserManagementPr
             if (editUserRole !== editingUser.role) modifications.role = editUserRole;
             if (editUserDepartment !== (editingUser.company || '')) modifications.company = editUserDepartment || null;
             if (editUserActive !== editingUser.is_active) modifications.is_active = editUserActive;
+            if (editUserAvatar !== (editingUser.avatar_url || '')) modifications.avatar_url = editUserAvatar;
 
             if (Object.keys(modifications).length > 0) {
               await mutateUser(editingUser.id, modifications, 'Benutzer aktualisiert');
