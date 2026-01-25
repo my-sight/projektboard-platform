@@ -3,26 +3,14 @@
 import { verifyLicenseToken } from '@/lib/license';
 import { supabaseAdmin as supabase } from '@/lib/supabaseAdmin';
 
+import { checkLicenseServer } from '@/lib/license-server';
+
 export async function checkLicenseServerAction() {
     try {
-        const { data, error } = await supabase
-            .from('system_settings')
-            .select('value')
-            .eq('key', 'license_key')
-            .maybeSingle();
+        // Use the robust helper with retry logic
+        const status = await checkLicenseServer();
 
-        if (error) {
-            console.error('DB Error checking license:', error);
-            const { supabaseUrl } = await import('@/lib/supabaseClient').then(m => m.getSupabaseConfig());
-            return { valid: false, error: `Database Error: ${error.message} (Code: ${error.code}) URL: ${supabaseUrl}`, expiry: null, customer: null };
-        }
-
-        if (!data || !data.value || !data.value.token) {
-            return { valid: false, error: 'No License Found in DB (Server Action)', expiry: null, customer: null };
-        }
-
-        const status = await verifyLicenseToken(data.value.token);
-        // Serialize for client
+        // Serialize for client (ensure no non-serializable data leaks, though checkLicenseServer returns plain objects)
         return {
             valid: status.valid,
             expiry: status.expiry,

@@ -737,7 +737,7 @@ export default function TeamKanbanBoard({ boardId, onExit, highlightCardId }: Te
         const active = cards.filter(c => c.status === 'flow' || c.status === 'flow1');
         const backlog = cards.filter(c => c.status === 'backlog');
         const today = new Date().toISOString().split('T')[0];
-        const overdue = cards.filter(c => c.dueDate && c.dueDate < today);
+        const overdue = cards.filter(c => c.dueDate && c.dueDate < today && c.status !== 'done');
 
         const memberLoad = members.map(m => {
             const count = active.filter(c => c.assigneeId === m.profile_id).length;

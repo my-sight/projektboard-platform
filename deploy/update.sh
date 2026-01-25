@@ -15,6 +15,12 @@ else
     echo "Warning: migrate.sh not found. Skipping migrations."
 fi
 
+# 1.5 Fix Permissions (Critical for Kong)
+echo "Fixing permissions..."
+chmod -R 755 volumes/api
+chmod 644 volumes/api/kong.yml
+
+
 # 2. Rebuild Container
 echo "Rebuilding application..."
 
