@@ -381,8 +381,8 @@ export function useKanbanData(
 
             const updateData: any = {
                 settings: purgeRedundantSettings(settings),
-                tr_label: customLabels.tr,
-                sop_label: customLabels.sop,
+                tr_label: options?.settingsOverrides?.trLabel ?? customLabels.tr,
+                sop_label: options?.settingsOverrides?.sopLabel ?? customLabels.sop,
                 view_mode: viewMode,
                 lanes: lanes
             };
