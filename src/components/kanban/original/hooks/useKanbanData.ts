@@ -26,7 +26,7 @@ const purgeRedundantFields = (data: any) => {
 };
 
 const redundantSettings = [
-    'lanes', 'trLabel', 'sopLabel', 'viewMode', 'lastUpdated'
+    'lanes', 'viewMode', 'lastUpdated'
 ];
 
 const purgeRedundantSettings = (settings: any) => {

@@ -461,7 +461,9 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
           card_data: baseData,
           project_number: c.project_number || baseData.Nummer,
           project_name: c.project_name || baseData.Teil,
-          stage: c.stage || baseData['Board Stage'],
+          // FIX: For Con-Boards (targetBoardId !== boardId), we must ignore the parent's c.stage
+          // and strictly use the local status we just calculated in baseData['Board Stage'].
+          stage: (targetBoardId !== boardId) ? baseData['Board Stage'] : (c.stage || baseData['Board Stage']),
           assignee_id: c.assignee_id || baseData.assigneeId,
           due_date: c.due_date || baseData.dueDate || baseData['Due Date'],
           is_important: c.is_important !== undefined ? c.is_important : baseData.important,
