@@ -1,0 +1,9 @@
+# .coderabbit.yaml
+reviews:
+  # Dateien oder Pfade, die ignoriert werden sollen
+  path_filters:
+    - "!dist/**"
+    - "!build/**"
+    - "!package-lock.json"
+    - "!yarn.lock"
+    - "!**/*.md"
