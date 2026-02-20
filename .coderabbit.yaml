@@ -10,14 +10,17 @@ reviews:
     - "!docs/**"
     - "!**/*.diff"
     - "!**/*.md"
-    - "!**/i18n/**"           # Schließt alle Sprachdateien aus
+    - "!**/i18n/**"
     - "!**/.next/**"
     - "!**/out/**"
     - "!**/*.svg"
     - "!**/*.png"
     - "!**/*.jpg"
-    - "!srv/mysight/configs/**" # Schließt Konfigurations-Ordner aus
-    - "!var/www/mysight/**"     # Schließt den Web-Pfad aus
-    - "!*.config.mjs"           # Schließt alle Root-Configs aus (eslint, postcss etc.)
-    - "!*.json"                 # Schließt tsconfig.json, package.json etc. aus
+    - "!srv/mysight/**"        # Schließt den kompletten srv-Zweig aus
+    - "!var/www/mysight/**"    # Schließt den kompletten var-Zweig aus
+    - "!src/styles/**"         # CSS/SCSS Dateien haben oft viele Zeilen, aber wenig Logik
+    - "!src/types/**"          # TypeScript Definitionen ausschließen
+    - "!src/constants/**"      # Konstanten-Dateien ausschließen
+    - "!*.config.mjs"
+    - "!*.json"
     - "!next.config.js"
