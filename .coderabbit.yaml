@@ -15,12 +15,13 @@ reviews:
     - "!**/out/**"
     - "!**/*.svg"
     - "!**/*.png"
-    - "!**/*.jpg"
-    - "!srv/mysight/**"        # Schließt den kompletten srv-Zweig aus
-    - "!var/www/mysight/**"    # Schließt den kompletten var-Zweig aus
-    - "!src/styles/**"         # CSS/SCSS Dateien haben oft viele Zeilen, aber wenig Logik
-    - "!src/types/**"          # TypeScript Definitionen ausschließen
-    - "!src/constants/**"      # Konstanten-Dateien ausschließen
+    - "!srv/**"              # Radikal: Alles in srv ignorieren
+    - "!var/**"              # Radikal: Alles in var ignorieren
+    - "!src/styles/**"
+    - "!src/theme/**"        # Neu: Theme-Definitionen (Farben, Fonts) ausschließen
+    - "!src/contexts/**"     # Neu: Context-Boilerplate ausschließen
+    - "!src/lib/**"          # Neu: Externe Library-Wrapper ausschließen
+    - "!src/types/**"
     - "!*.config.mjs"
     - "!*.json"
     - "!next.config.js"
