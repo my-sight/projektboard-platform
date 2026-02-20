@@ -5,23 +5,19 @@ reviews:
   path_filters:
     - "!**/package-lock.json"
     - "!**/yarn.lock"
-    - "!**/pnpm-lock.yaml"
     - "!**/node_modules/**"
     - "!public/**"
     - "!docs/**"
     - "!**/*.diff"
     - "!**/*.md"
-    - "!**/i18n/**"
-    - "!**/.next/**"          # Next.js Build-Dateien (falls versehentlich eingecheckt)
-    - "!**/out/**"            # Statischer Export
-    - "!**/build/**"
-    - "!**/dist/**"
-    - "!**/*.svg"             # Alle Icons ausschließen
+    - "!**/i18n/**"           # Schließt alle Sprachdateien aus
+    - "!**/.next/**"
+    - "!**/out/**"
+    - "!**/*.svg"
     - "!**/*.png"
     - "!**/*.jpg"
-    - "!**/*.ico"
-    - "!srv/mysight/supabase/**"
-    - "!var/www/mysight/index.html"
-    - "!eslint.config.mjs"    # Konfigurationsdateien meist unnötig für Logik-Review
-    - "!tsconfig.json"
+    - "!srv/mysight/configs/**" # Schließt Konfigurations-Ordner aus
+    - "!var/www/mysight/**"     # Schließt den Web-Pfad aus
+    - "!*.config.mjs"           # Schließt alle Root-Configs aus (eslint, postcss etc.)
+    - "!*.json"                 # Schließt tsconfig.json, package.json etc. aus
     - "!next.config.js"
