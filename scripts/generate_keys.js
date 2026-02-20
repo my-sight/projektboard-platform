@@ -5,7 +5,6 @@ const path = require('path');
 
 // Generate Ed25519 key pair
 const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519', {
-    modulusLength: 4096,
     publicKeyEncoding: {
         type: 'spki',
         format: 'pem'

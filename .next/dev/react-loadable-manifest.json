@@ -1,4 +1,8 @@
 {
+  "components/admin/SystemLicensePanel.tsx -> @/constants/superuser": {
+    "id": "components/admin/SystemLicensePanel.tsx -> @/constants/superuser",
+    "files": []
+  },
   "lib/license.ts -> crypto": {
     "id": "lib/license.ts -> crypto",
     "files": [

@@ -208,11 +208,42 @@ export async function PATCH(req: NextRequest) {
             if (pwdError) throw pwdError;
         }
 
+        const allowedFields = ['full_name', 'email', 'avatar_url', 'bio', 'company', 'department', 'role', 'is_active'];
+        const filteredUpdates: Record<string, any> = {};
+
+        for (const key of Object.keys(updates)) {
+            if (allowedFields.includes(key)) {
+                const val = updates[key];
+                
+                // Basic type and length validation
+                if (key === 'email' && val && !EMAIL_REGEX.test(val)) {
+                    return NextResponse.json({ error: 'Ungültiges E-Mail Format' }, { status: 400 });
+                }
+                if (key === 'full_name' && val !== undefined && (typeof val !== 'string' || val.trim().length === 0 || val.length > 255)) {
+                    return NextResponse.json({ error: 'Ungültiger Name' }, { status: 400 });
+                }
+                if ((key === 'company' || key === 'department') && val !== null && val !== undefined && (typeof val !== 'string' || val.length > 255)) {
+                    return NextResponse.json({ error: 'Ungültige Abteilung' }, { status: 400 });
+                }
+                if (key === 'role' && val !== undefined && !['user', 'admin', 'superuser'].includes(val)) {
+                    return NextResponse.json({ error: 'Ungültige Rolle' }, { status: 400 });
+                }
+                if (key === 'is_active' && val !== undefined && typeof val !== 'boolean') {
+                    return NextResponse.json({ error: 'Ungültiger Status' }, { status: 400 });
+                }
+                if (key === 'bio' && val !== null && val !== undefined && (typeof val !== 'string' || val.length > 1000)) {
+                    return NextResponse.json({ error: 'Bio zu lang' }, { status: 400 });
+                }
+                
+                filteredUpdates[key] = val;
+            }
+        }
+
         // Update profile fields
-        if (Object.keys(updates).length > 0) {
+        if (Object.keys(filteredUpdates).length > 0) {
             const { error: profileError } = await supabaseAdmin
                 .from('profiles')
-                .update(updates)
+                .update(filteredUpdates)
                 .eq('id', id);
 
             if (profileError) throw profileError;
@@ -223,7 +254,7 @@ export async function PATCH(req: NextRequest) {
             actor_id: admin.id,
             action: 'update_user',
             target_id: id,
-            details: { updates, password_changed: !!password }
+            details: { updates: filteredUpdates, password_changed: !!password }
         });
 
         return NextResponse.json({ success: true });
