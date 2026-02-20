@@ -1,9 +1,14 @@
-# .coderabbit.yaml
+language: de-DE
+
 reviews:
-  # Dateien oder Pfade, die ignoriert werden sollen
+  profile: chill
   path_filters:
-    - "!dist/**"
-    - "!build/**"
-    - "!package-lock.json"
-    - "!yarn.lock"
-    - "!**/*.md"
+    - "!**/package-lock.json"
+    - "!**/node_modules/**"
+    - "!public/**"            # Ignoriert die SVGs/Logos
+    - "!docs/**"              # Ignoriert Dokumentation
+    - "!**/*.diff"            # Ignoriert deine "modifications.diff"
+    - "!srv/mysight/supabase/**" # Supabase Configs brauchen oft kein Review
+    - "!var/www/mysight/index.html"
+    - "!**/*.md"              # Ignoriert READMEs
+    - "!i18n/**"              # Übersetzungstabellen sind oft riesig
