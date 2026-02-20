@@ -1,0 +1,68 @@
+
+_format_version: "2.1"
+
+services:
+- name: auth-v1
+  url: http://auth:9999
+  plugins:
+  - name: rate-limiting
+    config:
+      minute: 600
+      policy: local
+  routes:
+  - name: auth-v1-route
+    strip_path: true
+    paths:
+    - /auth/v1
+
+- name: rest-v1
+  url: http://rest:3000
+  routes:
+  - name: rest-v1-route
+    strip_path: true
+    paths:
+    - /rest/v1
+
+- name: realtime-v1
+  url: http://realtime:4000
+  routes:
+  - name: realtime-v1-route
+    strip_path: true
+    paths:
+    - /realtime/v1
+
+- name: storage-v1
+  url: http://storage:5000
+  routes:
+  - name: storage-v1-route
+    strip_path: true
+    paths:
+    - /storage/v1
+
+- name: meta
+  url: http://meta:8080
+  routes:
+  - name: meta-route
+    strip_path: true
+    paths:
+    - /pg
+
+plugins:
+- name: cors
+  config:
+    origins:
+    - "*"
+    methods:
+    - GET
+    - POST
+    - PUT
+    - PATCH
+    - DELETE
+    - OPTIONS
+    - HEAD
+    headers:
+    - "*"
+    exposed_headers:
+    - "*"
+    max_age: 3600
+    credentials: false

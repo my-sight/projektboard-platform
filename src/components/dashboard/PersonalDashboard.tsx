@@ -1,0 +1,754 @@
+'use client';
+
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import {
+  Box,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Chip,
+  Stack,
+  IconButton,
+  LinearProgress,
+  Alert,
+  TextField,
+  Checkbox,
+  List,
+  ListItem,
+  ListItemText,
+  useTheme,
+  useMediaQuery,
+  Tabs,
+  Tab,
+  Avatar,
+  Paper,
+  Tooltip,
+  alpha
+} from '@mui/material';
+import {
+  Assignment,
+  Dashboard as DashboardIcon,
+  Warning,
+  PriorityHigh,
+  AccessTime,
+  ListAlt,
+  Add,
+  Delete,
+  Business,
+  DoneAll,
+  TrendingUp,
+  Event,
+  NotificationsActive
+} from '@mui/icons-material';
+import { useSnackbar } from 'notistack';
+import { supabase } from '@/lib/supabaseClient';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchClientProfiles } from '@/lib/clientProfiles';
+import { useLanguage } from '@/contexts/LanguageContext';
+
+interface PersonalDashboardProps {
+  onOpenBoard: (boardId: string, cardId?: string, boardType?: 'standard' | 'team') => void;
+}
+
+export default function PersonalDashboard({ onOpenBoard }: PersonalDashboardProps) {
+  // const supabase = useMemo(() => getSupabaseBrowserClient(), []);
+  const theme = useTheme();
+  const { t } = useLanguage();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  const { enqueueSnackbar } = useSnackbar();
+  const [loading, setLoading] = useState(true);
+  const { user, profile, visibilityCounter } = useAuth();
+  const isFetchingRef = useRef(false);
+  const userId = user?.id || '';
+
+  const [allTasks, setAllTasks] = useState<any[]>([]);
+  const [notes, setNotes] = useState<any[]>([]);
+  const [profiles, setProfiles] = useState<any[]>([]);
+
+  // UI State
+  const [mobileTab, setMobileTab] = useState(0);
+  const [newNote, setNewNote] = useState('');
+
+  // Filter State
+  const [filters, setFilters] = useState({
+    overdue: false,
+    critical: false,
+    priority: false,
+    watch: false,
+    dueToday: false
+  });
+
+  const loadData = useCallback(async (active: boolean = true) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    setLoading(true);
+
+    try {
+      if (!user) { if (active) setLoading(false); isFetchingRef.current = false; return; }
+      // userId is already set from context
+
+      // 1. Identitäten sammeln (ID, Email, Voller Name)
+      const myIds = new Set<string>();
+      myIds.add(user.id);
+      if (user.email) myIds.add(user.email.toLowerCase().trim());
+      const metaName = user.user_metadata?.full_name || user.user_metadata?.name;
+      if (metaName) myIds.add(String(metaName).toLowerCase().trim());
+
+      try {
+        const fetchedProfiles = await fetchClientProfiles();
+        setProfiles(fetchedProfiles);
+        const p = fetchedProfiles.find(p => p.id === user.id);
+        if (p?.full_name) myIds.add(p.full_name.toLowerCase().trim());
+        if (p?.alias) myIds.add(p.alias.toLowerCase().trim());
+      } catch (e) { console.warn('Profile fetch warning', e); }
+
+      // Boards laden für Namen
+      const { data: boards } = await supabase.from('kanban_boards').select('id,name,settings,parent_id');
+
+      const bMap: Record<string, any> = {};
+      (boards || []).forEach((b: any) => {
+        const settings = b.settings as Record<string, any> | null;
+        bMap[b.id] = { name: b.name, type: settings?.boardType || 'standard', parentId: b.parent_id };
+      });
+      // console.log('DEBUG: bMap', bMap); 
+
+      const { data: cards } = await supabase.from('kanban_cards').select('*');
+
+      if (cards && active) {
+        const foundTasks: any[] = [];
+
+        cards.forEach((row: any) => {
+          let d = row.card_data;
+          // PB usually returns JSON object for JSON fields, but checking just in case
+          if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = {}; } }
+          d = d || {};
+          if (d.Archived === '1' || d.archived) return;
+
+          const boardInfo = bMap[row.board_id] || { name: t('kanban.unknown'), type: 'standard' };
+          const parentBoardName = boardInfo.parentId ? bMap[boardInfo.parentId]?.name : null;
+
+          let isMine = false;
+
+          // A) Relational: Check dedicated assignee_id column
+          if (row.assignee_id === user.id) {
+            isMine = true;
+          }
+          // B) Fallback: JSONB ID check (for historical data)
+          else {
+            const cardUserIds = [d.userId, d.assigneeId, d.user_id, d.assignee_id].filter(Boolean);
+            if (cardUserIds.includes(user.id)) {
+              isMine = true;
+            }
+            // C) Extreme Fallback: Name Match
+            else if (cardUserIds.length === 0) {
+              const candidates = [d.Verantwortlich, d.responsible, d.assigneeName].filter(s => typeof s === 'string');
+              for (const cand of candidates) {
+                const raw = cand.toLowerCase().trim();
+                if (myIds.has(raw)) { isMine = true; break; }
+                if (metaName && raw.includes(metaName.toLowerCase().trim())) { isMine = true; break; }
+              }
+            }
+          }
+
+          if (isMine) {
+            const isTeamBoard = d.type === 'teamTask' || boardInfo.type === 'team';
+            if (isTeamBoard && (row.is_completed || d.status === 'done')) return;
+
+            const rawDate = row.due_date || d['Due Date'] || d.dueDate || d.target_date;
+            const dueDate = rawDate ? String(rawDate).split('T')[0] : null;
+
+            const isCritical = row.escalation_status ? ['Y', 'R', 'LK', 'SK'].includes(row.escalation_status.toUpperCase()) : (d.Ampel && String(d.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(d.Eskalation || '').toUpperCase());
+            const isPriority = row.is_important !== undefined ? row.is_important : (toBoolean(d.Priorität)) || (d.important === true);
+            const isWatch = (d.watch === true);
+
+            const projectNumber = row.project_number || d.Nummer;
+            const projectName = row.project_name || d.Teil || d.title;
+
+            foundTasks.push({
+              id: row.card_id || row.id,
+              rowId: row.id,
+              title: projectNumber ? `${projectNumber} ${projectName}` : (projectName || row.task_description || d.description || t('dashboard.task')),
+              boardName: boardInfo.name,
+              boardId: row.board_id,
+              dueDate,
+              type: isTeamBoard ? 'team' : 'standard',
+              isCritical,
+              isPriority,
+              isWatch,
+              stage: row.stage || d['Board Stage'],
+              originalData: d,
+              isConBoard: !!boardInfo.parentId,
+              parentBoardName
+            });
+          }
+        });
+
+        // --- CON-BOARD TASKS LOADING ---
+        // Fetch statuses for Con-Boards involved
+        const conBoardIds = Object.keys(bMap).filter(id => bMap[id].parentId);
+        if (conBoardIds.length > 0) {
+          const { data: conStatuses } = await supabase
+            .from('board_card_statuses')
+            .select('*')
+            .in('board_id', conBoardIds);
+
+          if (conStatuses) {
+            conStatuses.forEach((st: any) => {
+              if (st.archived) return; // Skip archived locally?
+
+              const ld = st.local_data || {};
+              let isMyConTask = false;
+
+              // ID Check
+              const cIds = [st.assignee_id, ld.VerantwortlichId, ld.userId, ld.assigneeId].filter(Boolean);
+              if (cIds.includes(user.id)) isMyConTask = true;
+
+              // Name Check
+              if (!isMyConTask) {
+                const cNames = [ld.Verantwortlich, ld.assigneeName].filter(s => typeof s === 'string');
+                for (const cand of cNames) {
+                  const raw = cand.toLowerCase().trim();
+                  if (myIds.has(raw)) { isMyConTask = true; break; }
+                  if (metaName && raw.includes(metaName.toLowerCase().trim())) { isMyConTask = true; break; }
+                }
+                // Check Email
+                if (ld.VerantwortlichEmail === user.email || ld.assigneeEmail === user.email) isMyConTask = true;
+              }
+
+              if (isMyConTask) {
+                // Find Parent Card
+                const parentRow = cards.find((c: any) => c.id === st.card_id);
+                if (parentRow) {
+                  let pd = parentRow.card_data;
+                  if (typeof pd === 'string') { try { pd = JSON.parse(pd); } catch { pd = {}; } }
+                  pd = pd || {};
+
+                  // Merge Data: Parent Data + Local Data Overrides
+                  const mergedData = { ...pd, ...ld };
+
+                  const boardInfo = bMap[st.board_id];
+                  const parentBoardName = boardInfo?.parentId ? bMap[boardInfo.parentId]?.name : null;
+
+                  const rawDate = st.due_date || mergedData['Due Date'] || mergedData.dueDate;
+                  const dueDate = rawDate ? String(rawDate).split('T')[0] : null;
+
+                  const isCritical = st.escalation_status ? ['Y', 'R', 'LK', 'SK'].includes(st.escalation_status.toUpperCase()) : (mergedData.Ampel && String(mergedData.Ampel).toLowerCase().includes('rot')) || ['Y', 'R', 'LK', 'SK'].includes(String(mergedData.Eskalation || '').toUpperCase());
+                  const isPriority = parentRow.is_important !== undefined ? parentRow.is_important : (toBoolean(mergedData.Priorität));
+                  const isWatch = (mergedData.watch === true);
+
+                  const projectNumber = parentRow.project_number || mergedData.Nummer;
+                  const projectName = parentRow.project_name || mergedData.Teil || mergedData.title;
+
+                  // Push as new task
+                  foundTasks.push({
+                    id: st.card_id,
+                    rowId: parentRow.id, // For updates? Con-Board updates via patchCard anyway.
+                    uniqueKey: `${st.board_id}-${st.card_id}`, // Helper for React Key
+                    title: projectNumber ? `${projectNumber} ${projectName}` : (projectName || st.task_description || mergedData.description || t('dashboard.task')),
+                    boardName: boardInfo?.name || 'Con-Board',
+                    boardId: st.board_id,
+                    dueDate,
+                    type: 'standard', // Con-Boards are Project Boards
+                    isCritical,
+                    isPriority,
+                    isWatch,
+                    stage: st.column_id, // Local Stage
+                    originalData: mergedData,
+                    isConBoard: true,
+                    parentBoardName
+                  });
+                }
+              }
+            });
+          }
+        }
+
+        setAllTasks(foundTasks);
+      }
+
+      // Personal Notes
+      const { data: myNotes } = await supabase.from('personal_notes')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('due_date', { ascending: true })
+        .order('is_done', { ascending: true }); // Supabase orders by multiple cols naturally
+
+      // Client side sort if needed to match PB exact order 'is_done,due_date'
+      // But SQL order should be fine.
+
+      if (active) setNotes(myNotes || []);
+
+    } catch (err) {
+      console.error(err);
+    } finally {
+      if (active) setLoading(false);
+      isFetchingRef.current = false;
+    }
+  }, [user, t]);
+
+  useEffect(() => {
+    let active = true;
+    if (user) loadData(active);
+
+    return () => {
+      active = false;
+    };
+  }, [user, loadData]);
+
+  // visibility refresh via centralized trigger
+  useEffect(() => {
+    if (visibilityCounter > 0 && user) {
+      console.log('[PersonalDashboard] Visibility refresh triggered via AuthContext');
+      loadData(true);
+    }
+  }, [visibilityCounter, user, loadData]);
+
+
+  const kpis = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    return {
+      total: allTasks.filter(t => t.type === 'team').length,
+      overdue: allTasks.filter(t => t.dueDate && t.dueDate < today).length,
+      dueToday: allTasks.filter(t => t.dueDate === today).length,
+      critical: allTasks.filter(t => t.isCritical).length,
+      priority: allTasks.filter(t => t.isPriority).length,
+      watch: allTasks.filter(t => t.isWatch).length
+    };
+  }, [allTasks]);
+
+  const getFilteredTasks = (type: 'team' | 'standard') => {
+    const today = new Date().toISOString().split('T')[0];
+    return allTasks.filter(t => {
+      if (t.type !== type) return false;
+      if (filters.overdue && (!t.dueDate || t.dueDate >= today)) return false;
+      if (filters.critical && !t.isCritical) return false;
+      if (filters.priority && !t.isPriority) return false;
+      if (filters.watch && !t.isWatch) return false;
+      if (filters.dueToday && t.dueDate !== today) return false;
+      return true;
+    });
+  };
+
+  const teamTasks = getFilteredTasks('team');
+  const projectTasks = getFilteredTasks('standard');
+
+  const markTaskAsDone = async (task: any, event: React.MouseEvent) => {
+    event.stopPropagation();
+    setAllTasks(prev => prev.filter(t => t.id !== task.id));
+    try {
+      const { originalData, rowId } = task; // Ensure rowId is available from loadData
+      const assignee = originalData.assigneeId || userId;
+
+      // If we don't have rowId for some reason (old state), we might be in trouble, but loadData provides it.
+      // Supabase used .eq('card_id', task.id). PB update needs record ID.
+      // If task.rowId is missing, we can't easily update by card_id without a filter query or fetch.
+      // Assuming loadData is running and populating rowId.
+      const targetId = rowId || task.id;
+
+      await supabase.from('kanban_cards').update({
+        stage: 'Fertig',
+        card_data: { ...originalData, status: 'done', assigneeId: assignee, "Board Stage": "Fertig" }
+      }).eq('id', targetId);
+
+      enqueueSnackbar(t('dashboard.doneMessage'), { variant: 'success' });
+    } catch (err) { console.error(err); }
+  };
+
+  const addNote = async () => {
+    if (!newNote.trim()) return;
+    try {
+      const { data } = await supabase.from('personal_notes').insert({ user_id: userId, content: newNote }).select().single();
+      if (data) { setNotes([...notes, data]); setNewNote(''); }
+    } catch (e) { console.error(e); }
+  };
+
+  const toggleNote = async (id: string, current: boolean) => {
+    try {
+      const { data: updated } = await supabase.from('personal_notes').update({ is_done: !current }).eq('id', id).select().single();
+      if (updated) setNotes(notes.map(n => n.id === id ? updated : n));
+    } catch (e) { console.error(e); }
+  };
+
+  const deleteNote = async (id: string) => {
+    try {
+      await supabase.from('personal_notes').delete().eq('id', id);
+      setNotes(notes.filter(n => n.id !== id));
+    } catch (e) { console.error(e); }
+  };
+
+  function toBoolean(value: any) { return value === true || value === 'true'; }
+
+  // --- RENDER HELPER ---
+
+  const renderKPICard = (title: string, value: number, icon: React.ReactNode, color: 'primary' | 'error' | 'warning' | 'info', active: boolean, onClick?: () => void) => (
+    <Card
+      className="glass"
+      sx={{
+        height: '100%',
+        cursor: onClick ? 'pointer' : 'default',
+        borderLeft: `4px solid ${theme.palette[color].main}`,
+        transition: 'all 0.2s',
+        transform: active ? 'scale(1.02)' : 'none',
+        transformOrigin: 'center center',
+        boxShadow: active ? `0 0 20px ${theme.palette[color].main}40` : undefined
+      }}
+      onClick={onClick}
+    >
+      <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2, '&:last-child': { pb: 2 } }}>
+        <Box>
+          <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ textTransform: 'uppercase', letterSpacing: 1 }}>
+            {title}
+          </Typography>
+          <Typography variant="h4" fontWeight={800} sx={{ mt: 0.5, color: value > 0 ? theme.palette[color].main : 'text.primary' }}>
+            {value}
+          </Typography>
+        </Box>
+        <Avatar sx={{ bgcolor: `${theme.palette[color].main}20`, color: theme.palette[color].main, width: 48, height: 48 }}>
+          {icon}
+        </Avatar>
+      </CardContent>
+    </Card>
+  );
+
+  const renderTaskList = (title: string, icon: React.ReactNode, tasks: any[], type: 'team' | 'standard') => (
+    <Paper className="glass" sx={{ height: '100%', maxHeight: 600, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'rgba(255,255,255,0.02)' }}>
+        <Avatar sx={{ width: 32, height: 32, bgcolor: type === 'team' ? 'primary.main' : 'secondary.main' }}>
+          {icon}
+        </Avatar>
+        <Typography variant="h6" fontWeight={600}>
+          {title}
+        </Typography>
+        <Chip label={tasks.length} size="small" sx={{ ml: 'auto', fontWeight: 700 }} />
+      </Box>
+      <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
+        {tasks.length === 0 ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', opacity: 0.5, gap: 1 }}>
+            <DoneAll sx={{ fontSize: 40 }} />
+            <Typography variant="body2">{t('dashboard.allDone')}</Typography>
+          </Box>
+        ) : (
+          <Stack spacing={1.5}>
+            {tasks.map((task, i) => (
+              <Card
+                key={task.id + i}
+                variant="outlined"
+                sx={{
+                  p: 1.5, // Reduced padding
+                  cursor: 'pointer',
+                  borderLeft: task.isCritical ? '4px solid #ef4444' : (task.isPriority ? '4px solid #f59e0b' : '1px solid rgba(255,255,255,0.1)'),
+                  bgcolor: type === 'team' ? alpha(theme.palette.secondary.main, 0.03) : 'background.paper',
+                  '&:hover': { bgcolor: 'rgba(255,255,255,0.05)', transform: 'translateX(4px)' },
+                  transition: 'all 0.2s'
+                }}
+                onClick={() => onOpenBoard(task.boardId, task.id, type)}
+              >
+                {/* Title at the Top */}
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start', mb: 1 }}>
+                  {type === 'team' && (() => {
+                    const assigneeId = task.originalData?.assigneeId || task.originalData?.assignee_id;
+                    const profile = profiles.find(p => p.id === assigneeId);
+                    if (profile) return (
+                      <Avatar src={profile.avatar_url || undefined} sx={{ width: 20, height: 20, fontSize: '0.6rem' }}>
+                        {(profile.full_name || profile.name || '?').charAt(0)}
+                      </Avatar>
+                    );
+                    return null;
+                  })()}
+                  <Tooltip title={task.title} placement="top-start" enterDelay={500}>
+                    <Typography variant="body2" sx={{
+                      fontWeight: 600,
+                      lineHeight: 1.2,
+                      fontSize: '0.85rem',
+                      display: '-webkit-box',
+                      overflow: 'hidden',
+                      WebkitBoxOrient: 'vertical',
+                      WebkitLineClamp: 2,
+                    }}>
+                      {task.title}
+                    </Typography>
+                  </Tooltip>
+                </Box>
+
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 0.5 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                    {/* Row 1: Board Name + Stage */}
+                    <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <Chip
+                        label={task.boardName}
+                        size="small"
+                        variant="outlined"
+                        sx={{
+                          fontSize: '0.6rem',
+                          height: 16,
+                          borderColor: 'primary.main',
+                          color: 'primary.main',
+                          fontWeight: 700,
+                          px: 0.5
+                        }}
+                      />
+
+                      {task.stage && type !== 'team' && (
+                        <Chip
+                          label={task.stage}
+                          size="small"
+                          variant="outlined"
+                          sx={{
+                            fontSize: '0.6rem',
+                            height: 16,
+                            borderColor: 'text.secondary',
+                            color: 'text.secondary',
+                            px: 0.5
+                          }}
+                        />
+                      )}
+                    </Box>
+
+                    {/* Row 2: Con-Board Badges (C + Parent Name) */}
+                    {(task.isConBoard || task.parentBoardName) && (
+                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mt: 0.5 }}>
+                        {task.isConBoard && (
+                          <Chip
+                            label="C"
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              fontSize: '0.6rem',
+                              height: 16,
+                              borderColor: 'secondary.main', // Outlined as requested
+                              color: 'secondary.main',
+                              fontWeight: 'bold',
+                              minWidth: 16,
+                              px: 0
+                            }}
+                          />
+                        )}
+
+                        {task.parentBoardName && (
+                          <Chip
+                            label={task.parentBoardName}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              fontSize: '0.6rem',
+                              height: 16,
+                              borderColor: 'secondary.main',
+                              color: 'secondary.main',
+                              fontWeight: 700,
+                              px: 0.5
+                            }}
+                          />
+                        )}
+                      </Box>
+                    )}
+                  </Box>
+
+                  <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0 }}>
+                    {task.dueDate && (
+                      <Chip
+                        icon={<Event sx={{ fontSize: '10px !important' }} />}
+                        label={new Date(task.dueDate).toLocaleDateString('de-DE')}
+                        size="small"
+                        color={new Date(task.dueDate) < new Date() ? 'error' : 'default'}
+                        variant={new Date(task.dueDate) < new Date() ? 'filled' : 'outlined'}
+                        sx={{ height: 16, fontSize: '0.6rem' }}
+                      />
+                    )}
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 20 }}>
+                  <Box sx={{ display: 'flex', gap: 0.5 }}>
+                    {task.isWatch && <AccessTime sx={{ fontSize: 14, color: 'info.main' }} />}
+                    {task.isCritical && <Warning sx={{ fontSize: 14, color: 'error.main' }} />}
+                  </Box>
+                  {/* "Done" Button ONLY for Team Tasks */}
+                  {type === 'team' && (
+                    <IconButton
+                      size="small"
+                      color="success"
+                      onClick={(e) => markTaskAsDone(task, e)}
+                      sx={{
+                        p: 0.5,
+                        bgcolor: 'rgba(16, 185, 129, 0.1)',
+                        '&:hover': { bgcolor: 'rgba(16, 185, 129, 0.2)' }
+                      }}
+                    >
+                      <DoneAll sx={{ fontSize: 14 }} />
+                    </IconButton>
+                  )}
+                </Box>
+              </Card>
+            ))}
+          </Stack>
+        )}
+      </Box>
+    </Paper>
+  );
+
+  const renderNotes = () => (
+    <Paper className="glass" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ p: 2, borderBottom: '1px solid', borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5, bgcolor: 'rgba(255,255,255,0.02)' }}>
+        <Avatar sx={{ width: 32, height: 32, bgcolor: 'warning.main' }}><ListAlt /></Avatar>
+        <Typography variant="h6" fontWeight={600}>{t('dashboard.notes')}</Typography>
+      </Box>
+      <Box sx={{ p: 2, flex: 1, overflowY: 'auto' }}>
+        <Box sx={{ display: 'flex', gap: 1, mb: 3 }}>
+          <TextField
+            size="small"
+            placeholder={t('dashboard.newNotePlaceholder')}
+            fullWidth
+            value={newNote}
+            onChange={(e) => setNewNote(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addNote()}
+            sx={{ '& .MuiOutlinedInput-root': { bgcolor: 'background.paper' } }}
+          />
+          <IconButton
+            color="primary"
+            onClick={addNote}
+            disabled={!newNote.trim()}
+            sx={{ bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' }, '&.Mui-disabled': { bgcolor: 'rgba(255,255,255,0.1)' } }}
+          >
+            <Add />
+          </IconButton>
+        </Box>
+        <List dense sx={{ bgcolor: 'transparent' }}>
+          {notes.map((note) => (
+            <ListItem
+              key={note.id}
+              secondaryAction={<IconButton edge="end" size="small" onClick={() => deleteNote(note.id)} sx={{ opacity: 0.5, '&:hover': { opacity: 1, color: 'error.main' } }}><Delete fontSize="small" /></IconButton>}
+              sx={{
+                bgcolor: 'background.paper',
+                mb: 1,
+                borderRadius: 1,
+                border: '1px solid rgba(255,255,255,0.05)',
+                transition: 'all 0.2s',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.05)' }
+              }}
+            >
+              <Checkbox
+                checked={note.is_done}
+                onChange={() => toggleNote(note.id, note.is_done)}
+                size="small"
+                sx={{ color: 'text.secondary', '&.Mui-checked': { color: 'success.main' } }}
+              />
+              <ListItemText
+                primary={
+                  <Typography sx={{
+                    fontSize: '0.95rem',
+                    textDecoration: note.is_done ? 'line-through' : 'none',
+                    color: note.is_done ? 'text.secondary' : 'text.primary',
+                    transition: 'all 0.2s'
+                  }}>
+                    {note.content}
+                  </Typography>
+                }
+              />
+            </ListItem>
+          ))}
+        </List>
+      </Box>
+    </Paper>
+  );
+
+  if (loading && allTasks.length === 0 && notes.length === 0) return <LinearProgress sx={{ mt: 4, borderRadius: 4 }} />;
+
+  return (
+    <Box sx={{ mt: 2, mb: 6 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Box>
+          <Typography variant="h4" sx={{ fontWeight: 800, letterSpacing: '-0.02em', mb: 0.5 }}>
+            {t('dashboard.welcome')}
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="body1" color="text.secondary">
+              {t('dashboard.overview')}
+            </Typography>
+            {profile?.department_name && (
+              <Chip
+                icon={<Business sx={{ fontSize: '14px !important' }} />}
+                label={profile.department_name}
+                size="small"
+                variant="outlined"
+                sx={{
+                  height: 20,
+                  fontSize: '0.7rem',
+                  borderColor: 'divider',
+                  color: 'text.secondary',
+                  bgcolor: alpha(theme.palette.primary.main, 0.05)
+                }}
+              />
+            )}
+          </Box>
+        </Box>
+
+        <Stack direction="row" spacing={1}>
+          <Chip
+            icon={<Warning sx={{ fontSize: 16 }} />}
+            label={t('dashboard.overdue')}
+            clickable
+            color={filters.overdue ? "error" : "default"}
+            variant={filters.overdue ? "filled" : "outlined"}
+            onClick={() => setFilters(f => ({ ...f, overdue: !f.overdue }))}
+          />
+          <Chip
+            icon={<PriorityHigh sx={{ fontSize: 16 }} />}
+            label={t('dashboard.critical')}
+            clickable
+            color={filters.critical ? "warning" : "default"}
+            variant={filters.critical ? "filled" : "outlined"}
+            onClick={() => setFilters(f => ({ ...f, critical: !f.critical }))}
+          />
+        </Stack>
+      </Box>
+
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={6} md={3}>
+          {renderKPICard(t('dashboard.openTasks'), kpis.total, <TrendingUp />, "primary", false)}
+        </Grid>
+        <Grid item xs={6} md={3}>
+          {renderKPICard(t('dashboard.overdue'), kpis.overdue, <Warning />, "error", filters.overdue, () => setFilters(f => ({ ...f, overdue: !f.overdue })))}
+        </Grid>
+        <Grid item xs={6} md={3}>
+          {renderKPICard(t('dashboard.critical'), kpis.critical, <PriorityHigh />, "warning", filters.critical, () => setFilters(f => ({ ...f, critical: !f.critical })))}
+        </Grid>
+        <Grid item xs={6} md={3}>
+          {renderKPICard(t('dashboard.dueToday'), kpis.dueToday, <NotificationsActive />, "info", filters.dueToday, () => setFilters(f => ({ ...f, dueToday: !f.dueToday })))}
+        </Grid>
+      </Grid>
+
+      {isMobile ? (
+        <Box>
+          <Tabs
+            value={mobileTab}
+            onChange={(e, v) => setMobileTab(v)}
+            variant="fullWidth"
+            sx={{ mb: 2, bgcolor: 'background.paper', borderRadius: 2 }}
+          >
+            <Tab icon={<Assignment fontSize="small" />} label={t('dashboard.team')} />
+            <Tab icon={<Business fontSize="small" />} label={t('dashboard.projects')} />
+            <Tab icon={<ListAlt fontSize="small" />} label={t('dashboard.notes')} />
+          </Tabs>
+          <Box sx={{ minHeight: 400 }}>
+            {mobileTab === 0 && renderTaskList(t('dashboard.teamTasks'), <Assignment />, teamTasks, 'team')}
+            {mobileTab === 1 && renderTaskList(t('dashboard.projectCards'), <Business />, projectTasks, 'standard')}
+            {mobileTab === 2 && renderNotes()}
+          </Box>
+        </Box>
+      ) : (
+        <Grid container spacing={3} alignItems="stretch">
+          <Grid item xs={12} md={4}>
+            {renderTaskList(t('dashboard.teamTasks'), <Assignment />, teamTasks, 'team')}
+          </Grid>
+          <Grid item xs={12} md={4}>
+            {renderTaskList(t('dashboard.projectCards'), <Business />, projectTasks, 'standard')}
+          </Grid>
+          <Grid item xs={12} md={4}>
+            {renderNotes()}
+          </Grid>
+        </Grid>
+      )}
+    </Box>
+  );
+}

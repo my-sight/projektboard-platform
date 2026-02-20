@@ -1,0 +1,533 @@
+'use client';
+
+import React, { ReactNode } from 'react';
+import { DragDropContext, Droppable, DropResult } from '@hello-pangea/dnd';
+import { Box, IconButton, Typography, Paper, Chip, Tooltip } from '@mui/material';
+import { KanbanDensity } from './KanbanCard';
+import { alpha } from '@mui/material/styles';
+import { useLanguage } from '@/contexts/LanguageContext';
+
+export interface KanbanColumnsViewProps {
+  rows: any[];
+  cols: { id: string; name: string; done?: boolean }[];
+  density: KanbanDensity;
+  searchTerm: string;
+  onDragEnd: (result: DropResult) => void;
+  inferStage: (card: any) => string;
+  archiveColumn: (columnName: string) => void;
+  renderCard: (card: any, index: number) => ReactNode;
+  allowDrag: boolean;
+  completedCount?: number;
+}
+
+import { useKanbanAutoScroll } from '@/hooks/useKanbanAutoScroll';
+import { Inventory2 } from '@mui/icons-material';
+import { Button } from '@mui/material';
+
+export function KanbanColumnsView({
+  rows,
+  cols,
+  density,
+  searchTerm,
+  onDragEnd,
+  inferStage,
+  archiveColumn,
+  renderCard,
+  allowDrag,
+  completedCount = 0,
+}: KanbanColumnsViewProps) {
+  const { t } = useLanguage();
+  const { scrollContainerRef, onDragStart: onAutoScrollStart, onDragEnd: onAutoScrollEnd } = useKanbanAutoScroll();
+
+  const filtered = rows.filter(
+    (row) =>
+      !row['Archived'] &&
+      (!searchTerm ||
+        Object.values(row).some((value) =>
+          String(value || '')
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()),
+        )),
+  );
+
+  const handleDragStart = () => {
+    onAutoScrollStart();
+  };
+
+  const handleDragEnd = (result: DropResult) => {
+    onAutoScrollEnd();
+    if (allowDrag) onDragEnd(result);
+  };
+
+  return (
+    <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <Box
+        ref={scrollContainerRef}
+        sx={{
+          display: 'flex',
+          gap: 2,
+          p: 2,
+          overflowX: 'auto',
+          alignItems: 'flex-start',
+          height: '100%',
+        }}
+      >
+        {cols.map((col) => {
+          const colCards = filtered.filter((row) => inferStage(row) === col.name);
+          const redCount = colCards.filter(c => {
+            const ampel = String(c.Ampel || '').toLowerCase();
+            const eskalation = String(c.Eskalation || '').toUpperCase();
+            // R counts as Red
+            return ampel === 'rot' || eskalation === 'R';
+          }).length;
+
+          const yellowCount = colCards.filter(c => {
+            const ampel = String(c.Ampel || '').toLowerCase();
+            const eskalation = String(c.Eskalation || '').toUpperCase();
+            // Y counts as Yellow
+            return ampel === 'gelb' || eskalation === 'Y';
+          }).length;
+
+          const greenCount = colCards.length - redCount - yellowCount;
+
+          return (
+            <Paper
+              key={col.id}
+              className="glass"
+              sx={{
+                minWidth: 300,
+                width: 300,
+                display: 'flex',
+                flexDirection: 'column',
+                maxHeight: 'calc(100vh - 140px)',
+                bgcolor: 'background.paper',
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+              }}
+            >
+              <Box
+                sx={{
+                  p: 2,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  bgcolor: alpha('#fff', 0.02),
+                }}
+              >
+                <Box>
+                  <Typography
+                    variant="subtitle1"
+                    sx={{
+                      fontWeight: 700,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1
+                    }}
+                  >
+                    {col.name} {col.done && (
+                      <Chip
+                        label={completedCount + colCards.length}
+                        size="small"
+                        sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: 'rgba(76, 175, 80, 0.1)', color: 'success.main' }}
+                      />
+                    )}
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center', mt: 0.5, minHeight: 20 }}>
+
+                    {redCount > 0 && (
+                      <Chip label={`${redCount} R`} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: alpha('#d32f2f', 0.1), color: '#d32f2f', border: '1px solid', borderColor: alpha('#d32f2f', 0.3) }} />
+                    )}
+                    {yellowCount > 0 && (
+                      <Chip label={`${yellowCount} Y`} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: alpha('#ed6c02', 0.1), color: '#ed6c02', border: '1px solid', borderColor: alpha('#ed6c02', 0.3) }} />
+                    )}
+                    {greenCount > 0 && (
+                      <Chip label={`${greenCount} G`} size="small" sx={{ height: 20, fontSize: '0.7rem', fontWeight: 600, bgcolor: alpha('#000', 0.05), color: 'text.secondary', border: '1px solid', borderColor: 'divider' }} />
+                    )}
+                  </Box>
+                </Box>
+
+                {col.done && allowDrag && (
+                  <Tooltip title={t('kanban.archiveColumn') || 'Archivieren'}>
+                    <IconButton
+                      size="small"
+                      onClick={() => archiveColumn(col.name)}
+                      color="primary"
+                    >
+                      <Inventory2 fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
+
+
+
+              </Box>
+
+              <Droppable droppableId={col.name} isDropDisabled={!allowDrag}>
+                {(provided, snapshot) => (
+                  <Box
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    sx={{
+                      flex: 1,
+                      p: 1.5,
+                      pb: 8, // Added extra padding at bottom to prevent cutoff
+                      flexGrow: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: density === 'xcompact' ? 0.25 : 0.5,
+                      overflowY: 'auto',
+                      minHeight: 300,
+                      bgcolor: snapshot.isDraggingOver ? alpha('#fff', 0.05) : 'transparent',
+                      transition: 'background-color 0.2s',
+                    }}
+                  >
+                    {density === 'xcompact' ? (
+                      <Box
+                        sx={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+                          gap: 1,
+                        }}
+                      >
+                        {colCards.map((card, cardIndex) => renderCard(card, cardIndex))}
+                      </Box>
+                    ) : (
+                      colCards.map((card, cardIndex) => renderCard(card, cardIndex))
+                    )}
+                    {provided.placeholder}
+                  </Box>
+                )}
+              </Droppable>
+            </Paper>
+          );
+        })}
+      </Box>
+    </DragDropContext>
+  );
+}
+
+export interface KanbanSwimlaneViewProps {
+  rows: any[];
+  cols: { name: string }[];
+  searchTerm: string;
+  onDragEnd: (result: DropResult) => void;
+  inferStage: (card: any) => string;
+  renderCard: (card: any, index: number) => ReactNode;
+  allowDrag: boolean;
+}
+
+export function KanbanSwimlaneView({ rows, cols, searchTerm, onDragEnd, inferStage, renderCard, allowDrag }: KanbanSwimlaneViewProps) {
+  const { t } = useLanguage();
+  const { scrollContainerRef, onDragStart: onAutoScrollStart, onDragEnd: onAutoScrollEnd } = useKanbanAutoScroll();
+
+  const filtered = rows.filter(
+    (row) =>
+      !row['Archived'] &&
+      (!searchTerm ||
+        Object.values(row).some((value) =>
+          String(value || '')
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()),
+        )),
+  );
+
+  const stages = cols.map((c) => c.name);
+  const resps = Array.from(
+    new Set(
+      filtered
+        .map((row) => String(row['Verantwortlich'] || '').trim() || '—')
+        .sort(),
+    ),
+  );
+
+  const handleDragStart = () => {
+    onAutoScrollStart();
+  };
+
+  const handleDragEnd = (result: DropResult) => {
+    onAutoScrollEnd();
+    if (allowDrag) onDragEnd(result);
+  };
+
+  return (
+    <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <Box
+        ref={scrollContainerRef}
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: `200px ${stages.map(() => '300px').join(' ')}`,
+          gap: 2,
+          p: 2,
+          alignItems: 'start',
+          overflow: 'auto',
+          height: '100%',
+        }}
+      >
+        <Box /> {/* Empty corner */}
+
+        {stages.map((stage) => (
+          <Paper
+            key={stage}
+            className="glass"
+            sx={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 2,
+              p: 2,
+              fontWeight: 700,
+              textAlign: 'center',
+              borderRadius: 2,
+            }}
+          >
+            {stage}
+          </Paper>
+        ))}
+
+        {resps.map((resp) => (
+          <React.Fragment key={resp}>
+            <Paper
+              key={`header-${resp}`}
+              className="glass"
+              sx={{
+                position: 'sticky',
+                left: 0,
+                zIndex: 1,
+                p: 2,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                borderRadius: 2,
+              }}
+            >
+              <Typography fontWeight={700} noWrap title={resp}>{resp}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {
+                  filtered.filter(
+                    (row) => (String(row['Verantwortlich'] || '').trim() || '—') === resp,
+                  ).length
+                }{' '}
+                {t('kanban.cards')}
+              </Typography>
+            </Paper>
+
+            {stages.map((stage) => {
+              const cellCards = filtered.filter(
+                (row) => inferStage(row) === stage && (String(row['Verantwortlich'] || '').trim() || '—') === resp,
+              );
+
+              return (
+                <Droppable key={`${stage}-${resp}`} droppableId={`${stage}||${resp}`} isDropDisabled={!allowDrag}>
+                  {(provided, snapshot) => (
+                    <Paper
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className="glass"
+                      sx={{
+                        bgcolor: snapshot.isDraggingOver ? alpha('#fff', 0.05) : 'background.paper',
+                        borderRadius: 2,
+                        minHeight: 260, // Approx 1.8x typical card height
+                        height: '100%',
+                        maxHeight: 'calc(100vh - 200px)',
+                        overflowY: 'auto',
+                        p: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 1,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    >
+                      {cellCards.map((card, cardIndex) => renderCard(card, cardIndex))}
+                      {provided.placeholder}
+                    </Paper>
+                  )}
+                </Droppable>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </Box>
+    </DragDropContext>
+  );
+}
+
+export interface KanbanLaneViewProps {
+  rows: any[];
+  cols: { name: string }[];
+  lanes: string[];
+  searchTerm: string;
+  onDragEnd: (result: DropResult) => void;
+  inferStage: (card: any) => string;
+  renderCard: (card: any, index: number) => ReactNode;
+  allowDrag: boolean;
+}
+
+export function KanbanLaneView({ rows, cols, lanes, searchTerm, onDragEnd, inferStage, renderCard, allowDrag }: KanbanLaneViewProps) {
+  const { t } = useLanguage();
+  const { scrollContainerRef, onDragStart: onAutoScrollStart, onDragEnd: onAutoScrollEnd } = useKanbanAutoScroll();
+
+  const filtered = rows.filter(
+    (row) =>
+      !row['Archived'] &&
+      (!searchTerm ||
+        Object.values(row).some((value) =>
+          String(value || '')
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()),
+        )),
+  );
+
+  const stages = cols.map((c) => c.name);
+
+  // 1. Determine explicitly configured lanes
+  const configuredLanes = lanes.length ? lanes : [];
+
+  // 2. Identify cards that don't belong to any configured lane
+  const hasUnassignedCards = filtered.some(row => {
+    const lane = row['Swimlane'] || '';
+    return !configuredLanes.includes(lane);
+  });
+
+  // 3. Construct final list of lanes to render
+  const displayLanes = [...configuredLanes];
+  const unassignedLabel = t('kanban.unassigned') || 'Nicht zugeordnet';
+
+  // If we have no configured lanes, we just show one generic lane (or unassigned)
+  if (displayLanes.length === 0) {
+    displayLanes.push(unassignedLabel);
+  } else if (hasUnassignedCards) {
+    // If we have configured lanes BUT also stray cards, add "Unassigned" at the end
+    displayLanes.push(unassignedLabel);
+  }
+
+  const handleDragStart = () => {
+    onAutoScrollStart();
+  };
+
+  const handleDragEnd = (result: DropResult) => {
+    onAutoScrollEnd();
+    if (allowDrag) onDragEnd(result);
+  };
+
+  return (
+    <DragDropContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <Box
+        ref={scrollContainerRef}
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: `200px ${stages.map(() => '300px').join(' ')}`,
+          gap: 2,
+          p: 2,
+          alignItems: 'stretch', // Ensure items fill the track
+          overflow: 'auto',
+          height: '100%',
+          gridAutoRows: 'auto', // Allow rows to grow as needed
+        }}
+      >
+        <Box />
+
+        {stages.map((stage) => (
+          <Paper
+            key={stage}
+            className="glass"
+            sx={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 2,
+              p: 2,
+              fontWeight: 700,
+              textAlign: 'center',
+              borderRadius: 2,
+            }}
+          >
+            {stage}
+          </Paper>
+        ))}
+
+        {displayLanes.map((laneName) => (
+          <React.Fragment key={laneName}>
+            <Paper
+              key={`header-${laneName}`}
+              className="glass"
+              sx={{
+                position: 'sticky',
+                left: 0,
+                zIndex: 3, // Higher than column headers? No, column headers are usually 2. Row headers need to stay on top of horizontal scroll.
+                // Wait, if we scroll vertical, Col Header (top) stays. If we scroll Horizontal, Row Header (left) stays.
+                // The corner piece needs highest Z.
+                p: 2,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                borderRadius: 2,
+                alignSelf: 'start', // Don't stretch the header itself if not needed, or 'stretch' if we want it to match row height
+                height: 'auto',
+                minHeight: 100
+              }}
+            >
+              <Typography fontWeight={700} noWrap title={laneName}>{laneName}</Typography>
+              <Typography variant="caption" color="text.secondary">
+                {
+                  filtered.filter((row) => {
+                    const rowLane = row['Swimlane'] || '';
+                    if (laneName === unassignedLabel) {
+                      // If this is the unassigned lane, match cards that are NOT in configured lanes
+                      // OR match cards that are explicitly 'Nicht zugeordnet' if that happens to be the value
+                      return !configuredLanes.includes(rowLane) || rowLane === unassignedLabel;
+                    }
+                    return rowLane === laneName;
+                  }).length
+                }{' '}
+                {t('kanban.cards')}
+              </Typography>
+            </Paper>
+
+            {stages.map((stage) => {
+              const cellCards = filtered.filter(
+                (row) => {
+                  const rowLane = row['Swimlane'] || '';
+                  if (laneName === unassignedLabel) {
+                    return inferStage(row) === stage && (!configuredLanes.includes(rowLane) || rowLane === unassignedLabel);
+                  }
+                  return inferStage(row) === stage && rowLane === laneName;
+                }
+              );
+
+              return (
+                <Droppable key={`${stage}-${laneName}`} droppableId={`${stage}||${laneName}`} isDropDisabled={!allowDrag}>
+                  {(provided, snapshot) => (
+                    <Paper
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className="glass"
+                      sx={{
+                        bgcolor: snapshot.isDraggingOver ? alpha('#fff', 0.05) : 'background.paper',
+                        borderRadius: 2,
+                        minHeight: 260,
+                        height: '100%',
+                        maxHeight: 'calc(100vh - 200px)',
+                        overflowY: 'auto',
+                        p: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 1,
+                        border: '1px solid',
+                        borderColor: 'divider',
+                      }}
+                    >
+                      {cellCards.map((card, cardIndex) => renderCard(card, cardIndex))}
+                      {provided.placeholder}
+                    </Paper>
+                  )}
+                </Droppable>
+              );
+            })}
+          </React.Fragment>
+        ))}
+      </Box>
+    </DragDropContext>
+  );
+}

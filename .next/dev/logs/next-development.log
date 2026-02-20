@@ -1,0 +1,285 @@
+[00:00:02.329] Server  LOG     ✓ Ready in 1990ms
+[00:00:10.446] Server  LOG     [LicenseServer] Starting license check on server...
+[00:00:10.446] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:00:11.081] Server  LOG     [DashboardClient RENDER] {}
+[00:00:12.202] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:12.202] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:12.202] Browser LOG     [DashboardClient] Waiting for Auth to finish loading...
+[00:00:12.202] Browser LOG     [AuthContext] Initializing Auth...
+[00:00:12.202] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
+[00:00:12.202] Browser LOG     [AuthContext] Fetching initial session...
+[00:00:12.202] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:12.202] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:12.202] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:12.202] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:13.947] Server  LOG     [LicenseServer] Starting license check on server...
+[00:00:13.948] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:00:13.993] Server  LOG     [DashboardClient RENDER] {}
+[00:00:14.493] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:14.493] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:14.493] Browser LOG     [DashboardClient] Waiting for Auth to finish loading...
+[00:00:14.493] Browser LOG     [AuthContext] Initializing Auth...
+[00:00:14.493] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
+[00:00:14.493] Browser LOG     [AuthContext] Fetching initial session...
+[00:00:14.493] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:14.493] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:14.493] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:14.493] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:22.688] Browser WARN    [DashboardClient] Data loading timed out (8s). Force-clearing loading state.
+[00:00:22.688] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":false}
+[00:00:22.688] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":false}
+[00:00:24.710] Browser ERROR   [AuthContext] Initialization Crash: The operation was aborted.
+[00:00:24.710] Browser LOG     [AuthContext] Initialization complete. Loading -> false
+[00:00:24.710] Browser ERROR   unhandledRejection: AbortError: The operation was aborted.
+[00:00:24.710] Browser ERROR   unhandledRejection: AbortError: The operation was aborted.
+[00:00:24.710] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":false,"loadingData":false}
+[00:00:24.710] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":false,"loadingData":false}
+[00:00:24.710] Browser LOG     [DashboardClient] No user and auth finished loading. Redirecting to /login
+[00:02:02.884] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
+[00:02:05.131] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
+[00:02:08.180] Server  LOG     [LicenseServer] Starting license check on server...
+[00:02:08.180] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:02:08.201] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:02:08.201] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:08.201] Browser WARN    Error fetching profile: {"code":"","details":"","hint":"Request was aborted (timeout or manual cancellation)","message":"AbortError: The operation was aborted."}
+[00:02:08.201] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
+[00:02:08.573] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:08.573] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:08.573] Browser LOG     [DashboardClient] User active, loading dashboard data...
+[00:02:08.573] Browser LOG     [DashboardClient] Loading data...
+[00:02:08.573] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
+[00:02:08.573] Browser LOG     [DashboardClient] Loading data...
+[00:02:08.573] Browser LOG     [DashboardClient] User active, loading dashboard data...
+[00:02:08.573] Browser LOG     [DashboardClient] Loading data...
+[00:02:08.573] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
+[00:02:08.573] Browser LOG     [DashboardClient] Loading data...
+[00:02:08.573] Browser LOG     [DashboardClient] Data load finished in 2ms
+[00:02:08.573] Browser LOG     [DashboardClient] Data load finished in 2ms
+[00:02:08.573] Browser LOG     [DashboardClient] Data load finished in 1ms
+[00:02:08.573] Browser LOG     [DashboardClient] Data load finished in 1ms
+[00:02:08.573] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":false}
+[00:02:08.573] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":false}
+[00:02:08.573] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: false
+[00:02:08.573] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:08.573] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: false
+[00:02:08.573] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:08.573] Browser WARN    Fehler beim Laden der Profile aus Supabase: {"code":"","details":"","hint":"Request was aborted (timeout or manual cancellation)","message":"AbortError: The operation was aborted."}
+[00:02:15.267] Browser ERROR   unhandledRejection: AbortError: The operation was aborted.
+[00:02:16.533] Browser WARN    [DashboardClient] Data loading timed out (8s). Force-clearing loading state.
+[00:02:23.784] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
+[00:02:23.784] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":false}
+[00:02:23.784] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":false}
+[00:02:23.784] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:23.784] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
+[00:02:23.784] Browser LOG     [DashboardClient] Loading data...
+[00:02:23.784] Browser WARN    Fehler beim Laden der Profile aus Supabase: {"code":"","details":"","hint":"Request was aborted (timeout or manual cancellation)","message":"AbortError: The operation was aborted."}
+[00:02:23.784] Browser LOG     [DashboardClient] Data load finished in 5ms
+[00:02:29.981] Browser ERROR   unhandledRejection: AbortError: The operation was aborted.
+[00:02:32.447] Browser ERROR   unhandledRejection: AbortError: The operation was aborted.
+[00:02:33.380] Browser ERROR   unhandledRejection: AbortError: The operation was aborted.
+[00:02:35.491] Server  LOG     [LicenseServer] Starting license check on server...
+[00:02:35.491] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:02:35.773] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
+[00:02:35.773] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:35.773] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:35.773] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:02:35.773] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:35.773] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:35.773] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
+[00:02:35.773] Browser LOG     [DashboardClient] Loading data...
+[00:02:35.773] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:35.773] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:35.773] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:35.773] Browser ERROR   Fetch profile exception: {}
+[00:02:35.773] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
+[00:02:35.773] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
+[00:02:35.773] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:35.773] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:35.773] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: false
+[00:02:35.773] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:35.773] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
+[00:02:35.773] Browser LOG     [DashboardClient] Loading data...
+[00:02:35.773] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:02:35.773] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:35.773] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:35.773] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:35.773] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:35.783] Server  LOG     [LicenseServer] Starting license check on server...
+[00:02:35.783] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:02:35.945] Server  LOG     [DashboardClient RENDER] {}
+[00:02:35.950] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:02:35.950] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:35.950] Browser WARN    Error fetching profile: {"code":"","details":"","hint":"Request was aborted (timeout or manual cancellation)","message":"AbortError: The operation was aborted."}
+[00:02:35.950] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
+[00:02:35.950] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":false}
+[00:02:35.950] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":false}
+[00:02:35.950] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:35.950] Browser WARN    Fehler beim Laden der Profile aus Supabase: {"code":"","details":"","hint":"Request was aborted (timeout or manual cancellation)","message":"AbortError: The operation was aborted."}
+[00:02:35.950] Browser WARN    Error fetching profile: {"code":"","details":"","hint":"","message":"TypeError: Load failed"}
+[00:02:35.950] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
+[00:02:35.950] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:02:35.950] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:35.950] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:35.950] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:35.955] Server  LOG     [DashboardClient RENDER] {}
+[00:02:38.284] Server  LOG     [LicenseServer] Starting license check on server...
+[00:02:38.284] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:02:38.354] Server  LOG     [LicenseServer] Starting license check on server...
+[00:02:38.354] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:02:38.786] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:38.786] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:38.786] Browser LOG     [DashboardClient] Waiting for Auth to finish loading...
+[00:02:38.786] Browser LOG     [AuthContext] Initializing Auth...
+[00:02:38.786] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
+[00:02:38.786] Browser LOG     [AuthContext] Fetching initial session...
+[00:02:38.786] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:38.786] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:38.786] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:38.787] Browser LOG     [AuthContext] Session confirmed for: alexander@test.de ID: 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:38.787] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
+[00:02:38.787] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient] User active, loading dashboard data...
+[00:02:38.787] Browser LOG     [DashboardClient] Loading data...
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [AuthContext] Profile fetch result: Success
+[00:02:38.787] Browser LOG     [AuthContext] Initialization complete. Loading -> false
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient] User active, loading dashboard data...
+[00:02:38.787] Browser LOG     [DashboardClient] Loading data...
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
+[00:02:38.787] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:02:38.787] Browser LOG     [DashboardClient] Data load finished in 421ms
+[00:02:38.787] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
+[00:02:38.787] Browser LOG     [LicenseWarning] Days Remaining: 314
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:38.787] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
+[00:02:38.787] Browser LOG     [LicenseWarning] Days Remaining: 314
+[00:02:38.787] Browser LOG     [DashboardClient] Data load finished in 414ms
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:38.787] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:42.338] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:02:42.338] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:42.338] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:42.338] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:42.338] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:42.338] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:42.583] Server  LOG     [LicenseServer] Starting license check on server...
+[00:02:42.584] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:02:42.653] Server  LOG     [LicenseServer] Starting license check on server...
+[00:02:42.653] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:02:42.728] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:02:42.728] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:42.728] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:42.728] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:42.763] Browser LOG     [DashboardClient] Waiting for Auth to finish loading...
+[00:02:42.763] Browser LOG     [AuthContext] Initializing Auth...
+[00:02:42.763] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
+[00:02:42.763] Browser LOG     [AuthContext] Fetching initial session...
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:02:42.763] Browser LOG     [AuthContext] Session confirmed for: alexander@test.de ID: 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:42.763] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
+[00:02:42.763] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:42.763] Browser LOG     [DashboardClient] User active, loading dashboard data...
+[00:02:42.763] Browser LOG     [DashboardClient] Loading data...
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:42.763] Browser LOG     [AuthContext] Profile fetch result: Success
+[00:02:42.763] Browser LOG     [AuthContext] Initialization complete. Loading -> false
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:42.763] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [DashboardClient] User active, loading dashboard data...
+[00:02:42.764] Browser LOG     [DashboardClient] Loading data...
+[00:02:42.764] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
+[00:02:42.764] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
+[00:02:42.764] Browser LOG     [DashboardClient] Loading data...
+[00:02:42.764] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
+[00:02:42.764] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:42.764] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
+[00:02:42.764] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:42.764] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:02:42.764] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:42.764] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
+[00:02:42.764] Browser LOG     [LicenseWarning] Days Remaining: 314
+[00:02:42.764] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:42.764] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:02:42.764] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
+[00:02:42.764] Browser LOG     [LicenseWarning] Days Remaining: 314
+[00:02:45.747] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:45.747] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:46.421] Browser WARN    [DashboardClient] Data loading timed out (8s). Force-clearing loading state.
+[00:02:47.081] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
+[00:02:47.081] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:47.081] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:47.081] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:47.081] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
+[00:02:47.081] Browser LOG     [DashboardClient] Loading data...
+[00:02:47.081] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:47.081] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:47.081] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:02:47.081] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:02:47.081] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:47.081] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:47.081] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
+[00:02:47.081] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:47.081] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:03:02.828] Browser LOG     [AuthContext] Initializing Auth...
+[00:03:02.828] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
+[00:03:02.828] Browser LOG     [AuthContext] Fetching initial session...
+[00:03:02.828] Browser LOG     [AuthContext] Session confirmed for: alexander@test.de ID: 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:03:02.828] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
+[00:03:02.828] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:03:02.828] Browser LOG     [AuthContext] Profile fetch result: Success
+[00:03:02.828] Browser LOG     [AuthContext] Initialization complete. Loading -> false
+[00:03:02.828] Browser LOG     Fetching Con-Boards for Parent ID: 2e64a4db-b361-4b15-9a39-718b19a41d54 Tab: 0 Open: false
+[00:03:02.828] Browser LOG     🔌 Subscribing to Realtime for Board: 2e64a4db-b361-4b15-9a39-718b19a41d54
+[00:03:02.828] Browser LOG     🔌 Unsubscribing Realtime...
+[00:03:02.828] Browser LOG     Fetching Con-Boards for Parent ID: 2e64a4db-b361-4b15-9a39-718b19a41d54 Tab: 0 Open: false
+[00:03:02.828] Browser LOG     🔌 Subscribing to Realtime for Board: 2e64a4db-b361-4b15-9a39-718b19a41d54
+[00:03:02.828] Browser LOG     ✅ Realtime Subscribed!
+[00:03:02.828] Browser LOG     [KanbanPermissions] User: alexander@test.de, Global: admin, IsGlobalAdmin: true
+[00:03:02.828] Browser LOG     [KanbanPermissions] User: alexander@test.de, Global: admin, IsGlobalAdmin: true
+[00:03:02.828] Browser LOG     Fetching Con-Boards for Parent ID: 2e64a4db-b361-4b15-9a39-718b19a41d54 Tab: 0 Open: false
+[00:03:02.828] Browser LOG     Fetching Con-Boards for Parent ID: 2e64a4db-b361-4b15-9a39-718b19a41d54 Tab: 0 Open: false
+[00:03:06.486] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
+[00:03:06.486] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:03:06.486] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:03:06.651] Browser LOG     [OriginalKanbanBoard] Visibility refresh triggered via AuthContext
+[00:03:21.337] Browser ERROR   Fetch profile exception: {}
+[00:03:21.337] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
+[00:04:18.271] Browser LOG     [KanbanPermissions] User: alexander@test.de, Global: admin, IsGlobalAdmin: true
+[00:04:18.271] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
+[00:04:18.271] Browser LOG     Fetching Con-Boards for Parent ID: 2e64a4db-b361-4b15-9a39-718b19a41d54 Tab: 0 Open: false
+[00:04:18.549] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:04:18.549] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
+[00:04:18.549] Browser LOG     [KanbanPermissions] User: alexander@test.de, Global: admin, IsGlobalAdmin: true
+[00:04:19.256] Browser LOG     ✅ Realtime Subscribed!

@@ -1,0 +1,1 @@
+self.__REACT_LOADABLE_MANIFEST="{\"lib/license.ts -> crypto\":{\"id\":\"lib/license.ts -> crypto\",\"files\":[\"static/chunks/_app-pages-browser_node_modules_next_dist_compiled_crypto-browserify_index_js.js\"]}}"

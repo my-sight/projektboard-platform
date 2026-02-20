@@ -1,0 +1,433 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+import {
+  Badge,
+  Box,
+  Button,
+  Card,
+  CardActions,
+  CardContent,
+  Container,
+  Grid,
+  IconButton,
+  Typography,
+} from '@mui/material';
+import OriginalKanbanBoard, { OriginalKanbanBoardHandle } from '@/components/kanban/OriginalKanbanBoard';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+
+// ✅ Interface für Board-Daten definieren
+interface BoardInfo {
+  id: string;
+  name: string;
+  description: string;
+  cardCount: number;
+  lastUpdated: string;
+}
+
+export default function HomePage() {
+  const [selectedBoard, setSelectedBoard] = useState<string | null>(null);
+  const boardRef = useRef<OriginalKanbanBoardHandle>(null);
+  const [archivedCount, setArchivedCount] = useState<number | null>(null);
+  const [kpiCount, setKpiCount] = useState(0);
+
+  useEffect(() => {
+    setArchivedCount(null);
+    setKpiCount(0);
+  }, [selectedBoard]);
+
+  const [favoriteBoardIds, setFavoriteBoardIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('favoriteBoardIds');
+    if (stored) {
+      try {
+        setFavoriteBoardIds(JSON.parse(stored));
+      } catch (e) {
+        console.error('Failed to parse favorites', e);
+      }
+    }
+  }, []);
+
+  const toggleFavorite = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavoriteBoardIds(prev => {
+      const newFavorites = prev.includes(id)
+        ? prev.filter(fid => fid !== id)
+        : [...prev, id];
+      localStorage.setItem('favoriteBoardIds', JSON.stringify(newFavorites));
+      return newFavorites;
+    });
+  };
+
+  // ✅ Explizit typisiertes Array
+  const boards: BoardInfo[] = [
+    {
+      id: 'werkzeug-board',
+      name: 'Werkzeug-Multiprojektboard',
+      description: 'Hauptboard für alle Werkzeugprojekte',
+      cardCount: 15,
+      lastUpdated: '2024-01-25'
+    },
+    {
+      id: 'prototyp-board',
+      name: 'Prototyping Board',
+      description: 'Board für Prototyp-Entwicklung',
+      cardCount: 8,
+      lastUpdated: '2024-01-24'
+    },
+    {
+      id: 'produktion-board',
+      name: 'Produktions-Board',
+      description: 'Board für Produktionsplanung',
+      cardCount: 23,
+      lastUpdated: '2024-01-23'
+    }
+  ];
+
+  const sortedBoards = [...boards].sort((a, b) => {
+    const aFav = favoriteBoardIds.includes(a.id);
+    const bFav = favoriteBoardIds.includes(b.id);
+    if (aFav && !bFav) return -1;
+    if (!aFav && bFav) return 1;
+    return 0;
+  });
+
+  if (selectedBoard) {
+    return (
+      <Box sx={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        {/* Header mit Zurück-Button */}
+        <Box sx={{
+          p: 2,
+          borderBottom: '1px solid var(--line)',
+          backgroundColor: 'var(--panel)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 2
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={() => setSelectedBoard(null)}
+              sx={{ minWidth: 'auto' }}
+            >
+              ← Zurück
+            </Button>
+            {/* ✅ Typisiertes Find */}
+            <Typography variant="h6">
+              {boards.find((b: BoardInfo) => b.id === selectedBoard)?.name}
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            <Badge badgeContent={kpiCount} color="error">
+              <IconButton
+                onClick={() => boardRef.current?.openKpis()}
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'var(--line)',
+                  width: 36,
+                  height: 36,
+                  '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' }
+                }}
+                title="KPI-Übersicht"
+              >
+                <AssessmentIcon fontSize="small" />
+              </IconButton>
+            </Badge>
+            <Button
+              variant="outlined"
+              onClick={() => boardRef.current?.openArchive()}
+              startIcon={<span>🗃️</span>}
+            >
+              Archiv{archivedCount !== null ? ` (${archivedCount})` : ' (?)'}
+            </Button>
+            <IconButton
+              onClick={() => boardRef.current?.openSettings()}
+              sx={{
+                border: '1px solid',
+                borderColor: 'var(--line)',
+                width: 36,
+                height: 36,
+                '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' }
+              }}
+              title="Board-Einstellungen"
+            >
+              ⚙️
+            </IconButton>
+          </Box>
+        </Box>
+
+        {/* Board */}
+        <Box sx={{ flex: 1 }}>
+          <OriginalKanbanBoard
+            ref={boardRef}
+            boardId={selectedBoard}
+            onArchiveCountChange={(count) => setArchivedCount(count)}
+            onKpiCountChange={(count) => setKpiCount(count)}
+          />
+        </Box>
+      </Box>
+    );
+  }
+
+  return (
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      {/* Header */}
+      <Box sx={{ mb: 4, textAlign: 'center' }}>
+        <Typography variant="h3" component="h1" sx={{ mb: 2, fontWeight: 700 }}>
+          Kanban Board System
+        </Typography>
+        <Typography variant="h6" sx={{ color: 'var(--muted)', mb: 4 }}>
+          Verwalte deine Projekte mit modernen Kanban-Boards
+        </Typography>
+      </Box>
+
+      {/* Board Auswahl */}
+      <Grid container spacing={3}>
+        {/* ✅ Typisiertes Map */}
+        {sortedBoards.map((board: BoardInfo) => {
+          const isFavorite = favoriteBoardIds.includes(board.id);
+          return (
+            <Grid item xs={12} md={6} lg={4} key={board.id}>
+              <Card
+                sx={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  backgroundColor: 'var(--panel)',
+                  border: '1px solid var(--line)',
+                  transition: 'all 0.2s ease',
+                  position: 'relative',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 8px 25px rgba(0,0,0,0.15)'
+                  }
+                }}
+              >
+                <IconButton
+                  onClick={(e) => toggleFavorite(board.id, e)}
+                  sx={{
+                    position: 'absolute',
+                    top: 8,
+                    right: 8,
+                    color: isFavorite ? '#fbbf24' : 'var(--muted)',
+                    '&:hover': {
+                      color: isFavorite ? '#f59e0b' : 'var(--ink)',
+                      backgroundColor: 'rgba(251, 191, 36, 0.1)'
+                    }
+                  }}
+                >
+                  {isFavorite ? '★' : '☆'}
+                </IconButton>
+                <CardContent sx={{ flex: 1 }}>
+                  <Typography variant="h6" component="h2" sx={{ mb: 1, fontWeight: 600, pr: 4 }}>
+                    {board.name}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'var(--muted)', mb: 2 }}>
+                    {board.description}
+                  </Typography>
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
+                      {board.cardCount} Karten
+                    </Typography>
+                    <Typography variant="caption" sx={{ color: 'var(--muted)' }}>
+                      {board.lastUpdated}
+                    </Typography>
+                  </Box>
+                </CardContent>
+
+                <CardActions sx={{ p: 2, pt: 0 }}>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    onClick={() => setSelectedBoard(board.id)}
+                    sx={{
+                      backgroundColor: 'var(--accent)',
+                      '&:hover': {
+                        backgroundColor: 'var(--accent)',
+                        filter: 'brightness(1.1)'
+                      }
+                    }}
+                  >
+                    Board öffnen
+                  </Button>
+                </CardActions>
+              </Card>
+            </Grid>
+          );
+        })}
+
+        {/* Neues Board erstellen */}
+        <Grid item xs={12} md={6} lg={4}>
+          <Card
+            sx={{
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: 'var(--panel)',
+              border: '2px dashed var(--line)',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              '&:hover': {
+                borderColor: 'var(--accent)',
+                backgroundColor: 'var(--chip)'
+              }
+            }}
+          >
+            <CardContent sx={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center'
+            }}>
+              <Typography variant="h1" sx={{ fontSize: '3rem', mb: 2, opacity: 0.3 }}>
+                +
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1, color: 'var(--muted)' }}>
+                Neues Board erstellen
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
+                Erstelle ein neues Kanban-Board für dein Projekt
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Features Section */}
+      <Box sx={{ mt: 6, textAlign: 'center' }}>
+        <Typography variant="h4" sx={{ mb: 3, fontWeight: 600 }}>
+          Features
+        </Typography>
+
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={4}>
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>
+                🎯
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Drag & Drop
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
+                Intuitive Bedienung durch Drag & Drop zwischen Spalten und Swimlanes
+              </Typography>
+            </Box>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>
+                📊
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Flexible Ansichten
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
+                Spalten, Swimlanes nach Verantwortlichen oder Kategorien
+              </Typography>
+            </Box>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>
+                ⚡
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Ampel-System
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
+                Statusverfolgung mit Ampelfarben und LK/SK Eskalationen
+              </Typography>
+            </Box>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>
+                📝
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Checklisten
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
+                Phasenspezifische Checklisten für strukturierte Abarbeitung
+              </Typography>
+            </Box>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>
+                📈
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Statushistorie
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
+                Detaillierte Verfolgung von Qualität, Kosten und Terminen
+              </Typography>
+            </Box>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <Box sx={{ p: 3 }}>
+              <Typography variant="h2" sx={{ fontSize: '2rem', mb: 2 }}>
+                🎨
+              </Typography>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                Responsive Design
+              </Typography>
+              <Typography variant="body2" sx={{ color: 'var(--muted)' }}>
+                Optimiert für Desktop und Mobile mit Dark/Light Mode
+              </Typography>
+            </Box>
+          </Grid>
+        </Grid>
+      </Box>
+
+      {/* CSS Variables */}
+      <style jsx global>{`
+        :root {
+          --bg: #0f1117;
+          --panel: #141a22;
+          --ink: #e6e8ee;
+          --muted: #9aa3b2;
+          --accent: #4aa3ff;
+          --line: #243042;
+          --chip: #1a2230;
+          --alert: #5a1b1b;
+          --alertBorder: #a33;
+          --ok: #19c37d;
+          --colw: 320px;
+          --rowheadw: 200px;
+        }
+        
+        @media (prefers-color-scheme: light) {
+          :root {
+            --bg: #f5f7fb;
+            --panel: #ffffff;
+            --ink: #0b1220;
+            --muted: #566175;
+            --accent: #2458ff;
+            --line: #e6eaf2;
+            --chip: #eef3ff;
+            --alert: #ffe8e8;
+            --alertBorder: #ff6b6b;
+            --ok: #0ea667;
+          }
+        }
+        
+        body {
+          background-color: var(--bg);
+          color: var(--ink);
+        }
+      `}</style>
+    </Container>
+  );
+}
