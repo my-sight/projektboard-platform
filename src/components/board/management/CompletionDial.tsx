@@ -18,7 +18,16 @@ export function CompletionDial({
 
     return (
         <Box
+            role="button"
+            tabIndex={disabled ? -1 : 0}
+            aria-disabled={disabled}
             onClick={disabled ? undefined : onClick}
+            onKeyDown={(e) => {
+                if (!disabled && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    onClick();
+                }
+            }}
             sx={{
                 width: 40,
                 height: 40,

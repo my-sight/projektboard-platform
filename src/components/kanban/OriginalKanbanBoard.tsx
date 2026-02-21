@@ -87,7 +87,9 @@ const OriginalKanbanBoard = forwardRef<OriginalKanbanBoardHandleInterface, Origi
     const [archivedCards, setArchivedCards] = useState<ProjectBoardCard[]>([]);
 
     const isSuperForce = user?.email ? isSuperuserEmail(user.email) : false;
-    const { permissions: rawPermissions, canModifyBoard, resolvePermissions } = useKanbanPermissions(boardId, user, profile);
+    const { permissions: rawPermissions, canModifyBoard: rawCanModifyBoard, resolvePermissions } = useKanbanPermissions(boardId, user, profile);
+
+    const canModifyBoard = isSuperForce || rawCanModifyBoard;
 
     const permissions = isSuperForce
       ? { canEditContent: true, canManageSettings: true, canManageAttendance: true }

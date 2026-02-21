@@ -40,7 +40,17 @@ docker compose up -d app
 
 # 4. Self-Healing: Ensure License Exists
 echo "Verifying License..."
-LICENSE_TOKEN="${LICENSE_TOKEN:-eyJleHBpcnkiOiIyMDM1LTEyLTMxIiwiY3VzdG9tZXIiOiJNeVNpZ2h0IFBNTyIsIm1heFVzZXJzIjo1MCwiY3JlYXRlZCI6IjIwMjYtMDEtMTBUMjE6MDM6MzEuMDI1WiJ9.THCYth/brFfD2NJXLHJQZTCe3H00YlZl5KlXYvkzLqk/j8V1Mu0fyzy9IfM1zXpTZELr/WYABjiOYBE2DZJQDg==}"
-docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO NOTHING;" >/dev/null 2>&1
+
+# Read LICENSE_TOKEN from environment. Do not hardcode valid/real-looking JWTs here.
+if [ -z "${LICENSE_TOKEN}" ]; then
+  echo "❌ ERROR: LICENSE_TOKEN environment variable is not set."
+  echo "Please set it before running this script."
+  exit 1
+fi
+
+# Fallback safely handled here via variables, without hardcoding anything real
+SAFE_LICENSE_TOKEN="${LICENSE_TOKEN:-REPLACE_ME_LICENSE_TOKEN}"
+
+docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$SAFE_LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO NOTHING;" >/dev/null 2>&1
 
 echo "✅ Update Complete!"

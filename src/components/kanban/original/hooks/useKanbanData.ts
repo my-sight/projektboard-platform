@@ -258,7 +258,7 @@ export function useKanbanData(
             return true;
         } catch (error) {
             console.error('❌ Fehler beim Laden der Karten:', error);
-            setRows([]);
+            // Do NOT clear rows here on error, it causes UI flashing when tabs wake up
             return false;
         }
     }, [boardId, convertDbToCard, inferStage, cols, boardMeta]);

@@ -17,12 +17,14 @@ CREATE TABLE IF NOT EXISTS _deployment_migrations (
 );" > /dev/null 2>&1
 
 # 2. Iterate and Apply
-# Using sort to ensure order (timestamps in filenames)
-for file in $(ls $MIGRATIONS_DIR/*.sql | sort); do
+# Using find and sort -z to safely handle spaces and newlines in filenames
+while IFS= read -r -d '' file; do
     BASENAME=$(basename "$file")
     
-    # Check if applied
-    IS_APPLIED=$(docker exec -i $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -tAc "SELECT 1 FROM _deployment_migrations WHERE filename = '$BASENAME';")
+    # Check if applied safely using psql variables to prevent SQL injection
+    IS_APPLIED=$(docker exec -i $DB_CONTAINER psql -U $DB_USER -d $DB_NAME \
+        --set filename="$BASENAME" \
+        -tAc "SELECT 1 FROM _deployment_migrations WHERE filename = :'filename';")
     
     if [ "$IS_APPLIED" != "1" ]; then
         echo "Applying: $BASENAME"
@@ -30,8 +32,10 @@ for file in $(ls $MIGRATIONS_DIR/*.sql | sort); do
         # Run SQL file
         # We cat the file and pipe it into the docker container psql command
         if cat "$file" | docker exec -i $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -q; then
-             # Mark as applied
-             docker exec -i $DB_CONTAINER psql -U $DB_USER -d $DB_NAME -c "INSERT INTO _deployment_migrations (filename) VALUES ('$BASENAME');" > /dev/null
+             # Mark as applied safely using psql variables
+             docker exec -i $DB_CONTAINER psql -U $DB_USER -d $DB_NAME \
+                 --set filename="$BASENAME" \
+                 -c "INSERT INTO _deployment_migrations (filename) VALUES (:'filename');" > /dev/null
              echo "✅ Success"
         else
              echo "❌ Failed to apply $BASENAME. Stopping updates."
@@ -40,7 +44,7 @@ for file in $(ls $MIGRATIONS_DIR/*.sql | sort); do
     else
         echo "Skipping: $BASENAME (Already applied)"
     fi
-done
+done < <(find "$MIGRATIONS_DIR" -name '*.sql' -print0 | sort -z)
 
 # 3. Reload PostgREST Schema Cache
 echo "Refreshing API Schema Cache..."

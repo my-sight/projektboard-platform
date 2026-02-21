@@ -53,9 +53,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const fetchProfile = useCallback(async (userId: string) => {
     // Add a safety timeout for the profile fetch
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Profile fetch timeout')), 15000)
-    );
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('Profile fetch timeout')), 15000);
+    });
 
     try {
       const fetchPromise = supabase
@@ -79,6 +80,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     } catch (e) {
       console.error('Fetch profile exception:', e);
       return null;
+    } finally {
+      clearTimeout(timeoutId!);
     }
   }, []);
 
@@ -95,7 +98,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const lastReload = lastReloadStr ? parseInt(lastReloadStr, 10) : 0;
         const now = Date.now();
 
-        if (now - lastReload > 1000) {
+        // Only trigger a background refresh if it's been at least 5 minutes since the last one.
+        // This prevents aggressive reloading when just switching desktops or tabs rapidly.
+        if (now - lastReload > 300000) {
           console.log('[AuthContext] Tab became visible/focused, triggering silent background refresh...');
           sessionStorage.setItem('last_visibility_reload', now.toString());
           setVisibilityCounter(prev => prev + 1);

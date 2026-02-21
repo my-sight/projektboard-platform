@@ -59,10 +59,10 @@ mkdir -p ./volumes/storage/stub/avatars
 mkdir -p ./volumes/storage/stub/kanban-thumbnails
 mkdir -p ./volumes/storage/stub/kanban-thumbnails
 
-# Nuclear Permissions for Storage (avoid "Operation not permitted")
-# Use sudo to overcome root ownership by Docker
-sudo chmod -R 777 ./volumes/storage
-
+# Restrictive Permissions for Storage (avoid "Operation not permitted" securely)
+# We map the ownership to UID 1000 (often used by node/app containers)
+sudo chown -R 1000:1000 ./volumes/storage
+sudo chmod -R 755 ./volumes/storage
 # General permissions
 sudo find ./volumes -maxdepth 2 -user $(whoami) -exec chmod 755 {} + 2>/dev/null || true
 sudo chmod 644 ./volumes/api/kong.yml 2>/dev/null || true
@@ -217,14 +217,16 @@ docker exec -i supabase-db psql -U postgres -d postgres <<EOF
   GRANT USAGE ON SCHEMA extensions TO anon, authenticated, authenticator;
   GRANT USAGE ON SCHEMA public, auth TO authenticator;
   
-  -- NUCLEAR PATCH for Browser Access
+  -- SANE PATCH for Browser Access with RLS intact
   GRANT USAGE ON SCHEMA public TO anon, authenticated;
-  GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-  GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
-  GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
-  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+  GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+  GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
+  GRANT ALL ON ALL ROUTINES IN SCHEMA public TO service_role;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role;
   
-  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+  -- Grant minimal selection/modification rights to authenticated users, but DO NOT bypass RLS
+  GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon, authenticated;
   
   -- Create Storage Buckets
   INSERT INTO storage.buckets (id, name, public) VALUES ('branding', 'branding', true) ON CONFLICT (name) DO NOTHING;
@@ -293,9 +295,14 @@ docker exec supabase-db psql -U postgres -d postgres -c "
   ON CONFLICT (id) DO UPDATE SET role = 'admin', is_active = true;"
 
 # Final Verification
-# Use LICENSE_TOKEN from env or fallback to Dev License
-LICENSE_TOKEN="${LICENSE_TOKEN:-eyJleHBpcnkiOiIyMDM1LTEyLTMxIiwiY3VzdG9tZXIiOiJNeVNpZ2h0IFBNTyIsIm1heFVzZXJzIjo1MCwiY3JlYXRlZCI6IjIwMjYtMDEtMTBUMjE6MDM6MzEuMDI1WiJ9.THCYth/brFfD2NJXLHJQZTCe3H00YlZl5KlXYvkzLqk/j8V1Mu0fyzy9IfM1zXpTZELr/WYABjiOYBE2DZJQDg==}"
-docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
+# Use LICENSE_TOKEN from env or fallback safely handled here via variables
+if [ -z "${LICENSE_TOKEN}" ]; then
+  echo "⚠️ WARNING: LICENSE_TOKEN environment variable is not set."
+  echo "The system will be installed with a placeholder license token."
+fi
+SAFE_LICENSE_TOKEN="${LICENSE_TOKEN:-REPLACE_ME_LICENSE_TOKEN}"
+
+docker exec supabase-db psql -U postgres -d postgres -c "INSERT INTO public.system_settings (key, value) VALUES ('license_key', '{\"token\": \"$SAFE_LICENSE_TOKEN\"}'::jsonb) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;"
 
 echo -e "${GREEN}=== Installation Complete ===${NC}"
 echo "Check: ${SITE_URL_VAL}"

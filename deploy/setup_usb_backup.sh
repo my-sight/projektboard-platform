@@ -58,9 +58,12 @@ fi
 
 # 5. Connect to App (.env)
 echo -e "${YELLOW}Updating .env configuration...${NC}"
-grep -v "PROJECT_BACKUP_PATH" .env > .env.tmp
-echo "PROJECT_BACKUP_PATH=$MOUNT_POINT" >> .env.tmp
-mv .env.tmp .env
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/.env"
+touch "$ENV_FILE"
+grep -v "PROJECT_BACKUP_PATH" "$ENV_FILE" > "$ENV_FILE.tmp" || true
+echo "PROJECT_BACKUP_PATH=$MOUNT_POINT" >> "$ENV_FILE.tmp"
+mv "$ENV_FILE.tmp" "$ENV_FILE"
 
 echo -e "${GREEN}Success! Backups will now be written to: $MOUNT_POINT${NC}"
 echo "You can test it by running: sudo ./backup-appliance.sh"

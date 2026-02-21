@@ -1,72 +1,32 @@
 {
   "node": {
-    "00d58d69251c380a528cda55e1f6794e8679e0eb46": {
+    "0063f292f8f3f2c4b14356c512bcf2652d48d78d3c": {
       "workers": {
         "app/page": {
-          "moduleId": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%2200d58d69251c380a528cda55e1f6794e8679e0eb46%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%224057e02ccb0a1dca91d10b99be7c722f4341262eed%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=!",
-          "async": false
-        },
-        "app/admin/page": {
-          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%2200d58d69251c380a528cda55e1f6794e8679e0eb46%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%224057e02ccb0a1dca91d10b99be7c722f4341262eed%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=true!",
-          "async": false
-        },
-        "app/api/admin/users/route": {
-          "moduleId": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%2200d58d69251c380a528cda55e1f6794e8679e0eb46%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%224057e02ccb0a1dca91d10b99be7c722f4341262eed%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=!",
-          "async": false
-        },
-        "app/api/admin/system-status/route": {
-          "moduleId": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%2200d58d69251c380a528cda55e1f6794e8679e0eb46%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%224057e02ccb0a1dca91d10b99be7c722f4341262eed%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=!",
-          "async": false
-        },
-        "app/license/page": {
-          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%2200d58d69251c380a528cda55e1f6794e8679e0eb46%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%224057e02ccb0a1dca91d10b99be7c722f4341262eed%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=true!",
+          "moduleId": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%220063f292f8f3f2c4b14356c512bcf2652d48d78d3c%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%22402f7ed73c0c20dd5521651441af75c17c523417cb%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=!",
           "async": false
         }
       },
       "layer": {
-        "app/page": "rsc",
-        "app/admin/page": "action-browser",
-        "app/api/admin/users/route": "rsc",
-        "app/api/admin/system-status/route": "rsc",
-        "app/license/page": "action-browser"
+        "app/page": "rsc"
       },
       "filename": "app/actions/license.ts",
       "exportedName": "checkLicenseServerAction"
     },
-    "4057e02ccb0a1dca91d10b99be7c722f4341262eed": {
+    "402f7ed73c0c20dd5521651441af75c17c523417cb": {
       "workers": {
         "app/page": {
-          "moduleId": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%2200d58d69251c380a528cda55e1f6794e8679e0eb46%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%224057e02ccb0a1dca91d10b99be7c722f4341262eed%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=!",
-          "async": false
-        },
-        "app/admin/page": {
-          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%2200d58d69251c380a528cda55e1f6794e8679e0eb46%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%224057e02ccb0a1dca91d10b99be7c722f4341262eed%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=true!",
-          "async": false
-        },
-        "app/api/admin/users/route": {
-          "moduleId": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%2200d58d69251c380a528cda55e1f6794e8679e0eb46%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%224057e02ccb0a1dca91d10b99be7c722f4341262eed%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=!",
-          "async": false
-        },
-        "app/api/admin/system-status/route": {
-          "moduleId": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%2200d58d69251c380a528cda55e1f6794e8679e0eb46%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%224057e02ccb0a1dca91d10b99be7c722f4341262eed%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=!",
-          "async": false
-        },
-        "app/license/page": {
-          "moduleId": "(action-browser)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%2200d58d69251c380a528cda55e1f6794e8679e0eb46%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%224057e02ccb0a1dca91d10b99be7c722f4341262eed%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=true!",
+          "moduleId": "(rsc)/./node_modules/next/dist/build/webpack/loaders/next-flight-action-entry-loader.js?actions=%5B%5B%22%2FUsers%2Fmichael%2FDocuments%2Fmysight%20pmo%2Fprojektboard%20platform%2Fsrc%2Fapp%2Factions%2Flicense.ts%22%2C%5B%7B%22id%22%3A%220063f292f8f3f2c4b14356c512bcf2652d48d78d3c%22%2C%22exportedName%22%3A%22checkLicenseServerAction%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%2C%7B%22id%22%3A%22402f7ed73c0c20dd5521651441af75c17c523417cb%22%2C%22exportedName%22%3A%22submitLicenseKey%22%2C%22filename%22%3A%22app%2Factions%2Flicense.ts%22%7D%5D%5D%5D&__client_imported__=!",
           "async": false
         }
       },
       "layer": {
-        "app/page": "rsc",
-        "app/admin/page": "action-browser",
-        "app/api/admin/users/route": "rsc",
-        "app/api/admin/system-status/route": "rsc",
-        "app/license/page": "action-browser"
+        "app/page": "rsc"
       },
       "filename": "app/actions/license.ts",
       "exportedName": "submitLicenseKey"
     }
   },
   "edge": {},
-  "encryptionKey": "E1Xe84iX6ZxNYJa8ZXw5h42SI6oZhj8xjo3Q37LcJeo="
+  "encryptionKey": "CGdJOObgddATQanfKW0ReW+0jev3ASrCx0CI5IdWA64="
 }

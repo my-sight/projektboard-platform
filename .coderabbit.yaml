@@ -1,0 +1,14 @@
+reviews:
+  exclude_patterns:
+    - "!*.config.mjs"
+    # Die vorherige, viel zu breite Ausnahme "!*.json" wurde entfernt.
+    # Wichtige JSON-Dateien wie package.json oder tsconfig.json werden jetzt automatisch reviewt.
+    # Stattdessen werden hier gezielt unkritische generierte Dateien ausgeschlossen:
+    - "package-lock.json"
+    - "yarn.lock"
+    - "pnpm-lock.yaml"
+    - "coverage/**"
+    - "__snapshots__/**"
+    - ".next/**"
+    - "build/**"
+    - "dist/**"

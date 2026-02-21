@@ -22,14 +22,16 @@ export default function AdminPage() {
   const [isSuperUser, setIsSuperUser] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
+    if (authLoading) return;
+
     if (user) {
       setIsSuperUser(isSuperuserEmail(user.email));
     }
     setLoading(false);
-  }, [user]);
+  }, [user, authLoading]);
 
   if (loading) return <Box sx={{ p: 4, textAlign: 'center' }}><CircularProgress /></Box>;
 

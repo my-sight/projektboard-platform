@@ -1,5 +1,5 @@
 #!/bin/bash
-
+set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="$SCRIPT_DIR/backups"

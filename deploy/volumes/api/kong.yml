@@ -51,7 +51,10 @@ plugins:
 - name: cors
   config:
     origins:
-    - "*"
+    - "http://localhost:3000"
+    - "http://localhost:8080"
+    - "https://localhost"
+    # An environment processor can append the PROD domain here during install.sh
     methods:
     - GET
     - POST
@@ -61,8 +64,12 @@ plugins:
     - OPTIONS
     - HEAD
     headers:
-    - "*"
+    - Authorization
+    - Content-Type
+    - apikey
+    - x-client-info
     exposed_headers:
-    - "*"
+    - Authorization
+    - Content-Type
     max_age: 3600
     credentials: false

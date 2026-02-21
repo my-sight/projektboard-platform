@@ -147,7 +147,7 @@ CREATE OR REPLACE FUNCTION "public"."is_active_user"("uid" "uuid") RETURNS boole
     select 1
     from public.profiles p
     where p.id = uid
-      and p.status = 'active'
+      and p.is_active = true
   );
 $$;
 
@@ -159,7 +159,7 @@ CREATE OR REPLACE FUNCTION "public"."is_admin"() RETURNS boolean
     LANGUAGE "sql" SECURITY DEFINER
     SET "search_path" TO 'public'
     AS $$
-  select system_role = 'admin'
+  select role = 'admin'
   from public.profiles
   where id = auth.uid();
 $$;
@@ -720,10 +720,6 @@ CREATE POLICY "Allow anon to update license_key" ON "public"."system_settings" U
 
 
 
-CREATE POLICY "Allow read access to system_settings" ON "public"."system_settings" FOR SELECT USING (true);
-
-
-
 CREATE POLICY "Authenticated users can read board cards" ON "public"."kanban_cards" FOR SELECT USING (("auth"."role"() = 'authenticated'::"text"));
 
 
@@ -761,10 +757,6 @@ CREATE POLICY "Board owners manage board settings" ON "public"."kanban_board_set
 
 
 CREATE POLICY "Enable insert for authenticated users" ON "public"."system_settings" FOR INSERT TO "authenticated" WITH CHECK (true);
-
-
-
-CREATE POLICY "Enable read access for all users" ON "public"."system_settings" FOR SELECT USING (true);
 
 
 
@@ -1435,9 +1427,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TAB
 -- RLS for system_settings (License Check)
 ALTER TABLE "public"."system_settings" ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Allow public read access to system_settings" 
+CREATE POLICY "Allow authenticated read access to system_settings" 
 ON "public"."system_settings" 
 FOR SELECT 
+TO authenticated
 USING (true);
 
 CREATE POLICY "Allow authenticated update to system_settings"

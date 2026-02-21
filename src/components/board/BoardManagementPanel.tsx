@@ -375,15 +375,64 @@ export default function BoardManagementPanel({ boardId, canEdit, memberCanSee }:
         historyResult,
         localStatusesResult
       ] = await Promise.all([
-        (async () => (await supabase.from('departments').select('*')).data || [])(),
-        (async () => (await supabase.from('board_members').select('*').eq('board_id', boardId)).data || [])(),
-        (async () => (await supabase.from('board_top_topics').select('*').eq('board_id', boardId)).data || [])(),
-        (async () => (await supabase.from('board_escalations').select('*').eq('board_id', boardId)).data || [])(),
+        (async () => {
+          const { data, error } = await supabase.from('departments').select('*');
+          if (error) {
+            console.error('Error fetching departments', { boardId }, error);
+            throw error;
+          }
+          return data || [];
+        })(),
+        (async () => {
+          const { data, error } = await supabase.from('board_members').select('*').eq('board_id', boardId);
+          if (error) {
+            console.error('Error fetching board_members', { boardId }, error);
+            throw error;
+          }
+          return data || [];
+        })(),
+        (async () => {
+          const { data, error } = await supabase.from('board_top_topics').select('*').eq('board_id', boardId);
+          if (error) {
+            console.error('Error fetching board_top_topics', { boardId }, error);
+            throw error;
+          }
+          return data || [];
+        })(),
+        (async () => {
+          const { data, error } = await supabase.from('board_escalations').select('*').eq('board_id', boardId);
+          if (error) {
+            console.error('Error fetching board_escalations', { boardId }, error);
+            throw error;
+          }
+          return data || [];
+        })(),
         // Cards from TARGET (Parent)
-        (async () => (await supabase.from('kanban_cards').select('*').eq('board_id', targetBoardId)).data || [])(),
-        (async () => (await supabase.from('board_escalation_history').select('*').eq('board_id', boardId)).data || [])(),
+        (async () => {
+          const { data, error } = await supabase.from('kanban_cards').select('*').eq('board_id', targetBoardId);
+          if (error) {
+            console.error('Error fetching kanban_cards', { boardId, targetBoardId }, error);
+            throw error;
+          }
+          return data || [];
+        })(),
+        (async () => {
+          const { data, error } = await supabase.from('board_escalation_history').select('*').eq('board_id', boardId);
+          if (error) {
+            console.error('Error fetching board_escalation_history', { boardId }, error);
+            throw error;
+          }
+          return data || [];
+        })(),
         // Local Statuses (for Con-Board overrides)
-        (async () => (await supabase.from('board_card_statuses').select('*').eq('board_id', boardId)).data || [])(),
+        (async () => {
+          const { data, error } = await supabase.from('board_card_statuses').select('*').eq('board_id', boardId);
+          if (error) {
+            console.error('Error fetching board_card_statuses', { boardId }, error);
+            throw error;
+          }
+          return data || [];
+        })(),
       ]);
 
       // Client-side sorting

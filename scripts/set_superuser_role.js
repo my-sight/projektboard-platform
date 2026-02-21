@@ -21,8 +21,14 @@ async function setSuperuserRole() {
     console.log(`Updating role for ${email}...`);
 
     // Get User ID (efficiently via single query if possible, or list)
-    const { data: { users }, error: userError } = await supabase.auth.admin.listUsers();
+    const { data, error: userError } = await supabase.auth.admin.listUsers();
 
+    if (userError) {
+        console.error('Error fetching users:', userError.message);
+        return;
+    }
+
+    const users = data?.users ?? [];
     const user = users.find(u => u.email === email);
     if (!user) {
         console.error('User not found.');

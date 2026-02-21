@@ -703,33 +703,41 @@ chmod +x *.sh
         }
 
         function moveStep(delta) {
+            const newStep = Math.min(Math.max(currentStep + delta, 1), totalSteps);
+            if (newStep === currentStep) return;
+
             document.getElementById('step' + currentStep).classList.remove('active');
-            currentStep += delta;
+            currentStep = newStep;
             document.getElementById('step' + currentStep).classList.add('active');
 
             document.getElementById('prevBtn').disabled = currentStep === 1;
             document.getElementById('nextBtn').innerText = currentStep === totalSteps ? 'Fertig' : 'Weiter';
-            if (currentStep > totalSteps) {
-                // Logic for finishing wizard if needed
-                currentStep = totalSteps;
-                document.getElementById('step' + currentStep).classList.add('active');
-            }
 
             updateProgress();
         }
 
         function updateCommands() {
-            const ip = document.getElementById('nucIp').value || 'IP-ADRESSE';
-            const email = document.getElementById('adminEmail').value || 'admin@firma.de';
+            const ip = document.getElementById('nucIp')?.value || 'IP-ADRESSE';
+            const email = document.getElementById('adminEmail')?.value || 'admin@firma.de';
 
-            document.getElementById('ipDisplay').innerText = ip;
-            document.getElementById('appLink').href = `http://${ip}:3000`;
-            document.getElementById('appLink').innerText = `http://${ip}:3000`;
+            const ipDisplay = document.getElementById('ipDisplay');
+            if (ipDisplay) ipDisplay.innerText = ip;
+
+            const appLink = document.getElementById('appLink');
+            if (appLink) {
+                appLink.href = `http://${ip}:3000`;
+                appLink.innerText = `http://${ip}:3000`;
+            }
 
             // PDF fields
-            document.getElementById('pdfIp').innerText = ip;
-            document.getElementById('pdfEmail').innerText = email;
-            document.getElementById('pdfDate').innerText = new Date().toLocaleString();
+            const pdfIp = document.getElementById('pdfIp');
+            if (pdfIp) pdfIp.innerText = ip;
+
+            const pdfEmail = document.getElementById('pdfEmail');
+            if (pdfEmail) pdfEmail.innerText = email;
+
+            const pdfDate = document.getElementById('pdfDate');
+            if (pdfDate) pdfDate.innerText = new Date().toLocaleString();
         }
 
         function copyCode(btn) {

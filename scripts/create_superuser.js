@@ -36,12 +36,28 @@ async function createSuperuser() {
             // If user already exists, try to update password
             if (userError.message.includes('already has been registered')) {
                 console.log('User exists. Attempting to update password...');
-                const { data: users } = await supabase.auth.admin.listUsers();
-                const user = users.users.find(u => u.email === email);
+                const { data, error: listError } = await supabase.auth.admin.listUsers();
+
+                if (listError) {
+                    console.error('Error fetching users to update password:', listError.message);
+                    return;
+                }
+
+                if (!data || !Array.isArray(data.users)) {
+                    console.error('Unexpected response format from listUsers.');
+                    return;
+                }
+
+                const user = data.users.find(u => u.email === email);
                 if (user) {
                     const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, { password: password });
-                    if (updateError) console.error('Error updating password:', updateError);
-                    else console.log('Password updated successfully.');
+                    if (updateError) {
+                        console.error('Error updating password:', updateError.message);
+                    } else {
+                        console.log('Password updated successfully.');
+                    }
+                } else {
+                    console.error('User not found in list despite existing error.');
                 }
             }
         } else {

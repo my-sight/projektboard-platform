@@ -126,7 +126,7 @@ export function KanbanSettingsDialog({
             }
         });
 
-        if (success) {
+        if (success !== false) {
             onClose();
             loadCards();
         }

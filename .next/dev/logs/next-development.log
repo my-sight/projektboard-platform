@@ -1,629 +1,145 @@
-[00:00:02.146] Server  LOG     ✓ Ready in 1838ms
-[00:00:05.395] Server  LOG     ○ Compiling /boards/[id] ...
-[00:00:07.518] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:00:07.518] Browser LOG     [OriginalKanbanBoard] Visibility refresh triggered via AuthContext
-[00:00:07.518] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
-[00:00:07.518] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
-[00:00:10.195] Browser LOG     [AuthContext] Initializing Auth...
-[00:00:10.196] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
-[00:00:10.196] Browser LOG     [AuthContext] Fetching initial session...
-[00:00:10.196] Browser LOG     [AuthContext] Session confirmed for: alexander@test.de ID: 6e335aa4-c873-48e2-8352-8493f71e34e2
-[00:00:10.196] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
-[00:00:10.196] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
-[00:00:10.655] Browser LOG     [AuthContext] Profile fetch result: Success
-[00:00:10.655] Browser LOG     [AuthContext] Initialization complete. Loading -> false
-[00:00:10.655] Browser LOG     Fetching Con-Boards for Parent ID: 2e64a4db-b361-4b15-9a39-718b19a41d54 Tab: 0 Open: false
-[00:00:10.655] Browser LOG     🔌 Subscribing to Realtime for Board: 2e64a4db-b361-4b15-9a39-718b19a41d54
-[00:00:10.655] Browser LOG     🔌 Unsubscribing Realtime...
-[00:00:10.655] Browser LOG     Fetching Con-Boards for Parent ID: 2e64a4db-b361-4b15-9a39-718b19a41d54 Tab: 0 Open: false
-[00:00:10.655] Browser LOG     🔌 Subscribing to Realtime for Board: 2e64a4db-b361-4b15-9a39-718b19a41d54
-[00:00:10.655] Browser LOG     ✅ Realtime Subscribed!
-[00:00:11.068] Browser LOG     [KanbanPermissions] User: alexander@test.de, Global: admin, IsGlobalAdmin: true
-[00:00:11.068] Browser LOG     [KanbanPermissions] User: alexander@test.de, Global: admin, IsGlobalAdmin: true
-[00:00:11.068] Browser LOG     Fetching Con-Boards for Parent ID: 2e64a4db-b361-4b15-9a39-718b19a41d54 Tab: 0 Open: false
-[00:00:11.068] Browser LOG     Fetching Con-Boards for Parent ID: 2e64a4db-b361-4b15-9a39-718b19a41d54 Tab: 0 Open: false
-[00:00:16.228] Server  LOG     [LicenseServer] Starting license check on server...
-[00:00:16.228] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:00:17.198] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:00:17.199] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:00:17.199] Browser LOG     🔌 Unsubscribing Realtime...
-[00:00:17.199] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:00:17.199] Browser LOG     [DashboardClient] Loading data...
-[00:00:17.199] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:00:17.199] Browser LOG     [DashboardClient] Loading data...
-[00:00:17.435] Server  LOG     [LicenseServer] Starting license check on server...
-[00:00:17.435] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:00:17.542] Server  LOG     [LicenseServer] Starting license check on server...
-[00:00:17.542] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:00:17.797] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:00:17.797] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:00:17.797] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:00:17.797] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:00:17.797] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:00:17.797] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:00:17.797] Browser LOG     [DashboardClient] Data load finished in 386ms
-[00:00:17.797] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:17.797] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:17.797] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:00:17.797] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:00:17.797] Browser LOG     [DashboardClient] Data load finished in 489ms
-[00:00:17.797] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:17.797] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:17.797] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:00:17.797] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:00:19.060] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:19.060] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:19.060] Browser WARN    MUI: You have provided an out-of-range value `a365bef2-9bca-4407-9c10-e7b7f712e077` for the select component.
-Consider providing a value that matches one of the available options or ''.
-The available values are ``.
-[00:00:19.060] Browser WARN    MUI: You have provided an out-of-range value `a365bef2-9bca-4407-9c10-e7b7f712e077` for the select component.
-Consider providing a value that matches one of the available options or ''.
-The available values are ``.
-[00:00:19.060] Browser WARN    MUI: You have provided an out-of-range value `a365bef2-9bca-4407-9c10-e7b7f712e077` for the select component.
-Consider providing a value that matches one of the available options or ''.
-The available values are ``.
-[00:00:22.114] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:22.114] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:23.367] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:00:23.368] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
-[00:00:23.368] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
-[00:00:23.368] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:23.368] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:23.368] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
-[00:00:23.368] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
-[00:00:23.368] Browser LOG     [DashboardClient] Loading data...
-[00:00:25.181] Browser WARN    [DashboardClient] Data loading timed out (8s). Force-clearing loading state.
-[00:00:26.023] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:26.023] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:26.023] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:26.023] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:38.300] Server  LOG     [LicenseServer] Starting license check on server...
-[00:00:38.302] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:00:38.367] Browser ERROR   Fetch profile exception: {}
-[00:00:38.367] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
-[00:00:38.367] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:38.367] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:38.367] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: false
-[00:00:38.367] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
-[00:00:38.367] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:38.367] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:38.367] Browser LOG     [DashboardClient] Data load finished in 14956ms
-[00:00:38.367] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:38.367] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:38.367] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:00:38.367] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
-[00:00:38.501] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:00:38.501] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:00:40.857] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:40.857] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:00:44.830] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:00:44.830] Browser LOG     🔌 Subscribing to Realtime for Board: 65c56c59-36a5-4623-a86c-bf227cac5ef9
-[00:00:44.830] Browser LOG     [OriginalKanbanBoard] Visibility refresh triggered via AuthContext
-[00:00:44.830] Browser LOG     🔌 Unsubscribing Realtime...
-[00:00:44.830] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:00:44.830] Browser LOG     🔌 Subscribing to Realtime for Board: 65c56c59-36a5-4623-a86c-bf227cac5ef9
-[00:00:44.830] Browser LOG     ✅ Realtime Subscribed!
-[00:00:44.830] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:00:44.830] Browser LOG     [KanbanPermissions] User: alexander@test.de, Global: admin, IsGlobalAdmin: true
-[00:00:44.830] Browser LOG     [KanbanPermissions] User: alexander@test.de, Global: admin, IsGlobalAdmin: true
-[00:00:44.830] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:00:44.830] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:01:03.050] Browser WARN    %c@hello-pangea/dnd
-
-%cDroppable: unsupported nested scroll container detected.
-A Droppable can only have one scroll parent (which can be itself)
-Nested scroll containers are currently not supported.
-
-We hope to support nested scroll containers soon: https://github.com/atlassian/react-beautiful-dnd/issues/131
-
-%c👷‍ This is a development only message. It will be removed in production builds. color: #00C584; font-size: 1.2em; font-weight: bold; line-height: 1.5 color: #723874;
-[00:01:03.051] Browser WARN    %c@hello-pangea/dnd
-
-%cDroppable: unsupported nested scroll container detected.
-A Droppable can only have one scroll parent (which can be itself)
-Nested scroll containers are currently not supported.
-
-We hope to support nested scroll containers soon: https://github.com/atlassian/react-beautiful-dnd/issues/131
-
-%c👷‍ This is a development only message. It will be removed in production builds. color: #00C584; font-size: 1.2em; font-weight: bold; line-height: 1.5 color: #723874;
-[00:01:03.051] Browser WARN    %c@hello-pangea/dnd
-
-%cDroppable: unsupported nested scroll container detected.
-A Droppable can only have one scroll parent (which can be itself)
-Nested scroll containers are currently not supported.
-
-We hope to support nested scroll containers soon: https://github.com/atlassian/react-beautiful-dnd/issues/131
-
-%c👷‍ This is a development only message. It will be removed in production builds. color: #00C584; font-size: 1.2em; font-weight: bold; line-height: 1.5 color: #723874;
-[00:01:03.051] Browser WARN    %c@hello-pangea/dnd
-
-%cDroppable: unsupported nested scroll container detected.
-A Droppable can only have one scroll parent (which can be itself)
-Nested scroll containers are currently not supported.
-
-We hope to support nested scroll containers soon: https://github.com/atlassian/react-beautiful-dnd/issues/131
-
-%c👷‍ This is a development only message. It will be removed in production builds. color: #00C584; font-size: 1.2em; font-weight: bold; line-height: 1.5 color: #723874;
-[00:01:03.051] Browser WARN    %c@hello-pangea/dnd
-
-%cDroppable: unsupported nested scroll container detected.
-A Droppable can only have one scroll parent (which can be itself)
-Nested scroll containers are currently not supported.
-
-We hope to support nested scroll containers soon: https://github.com/atlassian/react-beautiful-dnd/issues/131
-
-%c👷‍ This is a development only message. It will be removed in production builds. color: #00C584; font-size: 1.2em; font-weight: bold; line-height: 1.5 color: #723874;
-[00:01:03.051] Browser WARN    %c@hello-pangea/dnd
-
-%cDroppable: unsupported nested scroll container detected.
-A Droppable can only have one scroll parent (which can be itself)
-Nested scroll containers are currently not supported.
-
-We hope to support nested scroll containers soon: https://github.com/atlassian/react-beautiful-dnd/issues/131
-
-%c👷‍ This is a development only message. It will be removed in production builds. color: #00C584; font-size: 1.2em; font-weight: bold; line-height: 1.5 color: #723874;
-[00:01:03.051] Browser WARN    %c@hello-pangea/dnd
-
-%cDroppable: unsupported nested scroll container detected.
-A Droppable can only have one scroll parent (which can be itself)
-Nested scroll containers are currently not supported.
-
-We hope to support nested scroll containers soon: https://github.com/atlassian/react-beautiful-dnd/issues/131
-
-%c👷‍ This is a development only message. It will be removed in production builds. color: #00C584; font-size: 1.2em; font-weight: bold; line-height: 1.5 color: #723874;
-[00:01:06.757] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:01:06.757] Browser LOG     [OriginalKanbanBoard] Visibility refresh triggered via AuthContext
-[00:01:06.757] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:01:11.017] Server  LOG     [LicenseServer] Starting license check on server...
-[00:01:11.017] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:01:11.261] Server  LOG     [LicenseServer] Starting license check on server...
-[00:01:11.262] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:01:11.311] Server  LOG     [LicenseServer] Starting license check on server...
-[00:01:11.311] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:01:11.595] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:11.595] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:11.595] Browser LOG     🔌 Unsubscribing Realtime...
-[00:01:11.595] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:01:11.595] Browser LOG     [DashboardClient] Loading data...
-[00:01:11.595] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
-[00:01:11.595] Browser LOG     [DashboardClient] Loading data...
-[00:01:11.595] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:01:11.595] Browser LOG     [DashboardClient] Loading data...
-[00:01:11.595] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
-[00:01:11.595] Browser LOG     [DashboardClient] Loading data...
-[00:01:11.595] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:11.595] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:11.595] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:01:11.595] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:01:11.595] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:01:11.595] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
-[00:01:11.595] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:01:11.595] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
-[00:01:11.595] Browser LOG     [DashboardClient] Data load finished in 151ms
-[00:01:11.595] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:11.595] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:11.595] Browser LOG     [DashboardClient] Data load finished in 185ms
-[00:01:11.595] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:01:11.595] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:01:11.595] Browser LOG     [DashboardClient] Data load finished in 186ms
-[00:01:11.595] Browser LOG     [DashboardClient] Data load finished in 186ms
-[00:01:11.595] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:11.595] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:11.595] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:01:11.595] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:01:18.146] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:01:18.146] Browser LOG     🔌 Subscribing to Realtime for Board: 65c56c59-36a5-4623-a86c-bf227cac5ef9
-[00:01:18.146] Browser LOG     [OriginalKanbanBoard] Visibility refresh triggered via AuthContext
-[00:01:18.146] Browser LOG     🔌 Unsubscribing Realtime...
-[00:01:18.146] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:01:18.146] Browser LOG     🔌 Subscribing to Realtime for Board: 65c56c59-36a5-4623-a86c-bf227cac5ef9
-[00:01:18.146] Browser LOG     ✅ Realtime Subscribed!
-[00:01:18.146] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:01:18.146] Browser LOG     [KanbanPermissions] User: alexander@test.de, Global: admin, IsGlobalAdmin: true
-[00:01:18.146] Browser LOG     [KanbanPermissions] User: alexander@test.de, Global: admin, IsGlobalAdmin: true
-[00:01:18.146] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:01:18.146] Browser LOG     Fetching Con-Boards for Parent ID: 65c56c59-36a5-4623-a86c-bf227cac5ef9 Tab: 0 Open: false
-[00:01:30.941] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:01:31.167] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
-[00:01:31.167] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
-[00:01:31.167] Browser LOG     [OriginalKanbanBoard] Visibility refresh triggered via AuthContext
-[00:01:33.473] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:01:35.815] Server  LOG     [LicenseServer] Starting license check on server...
-[00:01:35.815] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:01:36.290] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:36.291] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:36.291] Browser LOG     🔌 Unsubscribing Realtime...
-[00:01:36.291] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:01:36.291] Browser LOG     [DashboardClient] Loading data...
-[00:01:36.291] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
-[00:01:36.291] Browser LOG     [DashboardClient] Loading data...
-[00:01:36.291] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:01:36.291] Browser LOG     [DashboardClient] Loading data...
-[00:01:36.291] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
-[00:01:36.291] Browser LOG     [DashboardClient] Loading data...
-[00:01:40.812] Server  LOG     [LicenseServer] Starting license check on server...
-[00:01:40.812] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:01:41.538] Server  LOG     [DashboardClient RENDER] {}
-[00:01:43.884] Server  LOG     [LicenseServer] Starting license check on server...
-[00:01:43.885] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:01:43.916] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:01:43.916] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:01:43.916] Browser LOG     [DashboardClient] Waiting for Auth to finish loading...
-[00:01:43.916] Browser LOG     [AuthContext] Initializing Auth...
-[00:01:43.916] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
-[00:01:43.917] Browser LOG     [AuthContext] Fetching initial session...
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:01:43.917] Browser LOG     [AuthContext] Session confirmed for: alexander@test.de ID: 6e335aa4-c873-48e2-8352-8493f71e34e2
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:43.917] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
-[00:01:43.917] Browser LOG     [AuthContext] Fetching profile for user... 6e335aa4-c873-48e2-8352-8493f71e34e2
-[00:01:43.917] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:01:43.917] Browser LOG     [DashboardClient] Loading data...
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:43.917] Browser LOG     [AuthContext] Profile fetch result: Success
-[00:01:43.917] Browser LOG     [AuthContext] Initialization complete. Loading -> false
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:43.917] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:01:43.917] Browser LOG     [DashboardClient] Loading data...
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:43.917] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:43.963] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:43.963] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:01:43.963] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:01:43.963] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:01:43.963] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:01:44.210] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:01:44.210] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:01:44.210] Browser LOG     [DashboardClient] Data load finished in 609ms
-[00:01:44.210] Browser LOG     [DashboardClient] Data load finished in 557ms
-[00:01:44.210] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:44.210] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:44.210] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:01:44.210] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:01:44.377] Server  LOG     [LicenseServer] Starting license check on server...
-[00:01:44.379] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:01:44.643] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:01:44.644] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:01:46.033] Browser LOG     [AuthContext] Auth State Change: SIGNED_OUT
-[00:01:46.034] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":false,"loadingData":false}
-[00:01:46.034] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":false,"loadingData":false}
-[00:01:46.034] Browser LOG     [DashboardClient] No user and auth finished loading. Redirecting to /login
-[00:01:53.212] Server  LOG     [LicenseServer] Starting license check on server...
-[00:01:53.213] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:01:53.300] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
-[00:01:53.300] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:01:54.210] Server  LOG     [LicenseServer] Starting license check on server...
-[00:01:54.211] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:01:54.371] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:54.371] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:54.371] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:01:54.371] Browser LOG     [DashboardClient] Loading data...
-[00:01:54.371] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:01:54.371] Browser LOG     [DashboardClient] Loading data...
-[00:01:54.371] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:54.371] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:54.371] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:54.371] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:01:54.371] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:01:54.371] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:01:54.371] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:01:54.371] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:01:54.371] Browser LOG     [DashboardClient] Data load finished in 347ms
-[00:01:54.371] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:54.371] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:54.421] Server  LOG     [LicenseServer] Starting license check on server...
-[00:01:54.422] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:01:54.563] Browser LOG     [DashboardClient] Data load finished in 492ms
-[00:01:54.563] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:01:54.563] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:01:54.563] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:54.563] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:54.692] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:01:54.692] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:01:55.855] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:01:55.855] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:55.855] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:55.855] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
-[00:01:55.855] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
-[00:01:55.855] Browser LOG     [DashboardClient] Loading data...
-[00:01:55.855] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:55.855] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:55.973] Browser LOG     [DashboardClient] Data load finished in 227ms
-[00:01:55.973] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:01:55.973] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:02.146] Browser WARN    [DashboardClient] Data loading timed out (8s). Force-clearing loading state.
-[00:02:02.426] Server  LOG     ○ Compiling /admin ...
-[00:02:07.744] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:07.745] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:10.451] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:10.452] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:11.539] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:11.540] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:14.746] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:14.749] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:14.941] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:14.943] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:14.946] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:14.946] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:28.976] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:02:38.447] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:38.448] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:38.851] Server  LOG     [DashboardClient RENDER] {}
-[00:02:39.999] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:40.000] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:40.044] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:40.045] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient] Waiting for Auth to finish loading...
-[00:02:40.364] Browser LOG     [AuthContext] Initializing Auth...
-[00:02:40.364] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
-[00:02:40.364] Browser LOG     [AuthContext] Fetching initial session...
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:02:40.364] Browser LOG     [AuthContext] Session confirmed for: michael@mysight.net ID: efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:02:40.364] Browser LOG     [DashboardClient] Loading data...
-[00:02:40.364] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
-[00:02:40.364] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:40.364] Browser LOG     [AuthContext] Profile fetch result: Success
-[00:02:40.364] Browser LOG     [AuthContext] Initialization complete. Loading -> false
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:02:40.364] Browser LOG     [DashboardClient] Loading data...
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:02:40.364] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:02:40.364] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:02:40.364] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:02:40.364] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:02:40.364] Browser LOG     [DashboardClient] Data load finished in 281ms
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:40.364] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:02:40.364] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:40.364] Browser LOG     [DashboardClient] Data load finished in 447ms
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:40.364] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:42.138] Browser LOG     [AuthContext] Auth State Change: SIGNED_OUT
-[00:02:42.138] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":false,"loadingData":false}
-[00:02:42.138] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":false,"loadingData":false}
-[00:02:42.138] Browser LOG     [DashboardClient] No user and auth finished loading. Redirecting to /login
-[00:02:45.782] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:45.782] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:45.918] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
-[00:02:45.918] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:02:45.918] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:45.918] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:45.918] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:02:45.918] Browser LOG     [DashboardClient] Loading data...
-[00:02:45.918] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:02:45.918] Browser LOG     [DashboardClient] Loading data...
-[00:02:46.274] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:46.275] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:46.327] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:46.327] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:46.468] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:46.468] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:46.468] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:46.468] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:02:46.468] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:02:46.468] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:02:46.468] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:02:46.468] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:02:46.468] Browser LOG     [DashboardClient] Data load finished in 457ms
-[00:02:46.468] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:46.468] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:46.469] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:02:46.469] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:02:46.469] Browser LOG     [DashboardClient] Data load finished in 521ms
-[00:02:46.469] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:46.469] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:46.469] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:02:46.469] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:02:48.153] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:02:48.153] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:48.153] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:48.153] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
-[00:02:48.153] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
-[00:02:48.153] Browser LOG     [DashboardClient] Loading data...
-[00:02:48.153] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:48.153] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:48.153] Browser LOG     [DashboardClient] Data load finished in 81ms
-[00:02:48.153] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:48.153] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:02:49.228] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:49.229] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:49.364] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:49.364] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:50.118] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:50.118] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:50.253] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:50.253] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:52.305] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:52.306] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:02:52.402] Server  LOG     [LicenseServer] Starting license check on server...
-[00:02:52.403] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:03:00.391] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:03:25.563] Server  LOG     [LicenseServer] Starting license check on server...
-[00:03:25.563] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:03:25.661] Server  LOG     [DashboardClient RENDER] {}
-[00:03:27.261] Server  LOG     [LicenseServer] Starting license check on server...
-[00:03:27.263] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:03:27.436] Server  LOG     [LicenseServer] Starting license check on server...
-[00:03:27.437] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient] Waiting for Auth to finish loading...
-[00:03:27.726] Browser LOG     [AuthContext] Initializing Auth...
-[00:03:27.726] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
-[00:03:27.726] Browser LOG     [AuthContext] Fetching initial session...
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:03:27.726] Browser LOG     [AuthContext] Session confirmed for: michael@mysight.net ID: efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
-[00:03:27.726] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:03:27.726] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:03:27.726] Browser LOG     [DashboardClient] Loading data...
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [AuthContext] Profile fetch result: Success
-[00:03:27.726] Browser LOG     [AuthContext] Initialization complete. Loading -> false
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:03:27.726] Browser LOG     [DashboardClient] Loading data...
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:03:27.726] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:03:27.726] Browser LOG     [DashboardClient] Data load finished in 380ms
-[00:03:27.726] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:03:27.726] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:03:27.726] Browser LOG     [LicenseWarning] Status: {"customer":"mysight:pmo","expiry":"2026-12-31","maxUsers":33,"valid":true}
-[00:03:27.726] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:03:27.726] Browser LOG     [DashboardClient] Data load finished in 559ms
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:03:27.726] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:03:30.490] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:03:30.490] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:03:35.009] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:03:35.009] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:03:35.159] Browser WARN    [DashboardClient] Data loading timed out (8s). Force-clearing loading state.
-[00:04:47.229] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:04:47.229] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
-[00:04:47.229] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:04:47.229] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:04:47.229] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:04:47.229] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
-[00:04:47.229] Browser LOG     [DashboardClient] Visibility refresh triggered via AuthContext
-[00:04:47.229] Browser LOG     [DashboardClient] Loading data...
-[00:05:02.154] Browser ERROR   Fetch profile exception: {}
-[00:05:02.161] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
-[00:05:02.163] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:05:02.163] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:05:02.275] Browser LOG     [PersonalDashboard] Visibility refresh triggered via AuthContext
-[00:05:02.722] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:05:02.722] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:05:02.722] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:05:02.722] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:05:02.722] Browser LOG     [DashboardClient] Data load finished in 15472ms
-[00:05:02.722] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:05:02.722] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:05:58.392] Server  LOG     [LicenseServer] Starting license check on server...
-[00:05:58.392] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:06:02.130] Server  LOG     [LicenseServer] Starting license check on server...
-[00:06:02.131] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:06:02.247] Server  LOG     [LicenseServer] Starting license check on server...
-[00:06:02.247] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:06:07.692] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:06:12.973] Server  LOG     [LicenseServer] Starting license check on server...
-[00:06:12.974] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:06:13.049] Browser LOG     [AuthContext] Initializing Auth...
-[00:06:13.049] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
-[00:06:13.049] Browser LOG     [AuthContext] Fetching initial session...
-[00:06:13.049] Browser LOG     [AuthContext] Session confirmed for: michael@mysight.net ID: efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:06:13.049] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
-[00:06:13.049] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:06:13.245] Browser LOG     [AuthContext] Profile fetch result: Success
-[00:06:13.245] Browser LOG     [AuthContext] Initialization complete. Loading -> false
-[00:06:55.448] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:06:55.449] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
-[00:06:55.449] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:07:10.453] Browser ERROR   Fetch profile exception: {}
-[00:07:10.453] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
-[00:08:10.812] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:08:10.812] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
-[00:08:10.812] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:08:25.814] Browser ERROR   Fetch profile exception: {}
-[00:08:25.814] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
-[00:10:28.546] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:10:28.546] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
-[00:10:28.546] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:10:37.957] Browser LOG     [AuthContext] Tab became visible/focused, triggering silent background refresh...
-[00:10:42.547] Server  LOG     [LicenseServer] Starting license check on server...
-[00:10:42.547] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:10:42.675] Server  LOG     [DashboardClient RENDER] {}
-[00:10:43.815] Server  LOG     [LicenseServer] Starting license check on server...
-[00:10:43.815] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient] Waiting for Auth to finish loading...
-[00:10:43.827] Browser LOG     [AuthContext] Initializing Auth...
-[00:10:43.827] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
-[00:10:43.827] Browser LOG     [AuthContext] Fetching initial session...
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
-[00:10:43.827] Browser LOG     [AuthContext] Session confirmed for: michael@mysight.net ID: efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:10:43.827] Browser LOG     [DashboardClient] Loading data...
-[00:10:43.827] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
-[00:10:43.827] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:10:43.827] Browser LOG     [LicenseWarning] Check 1: Loading: true Admin: true
-[00:10:43.827] Browser LOG     [LicenseWarning] Check 1: Loading: true Admin: true
-[00:10:43.827] Browser LOG     [AuthContext] Profile fetch result: Success
-[00:10:43.827] Browser LOG     [AuthContext] Initialization complete. Loading -> false
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
-[00:10:43.827] Browser LOG     [DashboardClient] Data load finished in 243ms
-[00:10:43.827] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
-[00:10:43.827] Browser LOG     [DashboardClient] User active, loading dashboard data...
-[00:10:43.827] Browser LOG     [DashboardClient] Loading data...
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:43.827] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:43.992] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:43.992] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:43.992] Browser LOG     [LicenseWarning] Status: {"customer":"Firmenname","expiry":"2026-12-31","maxUsers":50,"valid":true}
-[00:10:43.992] Browser LOG     [LicenseWarning] Days Remaining: 314
-[00:10:43.992] Browser LOG     [DashboardClient] Data load finished in 162ms
-[00:10:43.992] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:43.992] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:50.077] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:50.077] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:51.825] Browser WARN    [DashboardClient] Data loading timed out (8s). Force-clearing loading state.
-[00:10:57.110] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:57.110] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:58.662] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
-[00:10:58.662] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:01.412] Server  LOG     ✓ Ready in 1206ms
+[00:00:03.343] Server  LOG     [LicenseServer] Starting license check on server...
+[00:00:03.344] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:00:03.808] Server  LOG     [DashboardClient RENDER] {}
+[00:00:09.460] Server  LOG     [LicenseServer] Starting license check on server...
+[00:00:09.461] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:00:09.504] Server  LOG     [LicenseServer] Starting license check on server...
+[00:00:09.504] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:00:09.679] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:09.679] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:09.679] Browser LOG     [DashboardClient] Waiting for Auth to finish loading...
+[00:00:09.679] Browser LOG     [AuthContext] Initializing Auth...
+[00:00:09.680] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
+[00:00:09.680] Browser LOG     [AuthContext] Fetching initial session...
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:09.680] Browser LOG     [AuthContext] Session confirmed for: michael@mysight.net ID: efe9d6d2-5acd-4cba-adb8-5290295364d4
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient] User active, loading dashboard data...
+[00:00:09.680] Browser LOG     [DashboardClient] Loading data...
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
+[00:00:09.680] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [AuthContext] Profile fetch result: Success
+[00:00:09.680] Browser LOG     [AuthContext] Initialization complete. Loading -> false
+[00:00:09.680] Browser LOG     [DashboardClient] User active, loading dashboard data...
+[00:00:09.680] Browser LOG     [DashboardClient] Loading data...
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
+[00:00:09.680] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:00:09.680] Browser LOG     [DashboardClient] Data load finished in 274ms
+[00:00:09.680] Browser LOG     [LicenseWarning] Status: {"customer":"Firmenname","expiry":"2026-12-31","maxUsers":50,"valid":true}
+[00:00:09.680] Browser LOG     [LicenseWarning] Days Remaining: 313
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:09.680] Browser LOG     [LicenseWarning] Status: {"customer":"Firmenname","expiry":"2026-12-31","maxUsers":50,"valid":true}
+[00:00:09.680] Browser LOG     [LicenseWarning] Days Remaining: 313
+[00:00:09.680] Browser LOG     [DashboardClient] Data load finished in 221ms
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:09.680] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:17.569] Browser WARN    [DashboardClient] Data loading timed out (8s). Force-clearing loading state.
+[00:00:18.755] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:00:18.756] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
+[00:00:18.756] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:18.756] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:23.996] Server  LOG     [LicenseServer] Starting license check on server...
+[00:00:23.996] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:00:24.047] Server  LOG     [DashboardClient RENDER] {}
+[00:00:24.831] Server  LOG     [LicenseServer] Starting license check on server...
+[00:00:24.831] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:00:24.907] Server  LOG     [LicenseServer] Starting license check on server...
+[00:00:24.908] Server  LOG     [LicenseServer] Using URL: "http://localhost:54321"
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient] Waiting for Auth to finish loading...
+[00:00:25.066] Browser LOG     [AuthContext] Initializing Auth...
+[00:00:25.066] Browser LOG     [AuthContext] Supabase Client URL: http://localhost:54321
+[00:00:25.066] Browser LOG     [AuthContext] Fetching initial session...
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":false,"loadingData":true}
+[00:00:25.066] Browser LOG     [AuthContext] Session confirmed for: michael@mysight.net ID: efe9d6d2-5acd-4cba-adb8-5290295364d4
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient] User active, loading dashboard data...
+[00:00:25.066] Browser LOG     [DashboardClient] Loading data...
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [AuthContext] Auth State Change: INITIAL_SESSION
+[00:00:25.066] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":true,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [AuthContext] Profile fetch result: Success
+[00:00:25.066] Browser LOG     [AuthContext] Initialization complete. Loading -> false
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient] User active, loading dashboard data...
+[00:00:25.066] Browser LOG     [DashboardClient] Loading data...
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":0,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":true}
+[00:00:25.066] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
+[00:00:25.066] Browser LOG     [LicenseWarning] Check 1: Loading: false Admin: true
+[00:00:25.066] Browser LOG     [DashboardClient] Data load finished in 150ms
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:25.066] Browser LOG     [LicenseWarning] Status: {"customer":"Firmenname","expiry":"2026-12-31","maxUsers":50,"valid":true}
+[00:00:25.066] Browser LOG     [LicenseWarning] Days Remaining: 313
+[00:00:25.066] Browser LOG     [DashboardClient] Data load finished in 207ms
+[00:00:25.066] Browser LOG     [LicenseWarning] Status: {"customer":"Firmenname","expiry":"2026-12-31","maxUsers":50,"valid":true}
+[00:00:25.066] Browser LOG     [LicenseWarning] Days Remaining: 313
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:25.066] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:32.952] Browser WARN    [DashboardClient] Data loading timed out (8s). Force-clearing loading state.
+[00:00:32.952] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:00:32.952] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
+[00:00:32.952] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:00:32.952] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:01:09.110] Browser ERROR   Fetch profile exception: {}
+[00:01:09.110] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
+[00:01:09.110] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:01:09.110] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:01:09.265] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:01:09.265] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
+[00:01:09.265] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:01:09.265] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:01:24.427] Browser ERROR   Fetch profile exception: {}
+[00:01:24.428] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
+[00:01:44.348] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:01:44.348] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
+[00:01:44.348] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:01:44.348] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:01:59.345] Browser ERROR   Fetch profile exception: {}
+[00:01:59.346] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
+[00:01:59.346] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:01:59.346] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
+[00:01:59.346] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:01:59.346] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:14.461] Browser ERROR   Fetch profile exception: {}
+[00:02:14.461] Browser WARN    [AuthContext] User has no profile record. Continuing without profile state.
+[00:02:21.693] Browser LOG     [AuthContext] Auth State Change: SIGNED_IN
+[00:02:21.693] Browser LOG     [AuthContext] Fetching profile for user... efe9d6d2-5acd-4cba-adb8-5290295364d4
+[00:02:21.693] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}
+[00:02:21.693] Browser LOG     [DashboardClient RENDER] {"authLoading":false,"boardsCount":6,"hasUser":true,"loadingData":false}

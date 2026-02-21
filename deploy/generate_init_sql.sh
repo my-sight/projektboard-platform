@@ -7,8 +7,11 @@ cd "$DEPLOY_DIR"
 MIGRATIONS_DIR="../supabase/migrations"
 OUTPUT_FILE="init_schema.sql"
 
-# License: 50 Users, Expires 2026, Firmenname
-LICENSE_TOKEN="eyJleHBpcnkiOiIyMDI2LTEyLTMxIiwiY3VzdG9tZXIiOiJGaXJtZW5uYW1lIiwibWF4VXNlcnMiOjUwLCJjcmVhdGVkIjoiMjAyNS0xMi0yOVQxMzozMjozOS42NTNaIn0=.6AIcBmhbL0c+N/Ju4uCXWo4mK4UYIwD9lr3W8BEpp78O7ETlhqSoFoYbPUJklmKSBxSJbBW5Bvdk2BxQn7BACA=="
+[[ -z "${LICENSE_TOKEN}" ]] && {
+    echo "❌ ERROR: LICENSE_TOKEN environment variable is not set."
+    echo "Please set it before running this script: export LICENSE_TOKEN=..."
+    exit 1
+}
 
 echo "Generating $OUTPUT_FILE from migrations..."
 
